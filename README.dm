@@ -1,2 +1,3 @@
 Porgetto di gruppo 2024
- Grputto : Alberto , Mattia, Lorenzo, Robert 
+
+Gruppo : Blaga Robert, Cortese Lorenzo, ??? Mattia, Rovesti Alberto 
