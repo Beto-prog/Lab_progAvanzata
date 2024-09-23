@@ -1,3 +1,3 @@
-Porgetto di gruppo 2024
+Progetto di gruppo 2024
 
-Gruppo : Blaga Robert, Cortese Lorenzo, ??? Mattia, Rovesti Alberto 
+Gruppo : Blaga Robert, Cortese Lorenzo, Ferretti  Mattia, Rovesti Alberto 
