@@ -1,4 +1,4 @@
-<h1>Progetto di gruppo 2024</h1>
+<h1>Progetto di gruppo 2024 💻</h1>
 </br>
 Membri:
 </br></br>
