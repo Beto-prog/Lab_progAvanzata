@@ -1,26 +1,45 @@
-use crossbeam_channel::{select_biased, Sender};
-use rand::rngs::ThreadRng;
-use rand::Rng;
-use wg_2024::controller::DroneCommand;
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use rand::{Rng};
+use std::collections::HashMap;
 use wg_2024::controller::NodeEvent::{PacketDropped, PacketSent};
-use wg_2024::drone::{Drone, DroneOptions};
+use wg_2024::controller::{DroneCommand, NodeEvent};
+use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Nack, NackType, Packet, PacketType};
 
 struct TrustDrone {
-    options: DroneOptions,
-    rng: ThreadRng,
+    id: NodeId,
+    controller_send: Sender<NodeEvent>,
+    controller_recv: Receiver<DroneCommand>,
+    packet_recv: Receiver<Packet>,
+    pdr: f32,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
 impl Drone for TrustDrone {
-    fn new(options: DroneOptions) -> Self {
-        TrustDrone { options, rng: rand::thread_rng() }
+    fn new(
+        id: NodeId,
+        controller_send: Sender<NodeEvent>,
+        controller_recv: Receiver<DroneCommand>,
+        packet_recv: Receiver<Packet>,
+        packet_send: HashMap<NodeId, Sender<Packet>>,
+        pdr: f32,
+    ) -> Self {
+        TrustDrone {
+            id,
+            controller_send,
+            controller_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        }
     }
 
     fn run(&mut self) {
+        let mut rng = rand::thread_rng();
         loop {
             select_biased! {
-                 recv(self.options.controller_recv) -> command => {
+                 recv(self.controller_recv) -> command => {
                     match command {
                         Ok(command) => {
                             match command {
@@ -31,22 +50,23 @@ impl Drone for TrustDrone {
                                     self.set_packet_drop_rate(pdr);
                                 },
                                 DroneCommand::Crash => {
-                                    println!("Drone with id {} crashed", self.options.id);
+                                    println!("Drone with id {} crashed", self.id);
                                     break;
                                 }
+                                DroneCommand::RemoveSender(_) => todo!() 
                             }
                         },
                         Err(e) => {
-                            eprintln!("Error on command reception of drone {}: {}", self.options.id, e)
+                            eprintln!("Error on command reception of drone {}: {}", self.id, e)
                         },
                     }
                 }
-                recv(self.options.packet_recv) -> packet => {
+                recv(self.packet_recv) -> packet => {
                     match packet {
                         Ok(mut packet) => {
                             let routing_headers = &mut packet.routing_header;
-                            if routing_headers.hops[routing_headers.hop_index] != self.options.id {
-                                self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.options.id));
+                            if routing_headers.hops[routing_headers.hop_index] != self.id {
+                                self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id));
                                 continue
                             }
 
@@ -67,7 +87,7 @@ impl Drone for TrustDrone {
 
                             match packet.pack_type {
                               PacketType::MsgFragment(_) => {
-                                    let should_drop = self.rng.gen_range(0.0..1.0) < self.options.pdr;
+                                    let should_drop = rng.gen_range(0.0..1.0) < self.pdr;
                                     if should_drop {
                                         self.send_nack(routing_headers, NackType::Dropped);
                                     } else {
@@ -85,7 +105,7 @@ impl Drone for TrustDrone {
                             }
                         },
                         Err(e) => {
-                            eprintln!("Error on packet reception of drone {}: {}", self.options.id, e)
+                            eprintln!("Error on packet reception of drone {}: {}", self.id, e)
                         }
                     }
                 }
@@ -96,22 +116,20 @@ impl Drone for TrustDrone {
 
 impl TrustDrone {
     fn add_sender(&mut self, id: NodeId, sender: Sender<Packet>) {
-        self.options.packet_send.insert(id, sender);
+        self.packet_send.insert(id, sender);
     }
 
     fn set_packet_drop_rate(&mut self, pdr: f32) {
-        self.options.pdr = pdr;
+        self.pdr = pdr;
     }
 
     fn send_packet_sent_event(&mut self, packet: Packet) {
-        self.options
-            .controller_send
+        self.controller_send
             .send(PacketSent(packet))
             .expect("Failed to send message to simulation controller");
     }
     fn send_packet_dropped_event(&mut self, packet: Packet) {
-        self.options
-            .controller_send
+        self.controller_send
             .send(PacketDropped(packet))
             .expect("Failed to send message to simulation controller");
     }
@@ -127,7 +145,10 @@ impl TrustDrone {
 
         let next_hop = new_headers[1];
         let nack = Packet {
-            pack_type: PacketType::Nack(Nack { fragment_index: 0, nack_type }),
+            pack_type: PacketType::Nack(Nack {
+                fragment_index: 0,
+                nack_type,
+            }),
             routing_header: SourceRoutingHeader {
                 hops: new_headers,
                 hop_index: 1,
@@ -143,7 +164,7 @@ impl TrustDrone {
     }
 
     fn send_packet(&mut self, dest_id: NodeId, packet: Packet) {
-        let sender = self.options.packet_send.get(&dest_id);
+        let sender = self.packet_send.get(&dest_id);
 
         match sender {
             None => {}
@@ -155,7 +176,7 @@ impl TrustDrone {
     }
 
     fn drop_packet(&mut self, dest_id: NodeId, packet: Packet) {
-        let sender = self.options.packet_send.get(&dest_id);
+        let sender = self.packet_send.get(&dest_id);
 
         match sender {
             None => {}
@@ -167,7 +188,7 @@ impl TrustDrone {
     }
 
     fn is_next_hop_neighbour(&self, next_hop: NodeId) -> bool {
-        let sender = self.options.packet_send.get(&next_hop);
+        let sender = self.packet_send.get(&next_hop);
         match sender {
             None => false,
             Some(_) => true,
