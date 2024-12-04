@@ -207,7 +207,24 @@ impl TrustDrone {
         }
     }
 }
+#[cfg(test)]
+mod tests{
+    use super::*;
 
+    fn test_handle_command(){}
+    fn test_handle_packet(){}
+    fn test_add_sender(){}
+    fn test_set_packet_drop_rate(){}
+    fn test_send_packet_sent_event(){}
+    fn test_send_packet_dropped_event(){}
+    fn test_reverse_headers(){}
+    fn test_send_nack(){}
+    fn test_send_packet(){}
+    fn test_send_valid_packet(){}
+    fn test_drop_packet(){}
+    fn test_is_next_hop_neighbour(){}
+
+}
 fn main() {
     println!("Hello, world!");
 }
