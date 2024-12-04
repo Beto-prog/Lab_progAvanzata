@@ -210,18 +210,29 @@ impl TrustDrone {
 #[cfg(test)]
 mod tests{
     use super::*;
-
+    #[test]
     fn test_handle_command(){}
+    #[test]
     fn test_handle_packet(){}
+    #[test]
     fn test_add_sender(){}
+    #[test]
     fn test_set_packet_drop_rate(){}
+    #[test]
     fn test_send_packet_sent_event(){}
+    #[test]
     fn test_send_packet_dropped_event(){}
+    #[test]
     fn test_reverse_headers(){}
+    #[test]
     fn test_send_nack(){}
+    #[test]
     fn test_send_packet(){}
+    #[test]
     fn test_send_valid_packet(){}
+    #[test]
     fn test_drop_packet(){}
+    #[test]
     fn test_is_next_hop_neighbour(){}
 
 }
