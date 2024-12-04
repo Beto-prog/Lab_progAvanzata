@@ -1,7 +1,7 @@
 use crossbeam_channel::{select_biased, Receiver, Sender};
-use rand::{Rng};
-use std::collections::HashMap;
 use rand::rngs::ThreadRng;
+use rand::Rng;
+use std::collections::HashMap;
 use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -79,7 +79,7 @@ impl TrustDrone {
                 println!("Drone with id {} crashed", self.id);
                 // TODO implement drone crashing
             }
-            DroneCommand::RemoveSender(_) => todo!()
+            DroneCommand::RemoveSender(neighbor_id) => self.remove_sender(neighbor_id),
         }
     }
 
@@ -126,6 +126,10 @@ impl TrustDrone {
 
     fn add_sender(&mut self, id: NodeId, sender: Sender<Packet>) {
         self.packet_send.insert(id, sender);
+    }
+
+    fn remove_sender(&mut self, neighbor_id: NodeId) {
+        self.packet_send.retain(|id, _| *id != neighbor_id);
     }
 
     fn set_packet_drop_rate(&mut self, pdr: f32) {
@@ -208,16 +212,16 @@ impl TrustDrone {
     }
 }
 #[cfg(test)]
-mod tests{
-    use crossbeam_channel::unbounded;
+mod tests {
     use super::*;
+    use crossbeam_channel::unbounded;
 
     #[test]
-    fn test_add_sender(){
+    fn test_add_sender() {
         //Create a drone for testing
         let id: u8 = 123;
-        let pdr:f32 = 0.5;
-        let mut packet_channels = HashMap::<NodeId,(Sender<Packet>,Receiver<Packet>)>::new();
+        let pdr: f32 = 0.5;
+        let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
         packet_channels.insert(id, unbounded());
 
         //controller
@@ -226,7 +230,7 @@ mod tests{
 
         //packet
         let packet_recv = packet_channels[&id].1.clone();
-        let packet_send =  HashMap::<NodeId,Sender<Packet>>::new();
+        let packet_send = HashMap::<NodeId, Sender<Packet>>::new();
 
         //drone instance
         let mut drone = TrustDrone::new(
@@ -235,20 +239,15 @@ mod tests{
             controller_drone_recv,
             packet_recv,
             packet_send,
-            pdr
+            pdr,
         );
         // TODO : fare parte di Sender<Packet> con  e testare corretta aggiunta ad HashMap
 
     }
     #[test]
-    fn test_set_packet_drop_rate(){
-
-    }
+    fn test_set_packet_drop_rate() {}
     #[test]
-    fn test_handle_command(){
-
-
-    }
+    fn test_handle_command() {}
     /*
     #[test]
     fn test_handle_packet(){}
@@ -270,7 +269,6 @@ mod tests{
     fn test_is_next_hop_neighbour(){}
 
      */
-
 }
 fn main() {
     println!("Hello, world!");
