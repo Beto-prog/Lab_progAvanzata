@@ -2,15 +2,15 @@ use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::{Rng};
 use std::collections::HashMap;
 use rand::rngs::ThreadRng;
-use wg_2024::controller::NodeEvent::{PacketDropped, PacketSent};
-use wg_2024::controller::{DroneCommand, NodeEvent};
+use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Nack, NackType, Packet, PacketType};
 
 struct TrustDrone {
     id: NodeId,
-    controller_send: Sender<NodeEvent>,
+    controller_send: Sender<DroneEvent>,
     controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
     pdr: f32,
@@ -21,7 +21,7 @@ struct TrustDrone {
 impl Drone for TrustDrone {
     fn new(
         id: NodeId,
-        controller_send: Sender<NodeEvent>,
+        controller_send: Sender<DroneEvent>,
         controller_recv: Receiver<DroneCommand>,
         packet_recv: Receiver<Packet>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
