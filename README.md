@@ -10,4 +10,4 @@ Membri:
   
 </ul>
 
-Signed by Robert
+Official protocol : https://github.com/WGL-2024/WGL_repo_2024/blob/main/AP-protocol.md
