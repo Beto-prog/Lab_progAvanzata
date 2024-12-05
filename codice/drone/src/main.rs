@@ -242,6 +242,7 @@ mod tests {
 
         //packet
         let packet_recv = packet_channels[&id].1.clone();
+        let packet_sender = packet_channels[&id].0.clone();
         let packet_send = HashMap::<NodeId, Sender<Packet>>::new();
 
         //drone instance
@@ -253,13 +254,104 @@ mod tests {
             packet_send,
             pdr,
         );
-        // TODO : fare parte di Sender<Packet> con  e testare corretta aggiunta ad HashMap
+
+        //test
+        let id_test:u8 = 234;
+        drone.add_sender(id_test,packet_sender);
+        match drone.packet_send.get(&id_test){
+            Some(r) => (),
+            None =>{panic!("Error: packet_send not found/inserted correctly")} // used panic! because I should have written impl of Eq for Sender<Packet>
+        }
+
 
     }
     #[test]
-    fn test_set_packet_drop_rate() {}
+    fn test_set_packet_drop_rate(){
+        let id: u8 = 123;
+        let pdr: f32 = 0.5;
+        let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
+        packet_channels.insert(id, unbounded());
+
+        //controller
+        let (controller_drone_send, controller_drone_recv) = unbounded();
+        let (node_event_send, node_event_recv) = unbounded();
+
+        //packet
+        let packet_recv = packet_channels[&id].1.clone();
+        let packet_sender = packet_channels[&id].0.clone();
+        let packet_send = HashMap::<NodeId, Sender<Packet>>::new();
+
+        //drone instance
+        let mut drone = TrustDrone::new(
+            id,
+            node_event_send,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        );
+
+        //test
+        drone.set_packet_drop_rate(0.7);
+        assert_eq!(drone.pdr, 0.7);
+    }
     #[test]
-    fn test_handle_command() {}
+    fn test_handle_command(){
+        let id: u8 = 123;
+        let pdr: f32 = 0.5;
+        let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
+        packet_channels.insert(id, unbounded());
+
+        //controller
+        let (controller_drone_send, controller_drone_recv) = unbounded();
+        let (node_event_send, node_event_recv) = unbounded();
+
+        //packet
+        let packet_recv = packet_channels[&id].1.clone();
+        let packet_sender = packet_channels[&id].0.clone();
+        let packet_send = HashMap::<NodeId, Sender<Packet>>::new();
+
+        //drone instance
+        let mut drone = TrustDrone::new(
+            id,
+            node_event_send,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        );
+
+        //test
+        let packet_sender_test = packet_sender.clone();
+        let id_test = 234;
+        let dc1 = DroneCommand::AddSender(id_test,packet_sender);
+        let dc2 = DroneCommand::SetPacketDropRate(0.7);
+        let dc3 = DroneCommand::RemoveSender(id_test);
+        let dc4 = DroneCommand::Crash;
+
+        //test AddSender
+        drone.handle_command(dc1);
+        match drone.packet_send.get(&id_test) {
+            Some(r) =>{
+
+                //test RemoveSender
+                drone.handle_command(dc3);
+                match drone.packet_send.get(&id_test){
+                    Some(r) => {panic!("Error: sender should have been eliminated")}
+                    None => ()
+                }
+            },
+            None => {panic!("Error: packet_send not found/inserted correctly")}
+        }
+
+        //test SetPacketDropRate
+        drone.handle_command(dc2);
+        assert_eq!(drone.pdr, 0.7);
+
+        //test RemoveSender
+        // TODO test Crash drone.handle_command(dc4);
+
+    }
     /*
     #[test]
     fn test_handle_packet(){}
