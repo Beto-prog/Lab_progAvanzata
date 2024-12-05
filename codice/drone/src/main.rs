@@ -354,7 +354,55 @@ mod tests {
 
     }
     #[test]
-    fn test_handle_packet(){}
+    fn test_handle_packet(){
+        let id: u8 = 123;
+        let pdr: f32 = 0.5;
+        let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
+        packet_channels.insert(id, unbounded());
+
+        //controller
+        let (controller_drone_send, controller_drone_recv) = unbounded();
+        let (node_event_send, node_event_recv) = unbounded();
+
+        //packet
+        let packet_recv = packet_channels[&id].1.clone();
+        let packet_sender = packet_channels[&id].0.clone();
+        let packet_send = HashMap::<NodeId, Sender<Packet>>::new();
+
+        //drone instance
+        let mut drone = TrustDrone::new(
+            id,
+            node_event_send,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        );
+        let id2: u8 = 234;
+        let pdr2: f32 = 0.7;
+        let mut packet_channels2 = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
+        packet_channels2.insert(id, unbounded());
+
+        //controller
+        let (controller_drone_send2, controller_drone_recv2) = unbounded();
+        let (node_event_send2, node_event_recv2) = unbounded();
+
+        //packet
+        let packet_recv2 = packet_channels[&id].1.clone();
+        let packet_sender2 = packet_channels[&id].0.clone();
+        let packet_send2 = HashMap::<NodeId, Sender<Packet>>::new();
+
+        //drone instance
+        let mut drone = TrustDrone::new(
+            id2,
+            node_event_send2,
+            controller_drone_recv2,
+            packet_recv2,
+            packet_send2,
+            pdr2,
+        );
+
+    }
     /*
 
     #[test]
@@ -366,7 +414,7 @@ mod tests {
     #[test]
     fn test_send_nack(){}
     #[test]
-    fn test_send_packet(){}
+    fn test_send_packet(){} // vedere se testare o meno, abbastanza ez
     #[test]
     fn test_send_valid_packet(){}
     #[test]
