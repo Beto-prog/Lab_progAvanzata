@@ -6,7 +6,7 @@ use wg_2024::controller::NodeEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, NodeEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Nack, NackType, Packet, PacketType};
+use wg_2024::packet::{Ack, Nack, NackType, Packet, PacketType};
 
 struct TrustDrone {
     id: NodeId,
@@ -110,6 +110,7 @@ impl TrustDrone {
                 if should_drop {
                     self.send_nack(routing_headers, NackType::Dropped);
                 } else {
+                    self.send_ack(routing_headers);
                     self.send_valid_packet(next_hop, packet);
                 }
             }
@@ -132,6 +133,7 @@ impl TrustDrone {
         self.pdr = pdr;
     }
 
+
     fn send_packet_sent_event(&mut self, packet: Packet) {
         self.controller_send
             .send(PacketSent(packet))
@@ -151,6 +153,21 @@ impl TrustDrone {
             hop_index: 1,
         };
         new_headers
+    }
+
+    fn send_ack(&mut self, routing_headers: &SourceRoutingHeader) {
+        let new_headers = Self::reverse_headers(routing_headers);
+        let next_hop = new_headers.hops[1];
+
+        let ack = Packet {
+            pack_type: PacketType::Ack(Ack {
+                fragment_index: 0,
+            }),
+            routing_header: new_headers,
+            session_id: 0,
+        };
+
+        self.send_valid_packet(next_hop, ack);
     }
 
     fn send_nack(&mut self, routing_headers: &SourceRoutingHeader, nack_type: NackType) {
