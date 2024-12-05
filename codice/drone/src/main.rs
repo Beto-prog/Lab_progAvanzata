@@ -15,7 +15,7 @@ struct TrustDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
-    rng: ThreadRng,
+    rng: ThreadRng, //The random number generator
 }
 
 impl Drone for TrustDrone {
@@ -39,6 +39,7 @@ impl Drone for TrustDrone {
     }
 
     fn run(&mut self) {
+        // The drone runs in an infinite loop, when it receives either a command or packet it processes it, giving priority to the command
         loop {
             select_biased! {
                  recv(self.controller_recv) -> command => {
@@ -84,19 +85,27 @@ impl TrustDrone {
     }
 
     fn handle_packet(&mut self, mut packet: Packet) {
+
+        //create a reference to the routing headers just to have a shorthand
+
         let routing_headers = &mut packet.routing_header;
+
+        //Step 1 of the protocol
         if routing_headers.hops[routing_headers.hop_index] != self.id {
             self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id));
             return;
         }
 
+        //Step 2
         routing_headers.hop_index += 1;
 
+        //Step 3
         if routing_headers.hop_index == routing_headers.hops.len() {
             self.send_nack(routing_headers, NackType::DestinationIsDrone);
             return;
         }
 
+        //step 4
         let next_hop = routing_headers.hops[routing_headers.hop_index];
 
         if !self.is_next_hop_neighbour(next_hop) {
@@ -104,8 +113,10 @@ impl TrustDrone {
             return;
         }
 
+        //step 5
         match packet.pack_type {
             PacketType::MsgFragment(_) => {
+                //check if it should drop
                 let should_drop = self.rng.gen_range(0.0..1.0) < self.pdr;
                 if should_drop {
                     self.send_nack(routing_headers, NackType::Dropped);
@@ -147,6 +158,7 @@ impl TrustDrone {
             .expect("Failed to send message to simulation controller");
     }
 
+    //reverse the headers to send nacks and acks
     fn reverse_headers(source_routing_header: &SourceRoutingHeader) -> SourceRoutingHeader {
         let mut new_hops = source_routing_header.hops[..source_routing_header.hop_index].to_vec();
         new_hops.reverse();
