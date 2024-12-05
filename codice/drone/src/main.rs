@@ -211,8 +211,10 @@ impl TrustDrone {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
+    //use std::thread;
     use super::*;
     use crossbeam_channel::unbounded;
 
@@ -242,7 +244,6 @@ mod tests {
             packet_send,
             pdr,
         );
-
         //test
         let id_test:u8 = 234;
         drone.add_sender(id_test,packet_sender);
@@ -340,9 +341,10 @@ mod tests {
         // TODO test Crash drone.handle_command(dc4);
 
     }
-    /*
     #[test]
     fn test_handle_packet(){}
+    /*
+
     #[test]
     fn test_send_packet_sent_event(){}
     #[test]
