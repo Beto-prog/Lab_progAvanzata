@@ -7,8 +7,8 @@ use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, Nack, NackType, Packet, PacketType, FloodRequest, FloodResponse};
 use wg_2024::packet::NodeType::Drone as DroneType;
+use wg_2024::packet::{FloodResponse, Nack, NackType, Packet, PacketType};
 /*
 ================================================================================================
                                     TrustNode Documentation
@@ -53,7 +53,6 @@ TrustNode is the implementation of the drone controller used in the simulation.
 */
 
 
-
 struct TrustDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
@@ -62,7 +61,7 @@ struct TrustDrone {
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     rng: ThreadRng,
-    flood_ids : Vec<u64>,
+    flood_ids: Vec<u64>,
 }
 
 
@@ -84,7 +83,7 @@ impl Drone for TrustDrone {
             packet_send,
             pdr,
             rng: rand::thread_rng(),
-            flood_ids : Vec::new(),
+            flood_ids: Vec::new(),
         }
     }
 
@@ -118,8 +117,6 @@ impl Drone for TrustDrone {
 }
 
 impl TrustDrone {
-
-
     // This is the part that handle command received from the simulation controller (it has nothing to do with the packet exchange)
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
@@ -170,7 +167,6 @@ Packets are routed through the network using the information in the routing_head
 
     // This is the part that handle packet received from the other drones.
     fn handle_packet(&mut self, mut packett: Packet) {
-
         let mut packet = packett.clone();   //used because flooding needs the original packet
 
 
@@ -209,7 +205,6 @@ Packets are routed through the network using the information in the routing_head
                 if should_drop {
                     self.send_nack(routing_headers, NackType::Dropped);
                 } else {
-                    self.send_ack(routing_headers);
                     self.send_valid_packet(next_hop, packet);
                 }
             }
@@ -229,38 +224,34 @@ Packets are routed through the network using the information in the routing_head
                  path_trace: Vec<(NodeId, NodeType)>, // Trace of nodes traversed during the flooding
              }
          */
-            
+
             PacketType::FloodRequest(mut flood_packet) => {
-                
                 flood_packet.path_trace.push((self.id, DroneType));
                 let previous_neighbour = packett.routing_header.hops[packett.routing_header.hop_index - 1];
 
 
                 if self.flood_ids.contains(&flood_packet.flood_id)      // if the drone had already seen this FloodRequest  it sends a FloodResponse back
                 {
-                    packett.pack_type =PacketType::FloodResponse(FloodResponse {
+                    packett.pack_type = PacketType::FloodResponse(FloodResponse {
                         flood_id: flood_packet.flood_id,
                         path_trace: flood_packet.path_trace.clone(),
                     });
                     self.send_packet(previous_neighbour, packett);  //send back
-                    
+
                 } else {
                     self.flood_ids.push(flood_packet.flood_id); //save the flood id for next use
-                    
-                    
-                    if self.packet_send.len()-1 ==0{
+
+
+                    if self.packet_send.len() - 1 == 0 {
                         //if there are no neighbour send back flooding response 
 
-                        packett.pack_type =PacketType::FloodResponse(FloodResponse {
+                        packett.pack_type = PacketType::FloodResponse(FloodResponse {
                             flood_id: flood_packet.flood_id,
                             path_trace: flood_packet.path_trace.clone(),
                         });
                         self.send_packet(previous_neighbour, packett);
-                        
-                        
                     } else {    //send packet to all the neibourgh except the sender
-                        for (key, _ ) in  self.packet_send.clone() {
-                            
+                        for (key, _) in self.packet_send.clone() {
                             if (key != previous_neighbour) {
                                 let mut cloned_packett = packett.clone();
                                 cloned_packett.pack_type = PacketType::FloodResponse(FloodResponse {
@@ -270,7 +261,6 @@ Packets are routed through the network using the information in the routing_head
                                 self.send_packet(key, cloned_packett);
                             }
                         }
-
                     }
                 }
             }
@@ -311,21 +301,6 @@ Packets are routed through the network using the information in the routing_head
             hop_index: 1,
         };
         new_headers
-    }
-
-    fn send_ack(&mut self, routing_headers: &SourceRoutingHeader) {
-        let new_headers = Self::reverse_headers(routing_headers);
-        let next_hop = new_headers.hops[1];
-
-        let ack = Packet {
-            pack_type: PacketType::Ack(Ack {
-                fragment_index: 0,
-            }),
-            routing_header: new_headers,
-            session_id: 0,
-        };
-
-        self.send_valid_packet(next_hop, ack);
     }
 
     fn send_nack(&mut self, routing_headers: &SourceRoutingHeader, nack_type: NackType) {
@@ -382,11 +357,11 @@ Packets are routed through the network using the information in the routing_head
         }
     }
 
- /*
- implemented elsewhere
-    fn send_flood_request()
-    {todo!()}
-    fn send_flood_response(){todo!()}*/
+    /*
+    implemented elsewhere
+       fn send_flood_request()
+       {todo!()}
+       fn send_flood_response(){todo!()}*/
 }
 
 #[cfg(test)]
@@ -422,17 +397,15 @@ mod tests {
             pdr,
         );
         //test
-        let id_test:u8 = 234;
-        drone.add_sender(id_test,packet_sender);
-        match drone.packet_send.get(&id_test){
+        let id_test: u8 = 234;
+        drone.add_sender(id_test, packet_sender);
+        match drone.packet_send.get(&id_test) {
             Some(r) => (),
-            None =>{panic!("Error: packet_send not found/inserted correctly")} // used panic! because I should have written impl of Eq for Sender<Packet>
+            None => { panic!("Error: packet_send not found/inserted correctly") } // used panic! because I should have written impl of Eq for Sender<Packet>
         }
-
-
     }
     #[test]
-    fn test_set_packet_drop_rate(){
+    fn test_set_packet_drop_rate() {
         let id: u8 = 123;
         let pdr: f32 = 0.5;
         let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
@@ -462,7 +435,7 @@ mod tests {
         assert_eq!(drone.pdr, 0.7);
     }
     #[test]
-    fn test_handle_command(){
+    fn test_handle_command() {
         let id: u8 = 123;
         let pdr: f32 = 0.5;
         let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
@@ -490,7 +463,7 @@ mod tests {
         //test
         let packet_sender_test = packet_sender.clone();
         let id_test = 234;
-        let dc1 = DroneCommand::AddSender(id_test,packet_sender);
+        let dc1 = DroneCommand::AddSender(id_test, packet_sender);
         let dc2 = DroneCommand::SetPacketDropRate(0.7);
         let dc3 = DroneCommand::RemoveSender(id_test);
         let dc4 = DroneCommand::Crash;
@@ -498,16 +471,16 @@ mod tests {
         //test AddSender
         drone.handle_command(dc1);
         match drone.packet_send.get(&id_test) {
-            Some(r) =>{
+            Some(r) => {
 
                 //test RemoveSender
                 drone.handle_command(dc3);
-                match drone.packet_send.get(&id_test){
-                    Some(r) => {panic!("Error: sender should have been eliminated")}
+                match drone.packet_send.get(&id_test) {
+                    Some(r) => { panic!("Error: sender should have been eliminated") }
                     None => ()
                 }
-            },
-            None => {panic!("Error: packet_send not found/inserted correctly")}
+            }
+            None => { panic!("Error: packet_send not found/inserted correctly") }
         }
 
         //test SetPacketDropRate
@@ -519,7 +492,7 @@ mod tests {
 
     }
     #[test]
-    fn test_handle_packet(){}
+    fn test_handle_packet() {}
     /*
 
     #[test]
