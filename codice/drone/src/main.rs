@@ -505,14 +505,6 @@ mod tests {
         // TODO test Crash drone.handle_command(dc4);
 
     }
-    #[test]
-
-    fn test_handle_packet() {
-        let id: u8 = 123;
-        let pdr: f32 = 0.5;
-        let mut packet_channels = HashMap::<NodeId, (Sender<Packet>, Receiver<Packet>)>::new();
-        packet_channels.insert(id, unbounded());
-    }
 }
 
 use std::thread;
