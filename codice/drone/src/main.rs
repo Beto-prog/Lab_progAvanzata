@@ -176,7 +176,7 @@ Packets are routed through the network using the information in the routing_head
 
         //Step 1 of the protocol , if the packet was not meant for him
         if routing_headers.hops[routing_headers.hop_index] != self.id {
-            self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id));
+            self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id), packet.session_id);
             return;
         }
 
@@ -185,7 +185,7 @@ Packets are routed through the network using the information in the routing_head
 
         //Step 3,
         if routing_headers.hop_index == routing_headers.hops.len() {
-            self.send_nack(routing_headers, NackType::DestinationIsDrone);
+            self.send_nack(routing_headers, NackType::DestinationIsDrone, packet.session_id);
             return;
         }
 
@@ -193,7 +193,7 @@ Packets are routed through the network using the information in the routing_head
         let next_hop = routing_headers.hops[routing_headers.hop_index];
 
         if !self.is_next_hop_neighbour(next_hop) {
-            self.send_nack(routing_headers, NackType::ErrorInRouting(next_hop));
+            self.send_nack(routing_headers, NackType::ErrorInRouting(next_hop), packet.session_id);
             return;
         }
 
@@ -203,7 +203,7 @@ Packets are routed through the network using the information in the routing_head
                 //check if it should drop
                 let should_drop = self.rng.gen_range(0.0..1.0) < self.pdr;
                 if should_drop {
-                    self.send_nack(routing_headers, NackType::Dropped);
+                    self.send_nack(routing_headers, NackType::Dropped, packet.session_id);
                 } else {
                     self.send_valid_packet(next_hop, packet);
                 }
@@ -303,7 +303,7 @@ Packets are routed through the network using the information in the routing_head
         new_headers
     }
 
-    fn send_nack(&mut self, routing_headers: &SourceRoutingHeader, nack_type: NackType) {
+    fn send_nack(&mut self, routing_headers: &SourceRoutingHeader, nack_type: NackType, session_id: u64) {
         let new_headers = Self::reverse_headers(routing_headers);
 
         let is_dropped = match &nack_type {
@@ -319,7 +319,7 @@ Packets are routed through the network using the information in the routing_head
                 nack_type,
             }),
             routing_header: new_headers,
-            session_id: 0,
+            session_id,
         };
 
         if is_dropped {
