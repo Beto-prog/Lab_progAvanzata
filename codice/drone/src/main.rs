@@ -178,31 +178,26 @@ Packets are routed through the network using the information in the routing_head
     fn handle_packet(&mut self, mut packett: Packet) {
         let mut packet = packett.clone();   //used because flooding needs the original packet
 
-
-        //create a reference to the routing headers just to have a shorthand
-
-        let routing_headers = &mut packet.routing_header;
-
         //Step 1 of the protocol , if the packet was not meant for him
-        if routing_headers.hops[routing_headers.hop_index] != self.id {
-            self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id), packet.session_id);
+        if packet.routing_header.hops[packet.routing_header.hop_index] != self.id {
+            self.send_nack(&packet.routing_header, NackType::UnexpectedRecipient(self.id), packet.session_id, packet.get_fragment_index());
             return;
         }
 
         //Step 2
-        routing_headers.hop_index += 1;
+        packet.routing_header.hop_index += 1;
 
         //Step 3,
-        if routing_headers.hop_index == routing_headers.hops.len() {
-            self.send_nack(routing_headers, NackType::DestinationIsDrone, packet.session_id);
+        if packet.routing_header.hop_index == packet.routing_header.hops.len() {
+            self.send_nack(&packet.routing_header, NackType::DestinationIsDrone, packet.session_id, packet.get_fragment_index());
             return;
         }
 
         //step 4, check if the node to which it must send the packet is one of his neighbour
-        let next_hop = routing_headers.hops[routing_headers.hop_index];
+        let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
 
         if !self.is_next_hop_neighbour(next_hop) {
-            self.send_nack(routing_headers, NackType::ErrorInRouting(next_hop), packet.session_id);
+            self.send_nack(&packet.routing_header, NackType::ErrorInRouting(next_hop), packet.session_id, packet.get_fragment_index());
             return;
         }
 
@@ -212,7 +207,7 @@ Packets are routed through the network using the information in the routing_head
                 //check if it should drop
                 let should_drop = self.rng.gen_range(0.0..1.0) <= self.pdr;
                 if should_drop {
-                    self.send_nack(routing_headers, NackType::Dropped, packet.session_id);
+                    self.send_nack(&packet.routing_header, NackType::Dropped, packet.session_id, packet.get_fragment_index());
                 } else {
                     self.send_valid_packet(next_hop, packet);
                 }
@@ -312,8 +307,8 @@ Packets are routed through the network using the information in the routing_head
         new_headers
     }
 
-    fn send_nack(&mut self, routing_headers: &SourceRoutingHeader, nack_type: NackType, session_id: u64) {
-        let new_headers = Self::reverse_headers(routing_headers);
+    fn send_nack(&mut self, routing_header: &SourceRoutingHeader, nack_type: NackType, session_id: u64, fragment_index: u64) {
+        let new_headers = Self::reverse_headers(routing_header);
 
         let is_dropped = match &nack_type {
             NackType::Dropped => true,
@@ -324,7 +319,7 @@ Packets are routed through the network using the information in the routing_head
 
         let nack = Packet {
             pack_type: PacketType::Nack(Nack {
-                fragment_index: 0,
+                fragment_index,
                 nack_type,
             }),
             routing_header: new_headers,
@@ -588,7 +583,7 @@ pub fn generic_fragment_drop() {
     d_send.send(msg.clone()).unwrap();
 
     let dropped = Nack {
-        fragment_index: 0,
+        fragment_index: 1,
         nack_type: NackType::Dropped,
     };
     let srh = SourceRoutingHeader {
