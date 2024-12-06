@@ -7,9 +7,8 @@ use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Ack, Nack, NackType, Packet, PacketType};
-
-
+use wg_2024::packet::{Ack, Nack, NackType, Packet, PacketType, FloodRequest, FloodResponse};
+use wg_2024::packet::NodeType::Drone as DroneType;
 /*
 ================================================================================================
                                     TrustNode Documentation
@@ -62,7 +61,8 @@ struct TrustDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
-    rng: ThreadRng, 
+    rng: ThreadRng,
+    flood_ids : Vec<u64>,
 }
 
 
@@ -84,6 +84,7 @@ impl Drone for TrustDrone {
             packet_send,
             pdr,
             rng: rand::thread_rng(),
+            flood_ids : Vec::new(),
         }
     }
 
@@ -136,8 +137,42 @@ impl TrustDrone {
         }
     }
 
-    // This is the part that handle packet received from the other drones
-    fn handle_packet(&mut self, mut packet: Packet) {
+
+    /*
+Structure of a Packet (Packet)
+
+A Packet is the fundamental unit of communication in the network.
+It is composed of several fields that define its content and behavior.
+
+Fields of Packet:
+- pack_type: PacketType
+  Specifies the type of the packet and its role in the network. It is an enumeration with the following variants:
+    - MsgFragment(Fragment): Represents a fragment of a higher-level message, used for data transport.
+    - Ack(Ack): Confirms the successful receipt of a fragment.
+    - Nack(Nack): Indicates an error during processing or routing of a packet.
+    - FloodRequest(FloodRequest): Used for network topology discovery via query flooding.
+    - FloodResponse(FloodResponse): A response to a flooding request, containing topology information.
+
+- routing_header: SourceRoutingHeader
+  Contains routing information for the packet. This enables source-based routing, where the sender precomputes the entire path the packet should take through the network.
+  Components:
+    - hop_index: usize
+      Indicates the current hop's position in the hops list. Starts at 1 when the packet is first sent.
+    - hops: Vec<NodeId>
+      A list of node identifiers representing the full path from the sender to the destination.
+
+- session_id: u64
+  A unique identifier for the session associated with the packet. It helps group related packets, such as fragments of the same message, and differentiates them from others in the network.
+
+Packets are routed through the network using the information in the routing_header. The type, defined by pack_type, determines how each packet is processed and its role in the communication flow.
+*/
+
+
+    // This is the part that handle packet received from the other drones.
+    fn handle_packet(&mut self, mut packett: Packet) {
+
+        let mut packet = packett.clone();   //used because flooding needs the original packet
+
 
         //create a reference to the routing headers just to have a shorthand
 
@@ -184,7 +219,61 @@ impl TrustDrone {
             PacketType::Ack(_) => {
                 self.send_valid_packet(next_hop, packet);
             }
-            PacketType::FloodRequest(_) => {}
+
+
+
+            /*
+             pub struct FloodRequest {
+                 flood_id: u64,               Unique identifier for the flooding operation
+                 initiator_id: NodeId,        ID of the node that started the flooding
+                 path_trace: Vec<(NodeId, NodeType)>, // Trace of nodes traversed during the flooding
+             }
+         */
+            
+            PacketType::FloodRequest(mut flood_packet) => {
+                
+                flood_packet.path_trace.push((self.id, DroneType));
+                let previous_neighbour = packett.routing_header.hops[packett.routing_header.hop_index - 1];
+
+
+                if self.flood_ids.contains(&flood_packet.flood_id)      // if the drone had already seen this FloodRequest  it sends a FloodResponse back
+                {
+                    packett.pack_type =PacketType::FloodResponse(FloodResponse {
+                        flood_id: flood_packet.flood_id,
+                        path_trace: flood_packet.path_trace.clone(),
+                    });
+                    self.send_packet(previous_neighbour, packett);  //send back
+                    
+                } else {
+                    self.flood_ids.push(flood_packet.flood_id); //save the flood id for next use
+                    
+                    
+                    if self.packet_send.len()-1 ==0{
+                        //if there are no neighbour send back flooding response 
+
+                        packett.pack_type =PacketType::FloodResponse(FloodResponse {
+                            flood_id: flood_packet.flood_id,
+                            path_trace: flood_packet.path_trace.clone(),
+                        });
+                        self.send_packet(previous_neighbour, packett);
+                        
+                        
+                    } else {    //send packet to all the neibourgh except the sender
+                        for (key, _ ) in  self.packet_send.clone() {
+                            
+                            if (key != previous_neighbour) {
+                                let mut cloned_packett = packett.clone();
+                                cloned_packett.pack_type = PacketType::FloodResponse(FloodResponse {
+                                    flood_id: flood_packet.flood_id,
+                                    path_trace: flood_packet.path_trace.clone(),
+                                });
+                                self.send_packet(key, cloned_packett);
+                            }
+                        }
+
+                    }
+                }
+            }
             PacketType::FloodResponse(_) => {}
         }
     }
@@ -292,6 +381,12 @@ impl TrustDrone {
             Some(_) => true,
         }
     }
+
+ /*
+ implemented elsewhere
+    fn send_flood_request()
+    {todo!()}
+    fn send_flood_response(){todo!()}*/
 }
 
 #[cfg(test)]
