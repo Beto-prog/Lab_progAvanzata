@@ -1,3 +1,4 @@
+// For a better understanding of the code please read the protocol specification at : https://github.com/WGL-2024/WGL_repo_2024/blob/main/AP-protocol.md
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::rngs::ThreadRng;
 use rand::Rng;
@@ -8,6 +9,52 @@ use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Ack, Nack, NackType, Packet, PacketType};
 
+
+/*
+================================================================================================
+                                    TrustNode Documentation
+
+TrustNode is the implementation of the drone controller used in the simulation.
+
+- controller_send:
+    Channel used to send events to the simulation controller.
+    Events are represented by the DroneEvent enum, which includes:
+    - PacketSent
+    - PacketDropped
+    - ControllerShortcut.
+
+- controller_recv:
+    Channel used to receive commands from the simulation controller.
+    These commands modify the drone's behavior during the simulation and include:
+    - AddSender
+    - RemoveSender
+    - SetPacketDropRate
+    - Crash.
+
+    Note: Both controller_send and controller_recv channels are exclusively used for
+    simulation purposes and are not involved in communication between drones.
+
+- packet_recv:
+    Channel used to receive packets from other drones.
+
+- packet_send:
+    Channel used to send packets to other drones.
+
+- pdr (Packet Drop Rate):
+    The rate at which packets are dropped, determining the likelihood of discarding a packet.
+
+- rng (Random Number Generator):
+    A random number generator used to decide whether a packet is dropped based on the
+    configured packet drop rate.
+
+
+    Note: Sender and Receiver are part of the crossbeam_channel is a useful tool that allow
+          process (thread) to communicate with each other.
+================================================================================================
+*/
+
+
+
 struct TrustDrone {
     id: NodeId,
     controller_send: Sender<DroneEvent>,
@@ -15,9 +62,11 @@ struct TrustDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
-    rng: ThreadRng, //The random number generator
+    rng: ThreadRng, 
 }
 
+
+//just the initialization of the drone
 impl Drone for TrustDrone {
     fn new(
         id: NodeId,
@@ -68,6 +117,9 @@ impl Drone for TrustDrone {
 }
 
 impl TrustDrone {
+
+
+    // This is the part that handle command received from the simulation controller (it has nothing to do with the packet exchange)
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
             DroneCommand::AddSender(id, sender) => {
@@ -84,13 +136,14 @@ impl TrustDrone {
         }
     }
 
+    // This is the part that handle packet received from the other drones
     fn handle_packet(&mut self, mut packet: Packet) {
 
         //create a reference to the routing headers just to have a shorthand
 
         let routing_headers = &mut packet.routing_header;
 
-        //Step 1 of the protocol
+        //Step 1 of the protocol , if the packet was not meant for him
         if routing_headers.hops[routing_headers.hop_index] != self.id {
             self.send_nack(routing_headers, NackType::UnexpectedRecipient(self.id));
             return;
@@ -99,13 +152,13 @@ impl TrustDrone {
         //Step 2
         routing_headers.hop_index += 1;
 
-        //Step 3
+        //Step 3,
         if routing_headers.hop_index == routing_headers.hops.len() {
             self.send_nack(routing_headers, NackType::DestinationIsDrone);
             return;
         }
 
-        //step 4
+        //step 4, check if the node to which it must send the packet is one of his neighbour
         let next_hop = routing_headers.hops[routing_headers.hop_index];
 
         if !self.is_next_hop_neighbour(next_hop) {
