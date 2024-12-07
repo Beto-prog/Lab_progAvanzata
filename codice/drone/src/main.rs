@@ -67,7 +67,6 @@ struct TrustDrone {
     rng: StdRng, //The random number generator
 
     flood_ids: Vec<u64>,
-
 }
 
 
@@ -136,8 +135,9 @@ impl TrustDrone {
                 self.set_packet_drop_rate(pdr);
             }
             DroneCommand::Crash => {
+                self.crash_behavior();
                 println!("Drone with id {} crashed", self.id);
-                // TODO implement drone crashing
+
             }
             DroneCommand::RemoveSender(neighbor_id) => self.remove_sender(neighbor_id),
         }
@@ -359,6 +359,26 @@ Packets are routed through the network using the information in the routing_head
             None => false,
             Some(_) => true,
         }
+    }
+
+    fn crash_behavior(&mut self){
+
+        println!("Drone {} entering crashing behavior...", self.id);
+
+        loop {
+            match self.controller_recv.recv() {
+                Ok(command) => {
+                    self.handle_command(command);
+                    println!("Drone {} processing command in crashing state", self.id);
+                }
+                Err(_) => {
+                    println!("Controller channel closed for drone {}. Finalizing crash.", self.id);
+                    break;
+                }
+            }
+        }
+
+        println!("Drone {} has crashed.", self.id);
     }
 
     /*
