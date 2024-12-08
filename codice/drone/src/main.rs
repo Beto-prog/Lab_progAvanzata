@@ -6,6 +6,7 @@ use rand::{Rng, SeedableRng};
 
 
 use std::collections::HashMap;
+use std::process::exit;
 use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -137,6 +138,7 @@ impl TrustDrone {
             DroneCommand::Crash => {
                 self.crash_behavior();
                 println!("Drone with id {} crashed", self.id);
+                exit(0);
             }
             DroneCommand::RemoveSender(neighbor_id) => self.remove_sender(neighbor_id),
         }
@@ -365,20 +367,48 @@ Packets are routed through the network using the information in the routing_head
     fn crash_behavior(&mut self) {
         println!("Drone {} entering crashing behavior...", self.id);
 
-        loop {
-            match self.controller_recv.recv() {
-                Ok(command) => {
-                    self.handle_command(command);
-                    println!("Drone {} processing command in crashing state", self.id);
+        // Process remaining messages until the channel is closed and empty
+        while let Ok(packet) = self.packet_recv.recv() {
+            let mut packet = packet.clone();
+            let old_routing_headers = packet.routing_header.clone();
+
+            match packet.pack_type {
+                // FloodRequests can be lost during crash
+                PacketType::FloodRequest(_) => {
+                    // Simply ignore/drop the packet
+                    continue;
                 }
-                Err(_) => {
-                    println!("Controller channel closed for drone {}. Finalizing crash.", self.id);
-                    break;
+
+                // Ack, Nack and FloodResponse should still be forwarded
+                PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                    // Basic routing checks still apply
+                    if packet.routing_header.hops[packet.routing_header.hop_index] != self.id {
+                        continue; // Skip invalid packets during crash
+                    }
+
+                    packet.routing_header.hop_index += 1;
+
+                    if packet.routing_header.hop_index < packet.routing_header.hops.len() {
+                        let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
+                        if self.is_next_hop_neighbour(next_hop) {
+                            self.send_valid_packet(next_hop, packet);
+                        }
+                    }
+                }
+
+                // For all other packet types (MsgFragment), send ErrorInRouting Nack
+                _ => {
+                    self.send_nack(
+                        &old_routing_headers,
+                        NackType::ErrorInRouting(self.id),
+                        packet.session_id,
+                        packet.get_fragment_index(),
+                    );
                 }
             }
         }
 
-        println!("Drone {} has crashed.", self.id);
+        println!("Drone {} has successfully crashed.", self.id);
     }
 
     /*
@@ -693,8 +723,6 @@ pub fn generic_chain_fragment_drop() {
     //println!("{}", t3);
     //println!("{}", t4);
 
-
-
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
@@ -711,11 +739,13 @@ pub fn generic_chain_fragment_ack() {
     // SC - needed to not make the drone crash
     let (_d_command_send, d_command_recv) = unbounded();
 
+    let (d_command_send, _d_command_recv) = unbounded();
+
     // Drone 11
     let neighbours11 = HashMap::from([(12, d12_send.clone()), (1, c_send.clone())]);
     let mut drone = TrustDrone::new(
         11,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d_recv.clone(),
         neighbours11,
@@ -725,7 +755,7 @@ pub fn generic_chain_fragment_ack() {
     let neighbours12 = HashMap::from([(11, d_send.clone()), (21, s_send.clone())]);
     let mut drone2 = TrustDrone::new(
         12,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d12_recv.clone(),
         neighbours12,
@@ -741,60 +771,43 @@ pub fn generic_chain_fragment_ack() {
         drone2.run();
     });
 
-    let mut msg = Packet {
-        pack_type: PacketType::MsgFragment(Fragment {
-            fragment_index: 1,
-            total_n_fragments: 1,
-            length: 128,
-            data: [1; 128],
-        }),
-        routing_header: SourceRoutingHeader {
-            hop_index: 1,
-            hops: vec![1, 11, 12, 21],
-        },
-        session_id: 1,
-    };
+    let mut msg = create_sample_packet();
 
     // "Client" sends packet to the drone
     d_send.send(msg.clone()).unwrap();
 
     // Client receive an ACK originated from 'd'
-    let t1 = c_recv.recv().unwrap();
-    let t2 = Packet {
-        pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
-        routing_header: SourceRoutingHeader {
-            hop_index: 1,
-            hops: vec![11, 1],
-        },
-        session_id: 1,
-    };
-    println!("{}", t1);
-    println!("{}", t2);
-    assert_eq!(t1, t2);
+    assert_eq!(
+        c_recv.recv().unwrap(),
+        Packet {
+            pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
+            routing_header: SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 1],
+            },
+            session_id: 1,
+        }
+    );
 
     // Client receive an ACK originated from 'd2'
-    let t3 = c_recv.recv().unwrap();
-    let t4 = Packet {
-        pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
-        routing_header: SourceRoutingHeader {
-            hop_index: 2,
-            hops: vec![12, 11, 1],
-        },
-        session_id: 1,
-    };
-    println!("{}", t3);
-    println!("{}", t4);
-    assert_eq!(t3, t4);
+    assert_eq!(
+        c_recv.recv().unwrap(),
+        Packet {
+            pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
+            routing_header: SourceRoutingHeader {
+                hop_index: 2,
+                hops: vec![12, 11, 1],
+            },
+            session_id: 1,
+        }
+    );
 
     msg.routing_header.hop_index = 3;
     // Server receives the fragment
-    let t5 = s_recv.recv().unwrap();
-    println!("{}", t5);
-    println!("{}", msg);
-    assert_eq!(t5, msg);
+    assert_eq!(s_recv.recv().unwrap(), msg);
 }
 
 
 fn main() {
-    generic_chain_fragment_drop();
+    generic_chain_fragment_ack();
 }
