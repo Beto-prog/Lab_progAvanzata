@@ -601,7 +601,7 @@ pub fn generic_fragment_drop() {
     assert_eq!(t, nack_packet);
 }
 
-//#[test]
+#[test]
 /// Checks if the packet is dropped by the second drone. The first drone must have 0% PDR and the second one 100% PDR, otherwise the test will fail sometimes.
 pub fn generic_chain_fragment_drop() {
     // Client 1 channels
@@ -645,14 +645,16 @@ pub fn generic_chain_fragment_drop() {
         drone2.run();
     });
 
-    let msg = create_sample_packet();
+    let mut msg = create_sample_packet();
 
     // "Client" sends packet to the drone
     d_send.send(msg.clone()).unwrap();
-
+    msg.routing_header.hop_index = 2; // provato qua
 
     // Client receive an NACK originated from 'd2'
     let t3 = c_recv.recv().unwrap();
+    //println!("{}", t3);
+
     let t4 = Packet {
         pack_type: PacketType::Nack(Nack {
             fragment_index: 1,
@@ -664,8 +666,8 @@ pub fn generic_chain_fragment_drop() {
         },
         session_id: 1,
     };
-    println!("{}", t3);
-    println!("{}", t4);
+    //println!("{}", t3);
+    //println!("{}", t4);
     assert_eq!(t3, t4);
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
