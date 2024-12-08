@@ -702,7 +702,7 @@ pub fn generic_chain_fragment_drop() {
 
     // "Client" sends packet to the drone
     d_send.send(msg.clone()).unwrap();
-    msg.routing_header.hop_index = 2; // provato qua
+    //msg.routing_header.hop_index = 2; // provato qua
 
     // Client receive an NACK originated from 'd2'
     let t3 = c_recv.recv().unwrap();
