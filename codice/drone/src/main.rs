@@ -698,7 +698,7 @@ pub fn generic_chain_fragment_drop() {
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
-//#[test]
+#[test]
 pub fn generic_chain_fragment_ack() {
     // Client<1> channels
     let (c_send, c_recv) = unbounded();
