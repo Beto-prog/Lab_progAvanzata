@@ -7,7 +7,7 @@ use rand::{random, Rng, SeedableRng};
 
 use std::collections::HashMap;
 use std::process::exit;
-use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
+use wg_2024::controller::DroneEvent::{ControllerShortcut, PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -337,11 +337,24 @@ Packets are routed through the network using the information in the routing_head
         }
     }
 
+    fn send_shortcut(&mut self, packet: Packet) {
+        if let Err(e) = self.controller_send.send(ControllerShortcut(packet)) {
+            println!("{}", e);
+        }
+    }
+
     fn send_packet(&mut self, dest_id: NodeId, packet: Packet) {
         let sender = self.packet_send.get(&dest_id);
 
         match sender {
-            None => {}
+            None => {
+                match packet.pack_type {
+                    PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                        self.send_shortcut(packet);
+                    }
+                    _ => ()
+                }
+            }
             Some(sender) => {
                 sender.send(packet).expect("Sender should be valid");
             }
@@ -723,8 +736,7 @@ pub fn generic_chain_fragment_drop() {
     //println!("{}", t3);
     //println!("{}", t4);
 
-    assert_eq!(t3,t4);
-
+    assert_eq!(t3, t4);
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
@@ -784,7 +796,7 @@ pub fn generic_chain_fragment_ack() {
         }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![1,11,12,21],
+            hops: vec![1, 11, 12, 21],
         },
         session_id: 1,
     };
@@ -803,7 +815,7 @@ pub fn generic_chain_fragment_ack() {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![21,12,11,1],
+            hops: vec![21, 12, 11, 1],
         },
         session_id: 1,
     };
@@ -816,19 +828,17 @@ pub fn generic_chain_fragment_ack() {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
             hop_index: 3,
-            hops: vec![21,12,11,1],
+            hops: vec![21, 12, 11, 1],
         },
         session_id: 1,
     };
     assert_eq!(t6, ack2);
-
 }
 
 
 fn main() {
 
     //generic_chain_fragment_drop();
-    generic_chain_fragment_ack();
-
+    //generic_chain_fragment_ack();
 
 }
