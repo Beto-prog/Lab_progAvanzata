@@ -710,7 +710,7 @@ pub fn generic_chain_fragment_drop() {
 
     // Client receive an NACK originated from 'd2'
     let t3 = c_recv.recv().unwrap();
-    //println!("{}", t3);
+
 
     let t4 = Packet {
         pack_type: PacketType::Nack(Nack {
@@ -724,8 +724,6 @@ pub fn generic_chain_fragment_drop() {
         session_id: 1,
     };
 
-    //println!("{}", t3);
-    //println!("{}", t4);
 
     assert_eq!(t3,t4);
 
@@ -744,8 +742,6 @@ pub fn generic_chain_fragment_ack() {
     let (d12_send, d12_recv) = unbounded();
     // SC - needed to not make the drone crash
     let (_d_command_send, d_command_recv) = unbounded();
-    let (d_command_send, _d_command_recv) = unbounded();
-
     let (d_command_send, _d_command_recv) = unbounded();
 
     // Drone 11
@@ -793,14 +789,12 @@ pub fn generic_chain_fragment_ack() {
         session_id: 1,
     };
 
-
     // "Client" sends packet to d
     d_send.send(msg.clone()).unwrap();
-    //msg.routing_header.hop_index = 2;
 
 
     // "Server" receives the fragment
-    let t5 = s_recv.recv().unwrap();
+    s_recv.recv().unwrap();
 
     // Server sends Ack to d12
     let ack = Packet {
@@ -813,8 +807,7 @@ pub fn generic_chain_fragment_ack() {
     };
     d12_send.send(ack.clone()).unwrap();
 
-    // "Client" receives the Ack
-
+    // "Client" receives the Ack from d
     let t6 = c_recv.recv().unwrap();
     let ack2 = Packet {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
@@ -825,7 +818,6 @@ pub fn generic_chain_fragment_ack() {
         session_id: 1,
     };
     assert_eq!(t6, ack2);
-
 }
 
 
@@ -833,6 +825,5 @@ fn main() {
 
     //generic_chain_fragment_drop();
     generic_chain_fragment_ack();
-
 
 }
