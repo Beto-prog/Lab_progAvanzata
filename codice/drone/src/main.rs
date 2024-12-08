@@ -6,6 +6,7 @@ use rand::{Rng, SeedableRng};
 
 
 use std::collections::HashMap;
+use std::process::exit;
 use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -137,6 +138,7 @@ impl TrustDrone {
             DroneCommand::Crash => {
                 self.crash_behavior();
                 println!("Drone with id {} crashed", self.id);
+                exit(0);
             }
             DroneCommand::RemoveSender(neighbor_id) => self.remove_sender(neighbor_id),
         }
@@ -231,33 +233,33 @@ Packets are routed through the network using the information in the routing_head
          */
 
             PacketType::FloodRequest(mut flood_packet) => {
-                flood_packet.path_trace.push((self.id, DroneType));
-                let previous_neighbour = packett.routing_header.hops[packett.routing_header.hop_index - 1];
-
-
+                flood_packet.increment(self.id,DroneType);
+                
+                let mut previous_neighbour = 0;
+                if let Some(last) = flood_packet.path_trace.last()
+                {
+                    previous_neighbour = last.0;
+                }
+                else
+                {
+                    panic!("Can not find neighbour who send this packet {} ",flood_packet);
+                }
+                
                 if self.flood_ids.contains(&flood_packet.flood_id)      // if the drone had already seen this FloodRequest  it sends a FloodResponse back
                 {
-                    packett.pack_type = PacketType::FloodResponse(FloodResponse {
-                        flood_id: flood_packet.flood_id,
-                        path_trace: flood_packet.path_trace.clone(),
-                    });
-                    self.send_packet(previous_neighbour, packett);  //send back
+                    self.send_packet(previous_neighbour, flood_packet.generate_response(7));  //send back   !!!!!!!!!!Session id unknown
 
                 } else {
                     self.flood_ids.push(flood_packet.flood_id); //save the flood id for next use
-
-
+                    
                     if self.packet_send.len() - 1 == 0 {
                         //if there are no neighbour send back flooding response 
 
-                        packett.pack_type = PacketType::FloodResponse(FloodResponse {
-                            flood_id: flood_packet.flood_id,
-                            path_trace: flood_packet.path_trace.clone(),
-                        });
-                        self.send_packet(previous_neighbour, packett);
+                        self.send_packet(previous_neighbour, flood_packet.generate_response(7));  //send back   !!!!!!!!!!Session id unknown
+                        
                     } else {    //send packet to all the neibourgh except the sender
                         for (key, _) in self.packet_send.clone() {
-                            if (key != previous_neighbour) {
+                            if key != previous_neighbour {
                                 let mut cloned_packett = packett.clone();
                                 cloned_packett.pack_type = PacketType::FloodResponse(FloodResponse {
                                     flood_id: flood_packet.flood_id,
@@ -269,7 +271,11 @@ Packets are routed through the network using the information in the routing_head
                     }
                 }
             }
-            PacketType::FloodResponse(_) => {}
+
+            PacketType::FloodResponse(_) => {
+                self.send_valid_packet(next_hop, packet);
+                
+            }
         }
     }
 
@@ -365,20 +371,48 @@ Packets are routed through the network using the information in the routing_head
     fn crash_behavior(&mut self) {
         println!("Drone {} entering crashing behavior...", self.id);
 
-        loop {
-            match self.controller_recv.recv() {
-                Ok(command) => {
-                    self.handle_command(command);
-                    println!("Drone {} processing command in crashing state", self.id);
+        // Process remaining messages until the channel is closed and empty
+        while let Ok(packet) = self.packet_recv.recv() {
+            let mut packet = packet.clone();
+            let old_routing_headers = packet.routing_header.clone();
+
+            match packet.pack_type {
+                // FloodRequests can be lost during crash
+                PacketType::FloodRequest(_) => {
+                    // Simply ignore/drop the packet
+                    continue;
                 }
-                Err(_) => {
-                    println!("Controller channel closed for drone {}. Finalizing crash.", self.id);
-                    break;
+
+                // Ack, Nack and FloodResponse should still be forwarded
+                PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                    // Basic routing checks still apply
+                    if packet.routing_header.hops[packet.routing_header.hop_index] != self.id {
+                        continue; // Skip invalid packets during crash
+                    }
+
+                    packet.routing_header.hop_index += 1;
+
+                    if packet.routing_header.hop_index < packet.routing_header.hops.len() {
+                        let next_hop = packet.routing_header.hops[packet.routing_header.hop_index];
+                        if self.is_next_hop_neighbour(next_hop) {
+                            self.send_valid_packet(next_hop, packet);
+                        }
+                    }
+                }
+
+                // For all other packet types (MsgFragment), send ErrorInRouting Nack
+                _ => {
+                    self.send_nack(
+                        &old_routing_headers,
+                        NackType::ErrorInRouting(self.id),
+                        packet.session_id,
+                        packet.get_fragment_index(),
+                    );
                 }
             }
         }
 
-        println!("Drone {} has crashed.", self.id);
+        println!("Drone {} has successfully crashed.", self.id);
     }
 
     /*
@@ -519,6 +553,7 @@ mod tests {
 
 use std::thread;
 use wg_2024::packet::Fragment;
+use wg_2024::packet::PacketType::FloodResponse as OtherFloodResponse;
 /* THE FOLLOWING TESTS CHECKS IF YOUR DRONE IS HANDLING CORRECTLY PACKETS (FRAGMENT) */
 
 /// Creates a sample packet for testing purposes. For convenience, using 1-10 for clients, 11-20 for drones and 21-30 for servers
@@ -691,7 +726,9 @@ pub fn generic_chain_fragment_drop() {
 
     //println!("{}", t3);
     //println!("{}", t4);
+
     assert_eq!(t3,t4);
+
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
@@ -707,6 +744,8 @@ pub fn generic_chain_fragment_ack() {
     let (d12_send, d12_recv) = unbounded();
     // SC - needed to not make the drone crash
     let (_d_command_send, d_command_recv) = unbounded();
+    let (d_command_send, _d_command_recv) = unbounded();
+
     let (d_command_send, _d_command_recv) = unbounded();
 
     // Drone 11
@@ -739,6 +778,7 @@ pub fn generic_chain_fragment_ack() {
         drone2.run();
     });
 
+
     let mut msg = Packet {
         pack_type: PacketType::MsgFragment(Fragment {
             fragment_index: 1,
@@ -753,9 +793,11 @@ pub fn generic_chain_fragment_ack() {
         session_id: 1,
     };
 
+
     // "Client" sends packet to d
     d_send.send(msg.clone()).unwrap();
     //msg.routing_header.hop_index = 2;
+
 
     // "Server" receives the fragment
     let t5 = s_recv.recv().unwrap();
@@ -783,11 +825,14 @@ pub fn generic_chain_fragment_ack() {
         session_id: 1,
     };
     assert_eq!(t6, ack2);
+
 }
 
 
 fn main() {
+
     //generic_chain_fragment_drop();
     generic_chain_fragment_ack();
+
 
 }
