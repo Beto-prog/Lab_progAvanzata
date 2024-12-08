@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
+wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["serialize","debug"] }
+TrustDrone = { git = "https://github.com/Beto-prog/TrustDone", package = "drone" }
