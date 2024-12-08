@@ -1,13 +1,13 @@
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{random, Rng, SeedableRng};
 
 // For a better understanding of the code please read the protocol specification at : https://github.com/WGL-2024/WGL_repo_2024/blob/main/AP-protocol.md
 
 
 use std::collections::HashMap;
 use std::process::exit;
-use wg_2024::controller::DroneEvent::{PacketDropped, PacketSent};
+use wg_2024::controller::DroneEvent::{ControllerShortcut, PacketDropped, PacketSent};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -81,7 +81,7 @@ impl Drone for TrustDrone {
         packet_send: HashMap<NodeId, Sender<Packet>>,
         pdr: f32,
     ) -> Self {
-        let random_seed: u64 = rand::thread_rng().gen();
+        let random_seed: u64 = random();
         TrustDrone {
             id,
             controller_send,
@@ -233,30 +233,28 @@ Packets are routed through the network using the information in the routing_head
          */
 
             PacketType::FloodRequest(mut flood_packet) => {
-                flood_packet.increment(self.id,DroneType);
-                
+                flood_packet.increment(self.id, DroneType);
+
                 let mut previous_neighbour = 0;
                 if let Some(last) = flood_packet.path_trace.last()
                 {
                     previous_neighbour = last.0;
+                } else {
+                    panic!("Can not find neighbour who send this packet {} ", flood_packet);
                 }
-                else
-                {
-                    panic!("Can not find neighbour who send this packet {} ",flood_packet);
-                }
-                
+
                 if self.flood_ids.contains(&flood_packet.flood_id)      // if the drone had already seen this FloodRequest  it sends a FloodResponse back
                 {
                     self.send_packet(previous_neighbour, flood_packet.generate_response(7));  //send back   !!!!!!!!!!Session id unknown
 
                 } else {
                     self.flood_ids.push(flood_packet.flood_id); //save the flood id for next use
-                    
+
                     if self.packet_send.len() - 1 == 0 {
                         //if there are no neighbour send back flooding response 
 
                         self.send_packet(previous_neighbour, flood_packet.generate_response(7));  //send back   !!!!!!!!!!Session id unknown
-                        
+
                     } else {    //send packet to all the neibourgh except the sender
                         for (key, _) in self.packet_send.clone() {
                             if key != previous_neighbour {
@@ -274,7 +272,6 @@ Packets are routed through the network using the information in the routing_head
 
             PacketType::FloodResponse(_) => {
                 self.send_valid_packet(next_hop, packet);
-                
             }
         }
     }
@@ -340,11 +337,24 @@ Packets are routed through the network using the information in the routing_head
         }
     }
 
+    fn send_shortcut(&mut self, packet: Packet) {
+        if let Err(e) = self.controller_send.send(ControllerShortcut(packet)) {
+            println!("{}", e);
+        }
+    }
+
     fn send_packet(&mut self, dest_id: NodeId, packet: Packet) {
         let sender = self.packet_send.get(&dest_id);
 
         match sender {
-            None => {}
+            None => {
+                match packet.pack_type {
+                    PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                        self.send_shortcut(packet);
+                    }
+                    _ => ()
+                }
+            }
             Some(sender) => {
                 sender.send(packet).expect("Sender should be valid");
             }
@@ -553,7 +563,6 @@ mod tests {
 
 use std::thread;
 use wg_2024::packet::Fragment;
-use wg_2024::packet::PacketType::FloodResponse as OtherFloodResponse;
 /* THE FOLLOWING TESTS CHECKS IF YOUR DRONE IS HANDLING CORRECTLY PACKETS (FRAGMENT) */
 
 /// Creates a sample packet for testing purposes. For convenience, using 1-10 for clients, 11-20 for drones and 21-30 for servers
@@ -725,8 +734,7 @@ pub fn generic_chain_fragment_drop() {
     };
 
 
-    assert_eq!(t3,t4);
-
+    assert_eq!(t3, t4);
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
@@ -784,7 +792,7 @@ pub fn generic_chain_fragment_ack() {
         }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![1,11,12,21],
+            hops: vec![1, 11, 12, 21],
         },
         session_id: 1,
     };
@@ -801,7 +809,7 @@ pub fn generic_chain_fragment_ack() {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![21,12,11,1],
+            hops: vec![21, 12, 11, 1],
         },
         session_id: 1,
     };
@@ -813,7 +821,7 @@ pub fn generic_chain_fragment_ack() {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
             hop_index: 3,
-            hops: vec![21,12,11,1],
+            hops: vec![21, 12, 11, 1],
         },
         session_id: 1,
     };
@@ -825,5 +833,6 @@ fn main() {
 
     //generic_chain_fragment_drop();
     generic_chain_fragment_ack();
+
 
 }
