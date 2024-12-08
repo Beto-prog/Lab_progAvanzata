@@ -568,7 +568,7 @@ pub fn generic_fragment_forward() {
     d_send.send(msg.clone()).unwrap();
     msg.routing_header.hop_index = 2;
     let t = d2_recv.recv().unwrap();
-    // d2 receives packet from d1
+    // d2 receives packet from d
     assert_eq!(t, msg);
 }
 
@@ -672,7 +672,6 @@ pub fn generic_chain_fragment_drop() {
 
     // "Client" sends packet to the drone
     d_send.send(msg.clone()).unwrap();
-    //msg.routing_header.hop_index = 2; // provato qua
 
     // Client receive an NACK originated from 'd2'
     let t3 = c_recv.recv().unwrap();
@@ -692,9 +691,7 @@ pub fn generic_chain_fragment_drop() {
 
     //println!("{}", t3);
     //println!("{}", t4);
-
-
-
+    assert_eq!(t3,t4);
 }
 /// Checks if the packet can reach its destination. Both drones must have 0% PDR, otherwise the test will fail sometimes.
 
@@ -710,12 +707,13 @@ pub fn generic_chain_fragment_ack() {
     let (d12_send, d12_recv) = unbounded();
     // SC - needed to not make the drone crash
     let (_d_command_send, d_command_recv) = unbounded();
+    let (d_command_send, _d_command_recv) = unbounded();
 
     // Drone 11
     let neighbours11 = HashMap::from([(12, d12_send.clone()), (1, c_send.clone())]);
     let mut drone = TrustDrone::new(
         11,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d_recv.clone(),
         neighbours11,
@@ -725,7 +723,7 @@ pub fn generic_chain_fragment_ack() {
     let neighbours12 = HashMap::from([(11, d_send.clone()), (21, s_send.clone())]);
     let mut drone2 = TrustDrone::new(
         12,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d12_recv.clone(),
         neighbours12,
@@ -750,51 +748,46 @@ pub fn generic_chain_fragment_ack() {
         }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![1, 11, 12, 21],
+            hops: vec![1,11,12,21],
         },
         session_id: 1,
     };
 
-    // "Client" sends packet to the drone
+    // "Client" sends packet to d
     d_send.send(msg.clone()).unwrap();
+    //msg.routing_header.hop_index = 2;
 
-    // Client receive an ACK originated from 'd'
-    let t1 = c_recv.recv().unwrap();
-    let t2 = Packet {
+    // "Server" receives the fragment
+    let t5 = s_recv.recv().unwrap();
+
+    // Server sends Ack to d12
+    let ack = Packet {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
             hop_index: 1,
-            hops: vec![11, 1],
+            hops: vec![21,12,11,1],
         },
         session_id: 1,
     };
-    println!("{}", t1);
-    println!("{}", t2);
-    assert_eq!(t1, t2);
+    d12_send.send(ack.clone()).unwrap();
 
-    // Client receive an ACK originated from 'd2'
-    let t3 = c_recv.recv().unwrap();
-    let t4 = Packet {
+    // "Client" receives the Ack
+
+    let t6 = c_recv.recv().unwrap();
+    let ack2 = Packet {
         pack_type: PacketType::Ack(Ack { fragment_index: 1 }),
         routing_header: SourceRoutingHeader {
-            hop_index: 2,
-            hops: vec![12, 11, 1],
+            hop_index: 3,
+            hops: vec![21,12,11,1],
         },
         session_id: 1,
     };
-    println!("{}", t3);
-    println!("{}", t4);
-    assert_eq!(t3, t4);
-
-    msg.routing_header.hop_index = 3;
-    // Server receives the fragment
-    let t5 = s_recv.recv().unwrap();
-    println!("{}", t5);
-    println!("{}", msg);
-    assert_eq!(t5, msg);
+    assert_eq!(t6, ack2);
 }
 
 
 fn main() {
-    generic_chain_fragment_drop();
+    //generic_chain_fragment_drop();
+    generic_chain_fragment_ack();
+
 }
