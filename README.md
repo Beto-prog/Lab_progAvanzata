@@ -3,10 +3,10 @@
 Membri:
 </br></br>
 <ul>
-  <li>Blaga Robert</li>
-  <li>Cortese Lorenzo</li>
-  <li>Ferretti  Mattia</li>
-  <li>Rovesti Alberto</li>
+  <li>Blaga Robert - Client 2</li>
+  <li>Cortese Lorenzo - Client 1</li>
+  <li>Ferretti  Mattia - Simulation Controller</li>
+  <li>Rovesti Alberto - Server</li>
   
 </ul>
 
