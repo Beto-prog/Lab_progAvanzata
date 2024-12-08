@@ -292,9 +292,9 @@ Packets are routed through the network using the information in the routing_head
             .expect("Failed to send message to simulation controller");
     }
     fn send_packet_dropped_event(&mut self, packet: Packet) {
-        self.controller_send
-            .send(PacketDropped(packet))
-            .expect("Failed to send message to simulation controller");
+        if let Err(e) = self.controller_send.send(PacketDropped(packet)) {
+            println!("{}", e);
+        }
     }
 
     //reverse the headers to send nacks and acks
@@ -636,12 +636,13 @@ pub fn generic_chain_fragment_drop() {
     let (d12_send, d12_recv) = unbounded();
     // SC - needed to not make the drone crash
     let (_d_command_send, d_command_recv) = unbounded();
+    let (d_command_send, _d_command_recv) = unbounded();
 
     // Drone 11
     let neighbours11 = HashMap::from([(12, d12_send.clone()), (1, c_send.clone())]);
     let mut drone = TrustDrone::new(
         11,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d_recv.clone(),
         neighbours11,
@@ -651,7 +652,7 @@ pub fn generic_chain_fragment_drop() {
     let neighbours12 = HashMap::from([(11, d_send.clone()), (21, s_send.clone())]);
     let mut drone2 = TrustDrone::new(
         12,
-        unbounded().0,
+        d_command_send.clone(),
         d_command_recv.clone(),
         d12_recv.clone(),
         neighbours12,
@@ -789,5 +790,5 @@ pub fn generic_chain_fragment_ack() {
 
 
 fn main() {
-    println!("Hello, world!");
+    generic_chain_fragment_drop();
 }
