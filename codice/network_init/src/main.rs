@@ -9,6 +9,7 @@ use rustafarian_drone::RustafarianDrone;
 use rustastic_drone::RustasticDrone;
 use rusty_drones::RustyDrone;
 use serde::Deserialize;
+use simulation_controller::SimulationController;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use trust_drone::TrustDrone;
@@ -166,18 +167,22 @@ impl NetworkInitializer {
 
     fn initialize_network(config: NetworkConfig) {
         let (controller_event_send, controller_event_recv) = unbounded();
-        let (controller_command_send, controller_command_recv) = unbounded();
         let mut node_senders = HashMap::new();
         let mut node_recievers = HashMap::new();
+        let mut drone_command_senders = HashMap::new();
+        let mut drone_command_recievers = HashMap::new();
         //let mut client_senders = HashMap::new();
         //let mut server_senders = HashMap::new();
 
         // Initialize drones
         for drone_config in &config.drone {
             let (drone_send, drone_recv) = unbounded();
+            let (command_send, command_recv) = unbounded();
 
             node_senders.insert(drone_config.id, drone_send.clone());
             node_recievers.insert(drone_config.id, drone_recv.clone());
+            drone_command_senders.insert(drone_config.id, command_send.clone());
+            drone_command_recievers.insert(drone_config.id, command_recv.clone());
         }
 
         for client_config in &config.client {
@@ -208,7 +213,10 @@ impl NetworkInitializer {
                 index as u8,
                 drone_config.id,
                 controller_event_send.clone(),
-                controller_command_recv.clone(),
+                drone_command_recievers
+                    .get(&drone_config.id)
+                    .unwrap()
+                    .clone(),
                 node_recievers.get(&drone_config.id).unwrap().clone(),
                 neighbor_senders.clone(),
                 drone_config.pdr,
@@ -218,7 +226,7 @@ impl NetworkInitializer {
         }
 
         // Initialize clients
-        for client_config in config.client {
+        for client_config in &config.client {
             //let (client_send, client_recv) = unbounded();
             //client_senders.insert(client_config.id, client_send.clone());
 
@@ -228,7 +236,7 @@ impl NetworkInitializer {
         }
 
         // Initialize servers
-        for server_config in config.server {
+        for server_config in &config.server {
             //let (server_send, server_recv) = unbounded();
             //server_senders.insert(server_config.id, server_send.clone());
             std::thread::spawn(move || {
@@ -237,8 +245,13 @@ impl NetworkInitializer {
         }
 
         // Spawn simulation controller thread
-        let simulation_controller =
-            SimulationController::new(controller_event_recv, controller_command_send);
+        let simulation_controller = SimulationController::new(
+            controller_event_recv,
+            drone_command_senders,
+            config.drone.iter().map(|c| c.id).collect(),
+            config.client.iter().map(|c| c.id).collect(),
+            config.server.iter().map(|c| c.id).collect(),
+        );
         std::thread::spawn(move || {
             simulation_controller.run();
         });
@@ -353,23 +366,4 @@ fn main() {
         eprintln!("Error initializing network: {}", e);
     }
     loop {}
-}
-
-// Placeholder for simulation controller while we wait
-pub struct SimulationController {
-    event_recv: Receiver<DroneEvent>,
-    command_send: Sender<DroneCommand>,
-}
-
-impl SimulationController {
-    pub fn new(event_recv: Receiver<DroneEvent>, command_send: Sender<DroneCommand>) -> Self {
-        Self {
-            event_recv,
-            command_send,
-        }
-    }
-
-    pub fn run(&self) {
-        loop {}
-    }
 }

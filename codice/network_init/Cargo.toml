@@ -20,4 +20,6 @@ rusty_drones = { git = "https://github.com/rusty-drone-2024/rusty-drone.git" }
 rust-roveri = { git = "https://git@github.com/RustRoveri/rust-roveri.git" }
 rust_do_it = { git = "https://github.com/RustDoIt/Drone.git" }
 trust_drone = { git = "https://github.com/Beto-prog/TrustDone", package = "drone" }
+
+simulation_controller = { path = "../simulation_controller" }
 crossbeam-channel = "0.5.13"
