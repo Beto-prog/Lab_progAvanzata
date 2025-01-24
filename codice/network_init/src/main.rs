@@ -1,22 +1,11 @@
-use bagel_bomber::BagelBomber;
-use crossbeam_channel::{unbounded, Receiver, Sender};
-use getdroned::GetDroned;
-use lockheedrustin_drone::LockheedRustin;
-use null_pointer_drone::MyDrone as NullPointerDrone;
-use rust_do_it::RustDoIt;
-use rust_roveri::RustRoveri;
-use rustafarian_drone::RustafarianDrone;
-use rustastic_drone::RustasticDrone;
-use rusty_drones::RustyDrone;
+use crossbeam_channel::unbounded;
 use serde::Deserialize;
 use simulation_controller::SimulationController;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use trust_drone::TrustDrone;
-use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::drone::Drone;
+use std::thread;
+
 use wg_2024::network::NodeId;
-use wg_2024::packet::Packet;
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -165,6 +154,39 @@ impl NetworkInitializer {
         Ok(())
     }
 
+    fn get_network_topology(config: &NetworkConfig) -> HashMap<NodeId, HashSet<NodeId>> {
+        let mut topology: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+
+        // Add drones to the topology
+        for drone in &config.drone {
+            let mut connected_nodes = HashSet::new();
+            for &node_id in &drone.connected_node_ids {
+                connected_nodes.insert(node_id);
+            }
+            topology.insert(drone.id, connected_nodes);
+        }
+
+        // Add clients to the topology
+        for client in &config.client {
+            let mut connected_nodes = HashSet::new();
+            for &node_id in &client.connected_drone_ids {
+                connected_nodes.insert(node_id);
+            }
+            topology.insert(client.id, connected_nodes);
+        }
+
+        // Add servers to the topology
+        for server in &config.server {
+            let mut connected_nodes = HashSet::new();
+            for &node_id in &server.connected_drone_ids {
+                connected_nodes.insert(node_id);
+            }
+            topology.insert(server.id, connected_nodes);
+        }
+
+        topology
+    }
+
     fn initialize_network(config: NetworkConfig) {
         let (controller_event_send, controller_event_recv) = unbounded();
         let mut node_senders = HashMap::new();
@@ -201,7 +223,6 @@ impl NetworkInitializer {
 
         for (index, drone_config) in config.drone.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
-
             for neighbor_id in &drone_config.connected_node_ids {
                 neighbor_senders.insert(
                     neighbor_id.clone(),
@@ -209,7 +230,7 @@ impl NetworkInitializer {
                 );
             }
 
-            let mut drone = NetworkInitializer::get_drone_impl(
+            let mut drone = simulation_controller::get_drone_impl::get_drone_impl(
                 index as u8,
                 drone_config.id,
                 controller_event_send.clone(),
@@ -244,113 +265,24 @@ impl NetworkInitializer {
             });
         }
 
+        let next_drone_impl_index = config.drone.len() % 10;
+
+        let network_topology = Self::get_network_topology(&config);
+
         // Spawn simulation controller thread
-        let simulation_controller = SimulationController::new(
-            controller_event_recv,
+        let mut simulation_controller = SimulationController::new(
             drone_command_senders,
+            node_senders,
+            controller_event_send,
+            controller_event_recv,
+            network_topology,
             config.drone.iter().map(|c| c.id).collect(),
             config.client.iter().map(|c| c.id).collect(),
             config.server.iter().map(|c| c.id).collect(),
+            next_drone_impl_index as u8,
         );
-        std::thread::spawn(move || {
-            simulation_controller.run();
-        });
-    }
 
-    fn get_drone_impl(
-        index: u8,
-        id: NodeId,
-        controller_send: Sender<DroneEvent>,
-        controller_recv: Receiver<DroneCommand>,
-        packet_recv: Receiver<Packet>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        pdr: f32,
-    ) -> Box<dyn Drone + Send> {
-        let index = index % 10 + 1;
-
-        match index {
-            1 => Box::new(BagelBomber::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            2 => Box::new(LockheedRustin::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            3 => Box::new(NullPointerDrone::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            4 => Box::new(RustafarianDrone::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            5 => Box::new(RustasticDrone::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            6 => Box::new(GetDroned::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            7 => Box::new(RustyDrone::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            8 => Box::new(RustDoIt::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            9 => Box::new(RustRoveri::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            10 => Box::new(TrustDrone::new(
-                id,
-                controller_send,
-                controller_recv,
-                packet_recv,
-                packet_send,
-                pdr,
-            )),
-            _ => panic!("id should always be in range 1-10"),
-        }
+        thread::spawn(move || simulation_controller.run());
     }
 
     pub fn run(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
