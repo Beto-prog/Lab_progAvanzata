@@ -113,13 +113,35 @@ and the list of it's neighbour
     
     */
      
+    /*
+    Rule :
+        1 - Each time you receive a packet you send an Ack
+        2 - Nack : you have to send again the packet
+        -----Problema da risolvere con limit case 
+        
+        3 - Ogni pacchetto e frammentato 
+        
+    
+     */
+    
+    
+    
     fn handle_packet(&mut self, mut packet: Packet) {
         match packet.pack_type {
             PacketType::MsgFragment(_) => {
-                //check if it should drop
-             
-                  //  self.send_valid_packet(next_hop, packet);
+                //elaborate the packet you have to reassable it 
                 
+                /*
+                
+                To reassemble fragments into a single packet, a client or server uses the fragment header as follows:
+                
+                    1. The client or server receives a fragment.
+                    2. It first checks the (session_id, src_id) tuple in the header.    
+                    3. If it has not received a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
+                    4. It would then copy length elements of the data array at the correct offset in the vector.
+
+                
+                */
             }
             PacketType::Nack(_) => {
                // self.send_valid_packet(next_hop, packet);
@@ -145,6 +167,25 @@ and the list of it's neighbour
             
         }
     }
+
+
+
+
+    fn send_packet(&mut self, dest_id: NodeId, packet: Packet) {
+        let sender = self.packet_send.get(&dest_id);
+        match sender {
+            None => match packet.pack_type {
+                PacketType::Ack(_) | PacketType::Nack(_) | PacketType::FloodResponse(_) => {
+                   // self.send_shortcut(packet);           ---- SImulation control
+                }
+                _ => (),
+            },
+            Some(sender) => {
+                sender.send(packet).expect("Sender should be valid");
+            }
+        }
+    }
+  
 
 
 }

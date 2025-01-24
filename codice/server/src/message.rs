@@ -21,7 +21,7 @@ pub mod net_work {
 
     use std::collections::{HashMap, VecDeque};
     use wg_2024::network::{NodeId, SourceRoutingHeader};
-    use wg_2024::packet::NodeType;
+    use wg_2024::packet::{Fragment, NodeType};
 
     //It gives back the shortest path possible  BFS  complexity O(V+E) , shutout to Montresor.
     pub fn bfs_shortest_path(
@@ -66,6 +66,8 @@ pub mod net_work {
         None // No path found !BIG PROBLEM!
     }
 
+    
+    
     // Remove a neighbour from a node in case of a crash
     pub fn remove_neighbor(
         graph: &mut HashMap<NodeId, Vec<NodeId>>,
@@ -77,6 +79,8 @@ pub mod net_work {
         }
     }
 
+    
+    
     //this function start creating the graph with the flood response that it receive
     pub fn recive_flood_response(graph: &mut HashMap<NodeId, Vec<NodeId>>, lead: Vec<(NodeId,NodeType)>) {
 
@@ -114,6 +118,60 @@ pub mod net_work {
             prec = i;
         }
     }
+
+
+
+
+    pub struct Repackager {
+        buffers: HashMap<(u64, u64), Vec<u8>>, // Maps (session_id, src_id) to a buffer
+        processed_packet: HashMap<(u64, u64),u8>,
+    }
+
+        impl Repackager {
+            pub fn new() -> Self {
+                Repackager {
+                    buffers: HashMap::new(),
+                    processed_packet: HashMap::new(),
+                }
+            }
+
+            pub fn process_fragment(&mut self, session_id: u64, src_id: u64, fragment: Fragment) ->  Result<Option<Vec<u8>>, u8>{
+                let key = (session_id, src_id);
+
+                // Check if buffer for this session_id and src_id exists, if not, create it
+                let buffer = self.buffers.entry(key).or_insert_with(|| {
+                    Vec::with_capacity((fragment.total_n_fragments * 128) as usize)
+                });
+
+                // Ensure buffer is large enough
+                if buffer.len() < (fragment.total_n_fragments * 128) as usize {
+                    buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
+                }
+
+                // Copy fragment data into the buffer at the correct offset
+                let start = (fragment.fragment_index * 128) as usize;
+                let end = start + fragment.length as usize;
+
+                if end > buffer.len() {
+                    return Err(1); // Indicate error for invalid fragment
+                }
+
+                buffer[start..end].copy_from_slice(&fragment.data[..fragment.length as usize]);
+
+                // Increment the processed packet counter
+                *self.processed_packet.entry(key).or_insert(0) += 1;
+
+                // Check if all fragments have been received
+                if self.processed_packet[&key] == fragment.total_n_fragments as u8 {
+                    // All fragments received, return the reassembled data
+                    let complete_data = self.buffers.remove(&key).unwrap_or_default();
+                    self.processed_packet.remove(&key);
+                    Ok(Some(complete_data)) // Message reassembled successfully
+                } else {
+                    Ok(None) // Not all fragments received yet
+                }
+            }
+        }
 }
 
 #[cfg(test)]
@@ -122,6 +180,7 @@ mod tests {
     use net_work::*;
     use std::collections::HashMap;
     use wg_2024::network::NodeId;
+    use wg_2024::packet::Fragment;
     use wg_2024::packet::NodeType::Drone;
 
     #[test]
@@ -186,5 +245,83 @@ mod tests {
         assert_eq!(graph.get(&4), Some(&vec![3, 5]));
         assert_eq!(graph.get(&5), Some(&vec![4, 6]));
         assert_eq!(graph.get(&6), Some(&vec![5]));
+    }
+
+    #[test]
+    fn test_single_fragment() {
+        let mut repackager = Repackager::new();
+
+        let fragment = Fragment {
+            fragment_index: 0,
+            total_n_fragments: 1,
+            length: 10,
+            data: [1; 128],
+        };
+
+        let result = repackager.process_fragment(1, 1, fragment);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[test]
+    fn test_multiple_fragments() {
+        let mut repackager = Repackager::new();
+
+        let fragment1 = Fragment {
+            fragment_index: 0,
+            total_n_fragments: 2,
+            length: 128,
+            data: [1; 128],
+        };
+
+        let fragment2 = Fragment {
+            fragment_index: 1,
+            total_n_fragments: 2,
+            length: 64,
+            data: [2; 128],
+        };
+
+        let result1 = repackager.process_fragment(1, 1, fragment1);
+        assert!(result1.is_ok());
+        assert!(result1.unwrap().is_none()); // Not all fragments received yet
+
+        let result2 = repackager.process_fragment(1, 1, fragment2);
+        assert!(result2.is_ok());
+        assert!(result2.unwrap().is_some()); // All fragments received
+    }
+
+    #[test]
+    fn test_invalid_fragment() {
+        let mut repackager = Repackager::new();
+
+        let fragment = Fragment {
+            fragment_index: 2,
+            total_n_fragments: 1,
+            length: 10,
+            data: [1; 128],
+        };
+
+        let result = repackager.process_fragment(1, 1, fragment);
+        assert!(result.is_err()); // Invalid fragment
+    }
+
+    #[test]
+    fn test_repeated_fragments() {
+        let mut repackager = Repackager::new();
+
+        let fragment = Fragment {
+            fragment_index: 0,
+            total_n_fragments: 1,
+            length: 128,
+            data: [1; 128],
+        };
+
+        let result1 = repackager.process_fragment(1, 1, fragment.clone());
+        assert!(result1.is_ok());
+        assert!(result1.unwrap().is_some());
+
+        let result2 = repackager.process_fragment(1, 1, fragment);
+        assert!(result2.is_ok());
+        assert!(result2.unwrap().is_none()); // Duplicate fragment
     }
 }
