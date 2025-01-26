@@ -36,8 +36,7 @@ pub struct SimulationController {
     // Index of the next drone implementation to use
     next_drone_impl_index: u8,
 
-    ui_context: Context,
-
+    //ui_context: Context,
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
     client_stats: Arc<Mutex<HashMap<NodeId, ClientStats>>>,
     server_stats: Arc<Mutex<HashMap<NodeId, ServerStats>>>,
@@ -58,7 +57,7 @@ impl SimulationController {
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
         client_stats: Arc<Mutex<HashMap<NodeId, ClientStats>>>,
         server_stats: Arc<Mutex<HashMap<NodeId, ServerStats>>>,
-        ui_context: Context,
+        //ui_context: Context,
     ) -> Self {
         let mut node_types = HashMap::new();
 
@@ -85,15 +84,13 @@ impl SimulationController {
             drone_stats,
             client_stats,
             server_stats,
-            ui_context,
+            //ui_context,
         }
     }
 
     /// Runs the simulation controller
     pub fn run(&mut self) {
         loop {
-            thread::sleep(Duration::from_millis(1000));
-            self.set_packet_drop_rate(1, 0.15);
             // Handle events from drones
             if let Ok(event) = self.event_receiver.recv() {
                 self.handle_event(event);
@@ -218,7 +215,7 @@ impl SimulationController {
             .unwrap()
             .pdr = pdr;
         println!("Drone {} PDR: {}", drone_id, pdr);
-        self.ui_context.request_repaint();
+        //self.ui_context.request_repaint();
     }
 
     /// Crashes a drone
@@ -471,7 +468,7 @@ fn initialize_mock_network() -> SimulationController {
         Arc::new(Mutex::new(HashMap::new())),
         Arc::new(Mutex::new(HashMap::new())),
         Arc::new(Mutex::new(HashMap::new())),
-        Context::default(),
+        //Context::default(),
     )
 }
 
