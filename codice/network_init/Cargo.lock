@@ -2105,6 +2105,9 @@ name = "network_init"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "eframe",
+ "egui",
+ "env_logger 0.10.2",
  "serde",
  "simulation_controller",
  "toml 0.5.11",

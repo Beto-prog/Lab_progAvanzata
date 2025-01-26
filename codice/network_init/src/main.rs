@@ -1,10 +1,17 @@
 use crossbeam_channel::unbounded;
+use eframe::glow::SET;
+use egui::Context;
 use serde::Deserialize;
+use simulation_controller::node_stats::ClientStats;
+use simulation_controller::node_stats::DroneStats;
+use simulation_controller::node_stats::ServerStats;
 use simulation_controller::SimulationController;
+use simulation_controller::SimulationControllerUI;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
-
 use wg_2024::network::NodeId;
 
 #[derive(Debug, Deserialize)]
@@ -193,6 +200,11 @@ impl NetworkInitializer {
         let mut node_recievers = HashMap::new();
         let mut drone_command_senders = HashMap::new();
         let mut drone_command_recievers = HashMap::new();
+
+        let mut drone_stats = HashMap::new();
+        let mut client_stats = HashMap::new();
+        let mut server_stats = HashMap::new();
+
         //let mut client_senders = HashMap::new();
         //let mut server_senders = HashMap::new();
 
@@ -230,6 +242,8 @@ impl NetworkInitializer {
                 );
             }
 
+            drone_stats.insert(drone_config.id, DroneStats::new(drone_config.pdr));
+
             let mut drone = simulation_controller::get_drone_impl::get_drone_impl(
                 index as u8,
                 drone_config.id,
@@ -250,7 +264,7 @@ impl NetworkInitializer {
         for client_config in &config.client {
             //let (client_send, client_recv) = unbounded();
             //client_senders.insert(client_config.id, client_send.clone());
-
+            client_stats.insert(client_config.id, ClientStats::new());
             std::thread::spawn(move || {
                 // TODO: Implement client logic
             });
@@ -260,6 +274,7 @@ impl NetworkInitializer {
         for server_config in &config.server {
             //let (server_send, server_recv) = unbounded();
             //server_senders.insert(server_config.id, server_send.clone());
+            server_stats.insert(server_config.id, ServerStats::new());
             std::thread::spawn(move || {
                 // TODO: Implement server logic
             });
@@ -269,7 +284,32 @@ impl NetworkInitializer {
 
         let network_topology = Self::get_network_topology(&config);
 
+        let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
+        let client_stats_arc = Arc::new(Mutex::new(client_stats));
+        let server_stats_arc = Arc::new(Mutex::new(server_stats));
+
+        let mut context: Option<Context> = None;
         // Spawn simulation controller thread
+
+        let native_options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 768.0]),
+            ..Default::default()
+        };
+        _ = eframe::run_native(
+            "Simulation Controller",
+            native_options,
+            Box::new(|cc| {
+                context = Some(cc.egui_ctx.clone());
+                let simulation_controller_ui = Box::new(SimulationControllerUI::new(
+                    cc,
+                    drone_stats_arc.clone(),
+                    client_stats_arc.clone(),
+                    server_stats_arc.clone(),
+                ));
+                Ok(simulation_controller_ui)
+            }),
+        );
+
         let mut simulation_controller = SimulationController::new(
             drone_command_senders,
             node_senders,
@@ -280,6 +320,10 @@ impl NetworkInitializer {
             config.client.iter().map(|c| c.id).collect(),
             config.server.iter().map(|c| c.id).collect(),
             next_drone_impl_index as u8,
+            drone_stats_arc,
+            client_stats_arc,
+            server_stats_arc,
+            context.unwrap(),
         );
 
         thread::spawn(move || simulation_controller.run());
