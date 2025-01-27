@@ -70,7 +70,7 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="RunManager" selected="Cargo.Test generic_chain_fragment_ack">
+  <component name="RunManager" selected="Cargo.Test">
     <configuration name="Test generic_chain_fragment_ack" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="test --package drone --bin drone generic_chain_fragment_ack -- --exact" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$/codice/drone" />
@@ -124,9 +124,9 @@
       </method>
     </configuration>
     <list>
+      <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test generic_chain_fragment_ack" />
       <item itemvalue="Cargo.Test generic_chain_fragment_drop" />
-      <item itemvalue="Cargo.Test" />
     </list>
     <recent_temporary>
       <list>
@@ -166,6 +166,7 @@
       <workItem from="1734962851135" duration="24000" />
       <workItem from="1737817407502" duration="9848000" />
       <workItem from="1737879465963" duration="7617000" />
+      <workItem from="1737965369748" duration="10972000" />
     </task>
     <servers />
   </component>
