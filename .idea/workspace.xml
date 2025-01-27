@@ -12,12 +12,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f3fa4380-6860-4102-a4bd-9633a09ab329" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/codice/client1/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/codice/client1/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/codice/client1/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/codice/client1/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/codice/client1/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/codice/client1/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/codice/network_init/src/network_config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/codice/network_init/src/network_config.toml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -128,9 +124,9 @@
       </method>
     </configuration>
     <list>
-      <item itemvalue="Cargo.Test" />
       <item itemvalue="Cargo.Test generic_chain_fragment_ack" />
       <item itemvalue="Cargo.Test generic_chain_fragment_drop" />
+      <item itemvalue="Cargo.Test" />
     </list>
     <recent_temporary>
       <list>
@@ -169,7 +165,7 @@
       <workItem from="1733737509351" duration="5121000" />
       <workItem from="1734962851135" duration="24000" />
       <workItem from="1737817407502" duration="9848000" />
-      <workItem from="1737879465963" duration="4709000" />
+      <workItem from="1737879465963" duration="7617000" />
     </task>
     <servers />
   </component>
