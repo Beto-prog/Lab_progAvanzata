@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::ffi::c_long;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender};
 use wg_2024::packet::*;
 use wg_2024::network::*;
 
@@ -28,25 +27,25 @@ impl Client {
     // Network discovery
     fn discover_network(&self) {
         let request = FloodRequest {
-            flood_id: self.generate_flood_id(),
+            flood_id: Self::generate_flood_id(),
             initiator_id: self.node_id,
             path_trace: vec![(self.node_id, NodeType::Client)],
         };
         for &neighbor in &self.neighbors{
-            self.sender_channels.get(&neighbor).send(self.create_flood_request(request.clone(),neighbor));
+            self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor)).expect("Error while sending message");
         }
     }
     //forward FloodRequest to the neighbors
     fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
         //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
         if self.neighbors.iter().count() == 1{
-            self.sender_channels.get(&previous).send(self.create_flood_response(packet.session_id,request));
+            self.sender_channels.get(&previous).expect("Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("Error while sending message");
         }
         //more than one neighbor
         else{
             for &neighbor in &self.neighbors {
                 if neighbor != previous{
-                    self.sender_channels.get(&neighbor).send(packet.clone());
+                    self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(packet.clone()).expect("Error while sending message");
                 }
             }
         }
@@ -84,7 +83,7 @@ impl Client {
                         if self.flood_ids.contains(&(request.flood_id,request.initiator_id)){
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
                             let resp = self.create_flood_response(packet.session_id,request);
-                            self.sender_channels.get(&previous).send(resp);
+                            self.sender_channels.get(&previous).expect("Didn't find neighbor").send(resp).expect("Error while sending message");
                         }
                         else{
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
@@ -108,9 +107,9 @@ impl Client {
             //TODO
         }
     }
-    pub fn handle_ack(&mut self, ack: PacketType::Ack()){}
-    pub fn handle_nack(&mut self,){}
-    pub fn handle_msg_fragment(&mut self, msg_fragm: PacketType::MsgFragment()){}
+    pub fn handle_ack(&mut self, packet: Packet){}
+    pub fn handle_nack(&mut self, packet: Packet){}
+    pub fn handle_msg_fragment(&mut self, packet: Packet){}
     pub fn generate_flood_id() -> u64{
         rand::random()
     }
@@ -165,19 +164,19 @@ impl Client {
     }
     pub fn handle_packet(&mut self, packet: Packet){
         match packet.pack_type{
-            Ok(PacketType::FloodRequest(_)) =>{
+            PacketType::FloodRequest(_) =>{
                 self.handle_flood_request(packet);
             }
-            Ok(PacketType::FloodResponse(_)) =>{
+            PacketType::FloodResponse(_) =>{
                 self.handle_flood_response(packet);
             }
-            Ok(PacketType::MsgFragment(msg_fragm)) =>{
-                self.handle_msg_fragment(msg_fragm);
+            PacketType::MsgFragment(_) =>{
+                self.handle_msg_fragment(packet);
             }
-            Ok(PacketType::Ack(ack)) =>{
-                self.handle_ack(ack);
+            PacketType::Ack(_) =>{
+                self.handle_ack(packet);
             }
-            Ok(PacketType::Nack(nack)) =>{
+            PacketType::Nack(_) =>{
                 self.handle_nack(packet);
             }
             _ => {println!("Message not valid");} //TODO not sure about that
@@ -188,7 +187,7 @@ impl Client {
         loop {
             match self.receiver_channel.recv(){
                 Ok(packet) =>{self.handle_packet(packet)},
-                Err(()) =>{} //TODO not sure about that
+                Err(error) =>{panic!("{error}")} //TODO not sure about that
             }
         }
     }
