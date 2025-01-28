@@ -15,7 +15,10 @@ use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::NodeType::{Drone as DroneType, Server as OtherServer};
 use wg_2024::packet::{Ack, FloodResponse, Nack, NackType, Packet, PacketType};
+use wg_2024::packet::PacketType::Ack as AckType;
 use message::net_work as NewWork;
+use NewWork::bfs_shortest_path;
+use crate::message::packaging::Repackager;
 use crate::ServerType::TextServer;
 
 pub enum ServerType
@@ -27,9 +30,14 @@ struct  Server
 {
     id: NodeId,
     packet_recv: Receiver<Packet>,
-    graph: HashMap<NodeId, Vec<NodeId>>,
     packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour.  
     server_type: ServerType,
+    
+    // extra field
+
+    graph: HashMap<NodeId, Vec<NodeId>>,            //I nees this for bfs
+    packageHandler : Repackager
+    
 }
 
 
@@ -53,7 +61,8 @@ impl Server
             packet_recv,
             graph,
             packet_send,
-            server_type
+            server_type,
+            packageHandler: Repackager::new(),
         }
     }    
     
@@ -65,7 +74,7 @@ and the list of it's neighbour
 
     fn initialization(&mut self)
     {
-
+    
     }
 
     fn start(&mut self)
@@ -127,24 +136,46 @@ and the list of it's neighbour
     
     
     fn handle_packet(&mut self, mut packet: Packet) {
-        match packet.pack_type {
-            PacketType::MsgFragment(_) => {
-                //elaborate the packet you have to reassable it 
-                
-                /*
-                
-                To reassemble fragments into a single packet, a client or server uses the fragment header as follows:
-                
-                    1. The client or server receives a fragment.
-                    2. It first checks the (session_id, src_id) tuple in the header.    
-                    3. If it has not received a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
-                    4. It would then copy length elements of the data array at the correct offset in the vector.
+        
+        //first thing you do is calculatre the right path to deliver the packet
+        let source = packet.routing_header.hop_index;
+        let path = bfs_shortest_path(&self.graph, self.id, source as NodeId);
+        
+        match path { 
+            Some(x) => {
 
+                //start creating the new packet
+                let mut response = Packet
+                {
+                    routing_header:x,
+                    session_id: packet.session_id + 1,     
+                    pack_type: packet.pack_type.clone()        //just to fill up the filed it will be changed in a moment
+                };
+        
+        
+        match packet.pack_type {
+            PacketType::MsgFragment(mesg) => {
+
+                //Send back an ack 
+                 response.pack_type = AckType(Ack{
+                     fragment_index: mesg.fragment_index ,
+                 });
                 
-                */
+                let result = self.packageHandler.process_fragment(packet.session_id ,packet.routing_header.hop_index as u64,mesg);
+                //let message = Repackager::reassembled_to_string(result);
+                
+                
+   
+                
+
             }
             PacketType::Nack(_) => {
                // self.send_valid_packet(next_hop, packet);
+           /*     let c = Packet{
+                    routing_header: Default::default(),
+                    session_id: 0,
+                    pack_type: PacketType::Ack(wg_2024::wg_packet::Ack { fragment_index: 1 }),
+                };*/
             }
             PacketType::Ack(_) => {
                 //self.send_valid_packet(next_hop, packet);
@@ -158,7 +189,12 @@ and the list of it's neighbour
     
             PacketType::FloodRequest(mut flood_packet) =>
                 {
-                    flood_packet.increment(self.id, OtherServer);
+                    //The Server is note a drone so when he recive a flood request he can send back a flood response with no problem
+                    
+                    let response = flood_packet.generate_response(packet.session_id);
+                    NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
+
+                    
                     //self.send_packet(previous_neighbour, flood_packet.generate_response(42));
                 }
             
@@ -166,6 +202,13 @@ and the list of it's neighbour
             
             
         }
+
+            }
+            None => {println!("No path found for source {}  found !!ERROR!!", source);}
+        }
+
+
+
     }
 
 
