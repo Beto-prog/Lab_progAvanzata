@@ -1,16 +1,29 @@
+#![allow(warnings)]
+mod fragment_reassembler;
+mod communication;
+
+use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
 use crossbeam_channel::{Receiver, Sender};
 use wg_2024::packet::*;
 use wg_2024::network::*;
+use crate::communication::FileSystem;
+//TODO: do send part related to Nack,FloodRequest,FloodResponse.
+//TODO: do UI
+//TODO: check for
 
 type Graph = HashMap<NodeId,Vec<NodeId>>;
+
 pub struct Client {
     node_id: NodeId,
     neighbors: HashSet<NodeId>,
     sender_channels: HashMap<NodeId,Sender<Packet>>,
     receiver_channel: Receiver<Packet>,
     flood_ids: Vec<(u64,NodeId)>,
-    network: Graph
+    network: Graph,
+    sent_packets: HashMap<u64,Packet>, // (session_id) and packet
+    fragment_reassembler: FragmentReassembler
 }
 
 impl Client {
@@ -21,27 +34,29 @@ impl Client {
             sender_channels,
             receiver_channel,
             flood_ids: vec![],
-            network: Graph::new()
+            network: Graph::new(),
+            sent_packets: HashMap::new(),
+            fragment_reassembler: FragmentReassembler::new()
         }
     }
     // Network discovery
-    fn discover_network(&self) {
+    fn discover_network(&mut self) {
         let request = FloodRequest {
             flood_id: Self::generate_flood_id(),
             initiator_id: self.node_id,
             path_trace: vec![(self.node_id, NodeType::Client)],
         };
         for &neighbor in &self.neighbors{
-            self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor)).expect("Error while sending message");
+            self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor)).expect("Error while sending the FloodRequest");
         }
     }
-    //forward FloodRequest to the neighbors
+    // Forward FloodRequest to the neighbors
     fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
         //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
         if self.neighbors.iter().count() == 1{
             self.sender_channels.get(&previous).expect("Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("Error while sending message");
         }
-        //more than one neighbor
+        //More than one neighbor
         else{
             for &neighbor in &self.neighbors {
                 if neighbor != previous{
@@ -50,7 +65,7 @@ impl Client {
             }
         }
     }
-    //creation of packet with packet.type = FloodResponse
+    // Creation of packet with packet.type = FloodResponse
     fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
         for &e in &request.path_trace{
@@ -65,14 +80,14 @@ impl Client {
         Packet::new_flood_response(srh,session_id,flood_resp)
 
     }
-    //creation of packet with packet.type = FloodRequest
+    // Creation of a packet of type FloodRequest
     fn create_flood_request(&self, request: FloodRequest, neighbor: NodeId) -> Packet{
         let hops: Vec<NodeId> = vec![self.node_id,neighbor]; // TODO check if correct
         let srh = SourceRoutingHeader::with_first_hop(hops);
         Packet::new_flood_request(srh,Self::generate_session_id(),request)
     }
-    // Handle a received FloodRequest
-    pub fn handle_flood_request(&self,packet: Packet) {
+    // Function to handle received packets of type FloodRequest
+    pub fn handle_flood_request(&mut self,packet: Packet) {
         let packet_clone = packet.clone();
         match packet.pack_type{
             PacketType::FloodRequest(mut request)=>{
@@ -87,50 +102,97 @@ impl Client {
                         }
                         else{
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
-                            self.forward_flood_request(packet_clone, previous,request);
+                            self.flood_ids.push((request.flood_id,request.initiator_id));
+                            self.forward_flood_request(packet_clone,previous,request);
                         }
                     }
                     _ => {panic!("Can't find neighbour who sent this packet {} ", request);}
                 }
             }
-            _=>()
+            _=>{panic!("Wrong packet type received")}
         }
     }
 
-    // Handle a received FloodResponse
-    pub fn handle_flood_response(&self, packet: Packet) {
+    // Handle received packets of type FloodResponse
+    pub fn handle_flood_response(&mut self, packet: Packet) {
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
-
+                self.update_graph(response);
             }
-            _ => {panic!("Error")}
-            //TODO
+            _ => {panic!("Wrong packet type received")}
         }
     }
-    pub fn handle_ack(&mut self, packet: Packet){}
-    pub fn handle_nack(&mut self, packet: Packet){}
-    pub fn handle_msg_fragment(&mut self, packet: Packet){}
+    // Handle received packets of type Ack
+    pub fn handle_ack(&mut self,packet: Packet){
+        //take sender of the Ack and remove it from packets field of Client
+        let sender_id:NodeId = packet.routing_header.hops[packet.routing_header.hops.len()-1].clone(); //TODO check
+        self.sent_packets.remove(&(packet.session_id)).expect("Error: sender not found");
+
+    }
+    // Handle received packets of type Nack. Simply sends again the message to the dest_id
+    pub fn handle_nack(&mut self, packet: Packet){
+        match packet.pack_type{
+            PacketType::Nack(nack) =>{
+                match nack.nack_type {
+                    _ => {
+                        self.discover_network();
+                        let original_packet = self.sent_packets.get(&packet.session_id).expect("Failed to retrieve original packet");
+                        let original_dest = original_packet.routing_header.hops[original_packet.routing_header.hops.len()-1];
+                        let new_packet = Packet{
+                            routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,original_dest).unwrap()),
+                            session_id: original_packet.session_id.clone(),
+                            pack_type: original_packet.pack_type.clone(),
+                        };
+                        let neighbor = new_packet.routing_header.hops[0];
+                        self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(new_packet).expect("Error while sending packet");
+                    }
+                }
+            }
+            _ =>{panic!("Wrong packet type received")}
+        }
+    }
+    // Handle received packets of type MsgFragment
+    pub fn handle_msg_fragment(&mut self, packet: Packet){
+        match packet.pack_type{
+            PacketType::MsgFragment(fragment)=>{
+                //check if a fragment with the same (session_id,src_id) has already been received
+                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Error while processing fragment"){
+                    Some(message) =>{
+                        match FragmentReassembler::assemble_string_file(message,"./files"){ //TODO check the output path
+                            Ok(_) =>(),
+                            Err(e) => println!("Error: {e}")
+                        }
+                    }
+                    None => ()
+                }
+            }
+            _ =>{panic!("Wrong packet type received")}
+        }
+    }
+    // Helper functions
     pub fn generate_flood_id() -> u64{
         rand::random()
     }
     pub fn generate_session_id() -> u64{
         rand::random()
     }
-    pub fn update_graph(graph: &mut Graph, response: FloodResponse){
+    //function to udpate the knowledge of the network based on flood responses
+    pub fn update_graph(&mut self, response: FloodResponse){ //TODO: check if value is effectively updated
         let path = &response.path_trace;
 
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
                 // Add node1 -> node2
-                graph.entry(*node1).or_insert_with(Vec::new).push(*node2);
+                self.network.entry(*node1).or_insert_with(Vec::new).push(*node2);
 
                 // Add node2 -> node1 (bidirectional edge)
-                graph.entry(*node2).or_insert_with(Vec::new).push(*node1);
+                self.network.entry(*node2).or_insert_with(Vec::new).push(*node1);
             }
         }
     }
-    fn bfs_compute_path(graph: &HashMap<NodeId, Vec<NodeId>>, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
+    // Calculates shortest path between two nodes. Complexity: O(V+E)
+    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
         let mut queue = VecDeque::new();
         let mut visited = HashMap::new();
         let mut parent = HashMap::new();
@@ -162,6 +224,28 @@ impl Client {
         }
         None
     }
+    // Send message (fragmented data) to a dest_id using bfs
+    pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
+        let fragments = FragmentReassembler::create_fragments(data).expect("Error while creating fragments");
+        let session_id =  Self::generate_session_id();
+        for fragment in fragments {
+            if let Some(sender) = self.sender_channels.get(&dest_id) {
+                let packet = Packet {
+                    routing_header: SourceRoutingHeader {
+                        hop_index: 1,
+                        hops: Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap() ,
+                    },
+                    pack_type: PacketType::MsgFragment(fragment),
+                    session_id
+                };
+                // Add packet to sent_packets to track it in case of an error
+                self.sent_packets.insert(packet.session_id,packet.clone());
+                sender.send(packet).unwrap();
+            }
+        }
+    }
+    pub fn send_packet(&mut self){}
+    // Handle incoming packets and call different methods based on the packet type
     pub fn handle_packet(&mut self, packet: Packet){
         match packet.pack_type{
             PacketType::FloodRequest(_) =>{
@@ -173,21 +257,20 @@ impl Client {
             PacketType::MsgFragment(_) =>{
                 self.handle_msg_fragment(packet);
             }
-            PacketType::Ack(_) =>{
-                self.handle_ack(packet);
-            }
             PacketType::Nack(_) =>{
                 self.handle_nack(packet);
             }
-            _ => {println!("Message not valid");} //TODO not sure about that
+            PacketType::Ack(_) =>{
+                self.handle_ack(packet);
+            }
         }
     }
     pub fn run(&mut self) {
-        //TODO UI part and command Sender part
+        // call Client::new() from NetworkInitializer then client.run()
         loop {
             match self.receiver_channel.recv(){
                 Ok(packet) =>{self.handle_packet(packet)},
-                Err(error) =>{panic!("{error}")} //TODO not sure about that
+                Err(error) =>{panic!("{error}")}
             }
         }
     }
