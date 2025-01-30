@@ -5,9 +5,9 @@ use std::path::Path;
 use wg_2024::network::NodeId;
 use wg_2024::packet::Fragment;
 
-
 // Struct and functions to handle fragment reassembly and collection
-// FragmentReassembler to manage reassembly of fragments
+
+// Struct FragmentReassembler to manage reassembly of fragments
 pub struct FragmentReassembler {
     pub buffer: HashMap<(u64, NodeId), Vec<u8>>, // Map of (session_id, source_id) to message buffer
     pub processed_fragments: HashMap<(u64, NodeId), u8>, // Number of received fragments per (session_id, source_id)
@@ -20,6 +20,7 @@ impl FragmentReassembler {
             processed_fragments: HashMap::new(),
         }
     }
+    // Add a fragment in the buffer and proceed to assemble the message as a Vec is all fragments received
     pub fn add_fragment(&mut self, session_id: u64, source_id: NodeId, fragment: Fragment) -> Result<Option<Vec<u8>>,u8> {
         let key = (session_id, source_id);
 
@@ -53,6 +54,7 @@ impl FragmentReassembler {
             Ok(None)
         }
     }
+    // Given a &str create the fragments from it
     pub fn create_fragments(str: &str) -> Result<Vec<Fragment>, String> {
         // Convert the initial string to bytes
         let mut message_data = str.as_bytes().to_vec();
@@ -79,6 +81,7 @@ impl FragmentReassembler {
 
         Ok(fragments)
     }
+    // Assemble the Vec and save the result
     pub fn assemble_string_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
         // Remove null character
         let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();

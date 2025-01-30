@@ -4,16 +4,16 @@ use std::path::Path;
 use wg_2024::network::NodeId;
 use crate::Client;
 
+// Struct with a path field where received files will be stored and a Client field that handles the rest
 pub struct FileSystem {
-    path: String, // Path to the directory where files are stored
+    path: String,
     client: Client ,
 }
-pub struct ChatMessage{}
+
 
 impl FileSystem {
     // Create a new FileSystem instance
-    pub fn new(client: Client) -> Self {
-        let path = "/tmp/files";
+    pub fn new(path: &str, client: Client) -> Self {
         let path_dir = Path::new(path);
 
         // Check if the directory exists
@@ -24,7 +24,7 @@ impl FileSystem {
         } else {
             // Create the directory if it doesn't exist
             match fs::create_dir_all(path) {
-                Ok(_) => println!("Directory '{}' has been created.", path),
+                Ok(_) => println!("Directory '{}' created.", path),
                 Err(err) => panic!("Error: Could not create directory '{}': {}", path, err),
             }
         }
@@ -35,11 +35,11 @@ impl FileSystem {
         match command{
             cmd if cmd == "server_type?" =>{
                 client.send_message(dest_id,cmd);
-                "Ok".to_string()
+                "OK".to_string()
             }
             cmd if cmd == "files_list?" =>{
                 client.send_message(dest_id,cmd);
-                "Ok".to_string()
+                "OK".to_string()
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
                 if let Some(id) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
@@ -48,7 +48,7 @@ impl FileSystem {
                     }
                     else{
                         client.send_message(dest_id,cmd);
-                        "Ok".to_string()
+                        "OK".to_string()
                     }
                 }
                 else{
@@ -62,7 +62,7 @@ impl FileSystem {
                     }
                     else{
                         client.send_message(dest_id,cmd);
-                        "Ok".to_string()
+                        "OK".to_string()
                     }
                 }
                 else{
@@ -71,21 +71,21 @@ impl FileSystem {
             }
             cmd if cmd == "server_type?" =>{
                 client.send_message(dest_id,cmd);
-                "Ok".to_string()
+                "OK".to_string()
             }
             cmd if cmd == "registration_to_chat" =>{
                 client.send_message(dest_id,cmd);
-                "Ok".to_string()
+                "OK".to_string()
             }
             cmd if cmd == "client_list?" =>{
                 client.send_message(dest_id,cmd);
-                "Ok".to_string()
+                "OK".to_string()
             }
             cmd if cmd.starts_with("message_for?(") =>{
                 match Self::get_values(cmd){
                     Some(values) =>{
                         client.send_message(values.0,values.1);
-                        "Ok".to_string()
+                        "OK".to_string()
                     }
                     None =>{
                         "Error: command not formatted correctly".to_string()
@@ -95,7 +95,7 @@ impl FileSystem {
             _ =>{"Not a valid command".to_string()}
         }
     }
-    //helpers
+    // Helper functions
     pub fn get_values(cmd: &str) -> Option<(NodeId,&str)>{
        if let Some(raw_data) = cmd.strip_prefix("message_for?(").and_then(|s|s.strip_suffix(")")) {
            let values = raw_data.split_once(",").expect("Failed to get values");
@@ -104,10 +104,4 @@ impl FileSystem {
            None
        }
     }
-}
-impl ChatMessage{
-    fn new()-> Self{
-        Self{}
-    }
-
 }
