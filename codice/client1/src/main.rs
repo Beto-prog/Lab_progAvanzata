@@ -1,8 +1,10 @@
 #![allow(warnings)]
 mod fragment_reassembler;
 mod communication;
+use communication::*;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::Path;
 use crossbeam_channel::{Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
@@ -17,7 +19,8 @@ pub struct Client {
     receiver_channel: Receiver<Packet>,
     flood_ids: Vec<(u64,NodeId)>,
     network: Graph,
-    fragment_reassembler: FragmentReassembler
+    fragment_reassembler: FragmentReassembler,
+    path: String
 }
 
 impl Client {
@@ -33,7 +36,8 @@ impl Client {
             receiver_channel,
             flood_ids: vec![],
             network: Graph::new(),
-            fragment_reassembler: FragmentReassembler::new()
+            fragment_reassembler: FragmentReassembler::new(),
+            path: Self::new_path("/src/files")
         }
     }
     // Network discovery
@@ -159,7 +163,7 @@ impl Client {
                 //check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Error while processing fragment"){
                     Some(message) =>{
-                        match FragmentReassembler::assemble_string_file(message,"./files"){ //TODO check the output path
+                        match FragmentReassembler::assemble_string_file(message,self.path.as_str()){ //TODO check the output path
                             Ok(msg) => {
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 new_hops.reverse();
@@ -234,7 +238,7 @@ impl Client {
     }
     // Send message (fragmented data) to a dest_id using bfs
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
-        let fragments = FragmentReassembler::create_fragments(data).expect("Error while creating fragments");
+        let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         for fragment in fragments {
             if let Some(sender) = self.sender_channels.get(&dest_id) {
@@ -251,7 +255,7 @@ impl Client {
                             match packet.pack_type{
                                 PacketType::Ack(_) => break 'internal,
                                 PacketType::Nack(_) =>{
-                                    self.discover_network();
+                                    //self.discover_network();
                                     let packet = Packet {
                                         routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap()),
                                         pack_type: packet.pack_type,
@@ -262,7 +266,7 @@ impl Client {
                                 _=> ()
                             }
                         }
-                        None => ()
+                        Err(e) => panic!("{e}")
                     }
                 }
             }
@@ -293,7 +297,7 @@ impl Client {
         }
     }
     pub fn run(&mut self) {
-        // Call Client::new() from NetworkInitializer then client.run()
+        // Call FileSystem::new() and Client::new() from NetworkInitializer then client.run()
         loop {
             match self.receiver_channel.recv(){
                 Ok(packet) =>{self.handle_packet(packet)},

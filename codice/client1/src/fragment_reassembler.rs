@@ -1,10 +1,11 @@
 #![allow(warnings)]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use crossbeam_channel::{unbounded};
 use wg_2024::network::NodeId;
-use wg_2024::packet::Fragment;
-
+use wg_2024::packet::{Fragment, Packet};
+use crate::Client;
 // Struct and functions to handle fragment reassembly and collection
 
 // Struct FragmentReassembler to manage reassembly of fragments
@@ -30,7 +31,9 @@ impl FragmentReassembler {
         }
         // Get the buffer for this (session_id, source_id)
         let buffer = self.buffer.get_mut(&key).unwrap();
-
+        if buffer.len() < (fragment.total_n_fragments * 128) as usize{
+            buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
+        }
         // Copy the fragment's data into the correct position in the buffer
         let start = (fragment.fragment_index * 128) as usize;
         let end = start + fragment.length as usize;
@@ -55,7 +58,7 @@ impl FragmentReassembler {
         }
     }
     // Given a &str create the fragments from it
-    pub fn create_fragments(str: &str) -> Result<Vec<Fragment>, String> {
+    pub fn generate_fragments(str: &str) -> Result<Vec<Fragment>, String> {
         // Convert the initial string to bytes
         let mut message_data = str.as_bytes().to_vec();
 
@@ -117,4 +120,46 @@ impl FragmentReassembler {
         }
     }
 }
+#[cfg(test)]
+mod test{
+    use super::*;
+    use crate::FragmentReassembler;
+}
+
+#[test]
+fn test_fragment_string_assembled_correctly(){
+    let (_,rcv) = unbounded::<Packet>();
+    let client_test = Client::new(1,HashSet::new(),HashMap::new(),rcv);
+    let mut fr = FragmentReassembler::new();
+    let test_data = &"A".repeat(200);
+    let test_result = FragmentReassembler::generate_fragments(test_data);
+    let mut fragm_vec = Ok(Some(vec![]));
+    for e in test_result.unwrap().iter(){
+        fragm_vec = fr.add_fragment(1,1,e.clone());
+    }
+    let res = FragmentReassembler::assemble_string_file(fragm_vec.unwrap().unwrap(),client_test.path.as_str());
+    assert!(test_data.eq(&res.unwrap()));
+}
+#[test]
+fn test_fragment_txt_assembled_correctly(){
+    let (_,rcv) = unbounded::<Packet>();
+    let client_test = Client::new(1,HashSet::new(),HashMap::new(),rcv);
+    let test_text_content = fs::read("src/test/file1");
+    let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),client_test.path.as_str());
+    assert_eq!(test_result.unwrap(),"test 123456 advanced_programming");
+    //need to check where the file is written lol
+}
+#[test]
+fn test_fragment_mediaFile_assembled_correctly(){
+    let (_,rcv) = unbounded::<Packet>();
+    let client_test = Client::new(1,HashSet::new(),HashMap::new(),rcv);
+    let test_text_content = fs::read("src/test/testMedia.mp3");
+    let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),client_test.path.as_str());
+    match test_result{
+        Ok(_) => (),
+        Err(_) => panic!("Error")
+    }
+}
+
+
 

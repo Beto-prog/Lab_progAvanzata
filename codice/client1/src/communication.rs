@@ -4,16 +4,10 @@ use std::path::Path;
 use wg_2024::network::NodeId;
 use crate::Client;
 
-// Struct with a path field where received files will be stored and a Client field that handles the rest
-pub struct FileSystem {
-    path: String,
-    client: Client ,
-}
-
-
-impl FileSystem {
+//Communication part related to the Client
+impl Client {
     // Create a new FileSystem instance
-    pub fn new(path: &str, client: Client) -> Self {
+    pub fn new_path(path: &str) -> String{
         let path_dir = Path::new(path);
 
         // Check if the directory exists
@@ -28,17 +22,19 @@ impl FileSystem {
                 Err(err) => panic!("Error: Could not create directory '{}': {}", path, err),
             }
         }
-        FileSystem {path: path.to_string(), client }
+        path.to_string()
+
+
     }
     // Send message with a specific command to a dest_id
-    pub fn send_request(mut client:Client, command: &str, dest_id: NodeId) -> String{
+    pub fn send_request(&mut self, command: &str, dest_id: NodeId) -> String{
         match command{
             cmd if cmd == "server_type?" =>{
-                client.send_message(dest_id,cmd);
+                self.send_message(dest_id,cmd);
                 "OK".to_string()
             }
             cmd if cmd == "files_list?" =>{
-                client.send_message(dest_id,cmd);
+                self.send_message(dest_id,cmd);
                 "OK".to_string()
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
@@ -47,7 +43,7 @@ impl FileSystem {
                         "Error: invalid file_id".to_string()
                     }
                     else{
-                        client.send_message(dest_id,cmd);
+                        self.send_message(dest_id,cmd);
                         "OK".to_string()
                     }
                 }
@@ -61,7 +57,7 @@ impl FileSystem {
                         "Error: invalid media_id".to_string()
                     }
                     else{
-                        client.send_message(dest_id,cmd);
+                        self.send_message(dest_id,cmd);
                         "OK".to_string()
                     }
                 }
@@ -70,21 +66,21 @@ impl FileSystem {
                 }
             }
             cmd if cmd == "server_type?" =>{
-                client.send_message(dest_id,cmd);
+                self.send_message(dest_id,cmd);
                 "OK".to_string()
             }
             cmd if cmd == "registration_to_chat" =>{
-                client.send_message(dest_id,cmd);
+                self.send_message(dest_id,cmd);
                 "OK".to_string()
             }
-            cmd if cmd == "client_list?" =>{
-                client.send_message(dest_id,cmd);
+            cmd if cmd == "self_list?" =>{
+                self.send_message(dest_id,cmd);
                 "OK".to_string()
             }
             cmd if cmd.starts_with("message_for?(") =>{
                 match Self::get_values(cmd){
                     Some(values) =>{
-                        client.send_message(values.0,values.1);
+                        self.send_message(values.0,values.1);
                         "OK".to_string()
                     }
                     None =>{
