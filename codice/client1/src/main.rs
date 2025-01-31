@@ -24,7 +24,8 @@ pub struct Client {
     fragment_reassembler: FragmentReassembler,
     path: String,
     other_client_ids: Vec<NodeId>, // TODO use it in send req part
-    files_ids: Vec<NodeId> // TODO check what type fileID is. NodeID is temporary
+    files_names: Vec<String>,
+    server: (NodeId,String)
 }
 
 impl Client {
@@ -43,7 +44,8 @@ impl Client {
             fragment_reassembler: FragmentReassembler::new(),
             path: Self::new_path("/src/files"),
             other_client_ids: vec![],
-            files_ids: vec![]
+            files_names: vec![],
+            server: (0,String::new())
         }
     }
     // Network discovery
@@ -125,6 +127,11 @@ impl Client {
     pub fn handle_flood_response(&mut self, packet: Packet) {
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
+                for node in &response.path_trace{
+                    if node.1.eq(&NodeType::Server){
+                        self.server.0 = node.0;
+                    }
+                }
                 self.update_graph(response);
             }
             _ => {panic!("Wrong packet type received")}
@@ -172,13 +179,15 @@ impl Client {
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
                                 // A message is reconstructed: send back an Ack and handle command
+
                                 let mut new_hops = packet.routing_header.hops.clone();
+                                let first_hop = new_hops[1].clone();
                                 new_hops.reverse();
-                                let first_hop = new_hops[0].clone();
+                                let new_first_hop = new_hops[1].clone();
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
-                                self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
-                                self.handle_msg(msg); // TODO
+                                self.sender_channels.get(&new_first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                                self.handle_msg(msg,packet.session_id,first_hop); // TODO
                             },
                             // FragmentReassembler encountered an error
                             Err(e) => println!("{e}")
