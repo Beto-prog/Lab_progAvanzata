@@ -5,11 +5,13 @@ use communication::*;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{select, select_biased, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
+//TODO user commands
 
+//Client struct and functions/methods related. Client has some additional fields for handling more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
 
 pub struct Client {
@@ -20,7 +22,9 @@ pub struct Client {
     flood_ids: Vec<(u64,NodeId)>,
     network: Graph,
     fragment_reassembler: FragmentReassembler,
-    path: String
+    path: String,
+    other_client_ids: Vec<NodeId>, // TODO use it in send req part
+    files_ids: Vec<NodeId> // TODO check what type fileID is. NodeID is temporary
 }
 
 impl Client {
@@ -37,7 +41,9 @@ impl Client {
             flood_ids: vec![],
             network: Graph::new(),
             fragment_reassembler: FragmentReassembler::new(),
-            path: Self::new_path("/src/files")
+            path: Self::new_path("/src/files"),
+            other_client_ids: vec![],
+            files_ids: vec![]
         }
     }
     // Network discovery
@@ -153,31 +159,34 @@ impl Client {
             }
             _ =>{panic!("Wrong packet type received")}
         }
-
     }
      */
     // Handle received packets of type MsgFragment. Fragments put together and reassembled
     pub fn handle_msg_fragment(&mut self, packet: Packet){
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
-                //check if a fragment with the same (session_id,src_id) has already been received
+                // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Error while processing fragment"){
                     Some(message) =>{
                         match FragmentReassembler::assemble_string_file(message,self.path.as_str()){ //TODO check the output path
+                            // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
+                                // A message is reconstructed: send back an Ack and handle command
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 new_hops.reverse();
-                                Packet::new_ack(
+                                let first_hop = new_hops[0].clone();
+                                let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
+                                self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                                self.handle_msg(msg); // TODO
                             },
-                            Err(e) => println!("Error: {e}")
+                            // FragmentReassembler encountered an error
+                            Err(e) => println!("{e}")
                         }
                     }
                     None => ()
                 }
-
             }
-
             _ =>{panic!("Wrong packet type received")}
         }
     }
@@ -189,7 +198,7 @@ impl Client {
         rand::random()
     }
     // Update the knowledge of the network based on flood responses
-    pub fn update_graph(&mut self, response: FloodResponse){ //TODO: check if value is effectively updated
+    pub fn update_graph(&mut self, response: FloodResponse){ //TODO: check if value is effectively updated, create return value
         let path = &response.path_trace;
 
         // Iterate over consecutive pairs in the path_trace
@@ -204,7 +213,7 @@ impl Client {
         }
     }
     // Calculates shortest path between two nodes. Complexity: O(V+E)
-    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
+    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> { //TODO handle return value
         let mut queue = VecDeque::new();
         let mut visited = HashMap::new();
         let mut parent = HashMap::new();
@@ -236,42 +245,6 @@ impl Client {
         }
         None
     }
-    // Send message (fragmented data) to a dest_id using bfs
-    pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
-        let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
-        let session_id =  Self::generate_session_id();
-        for fragment in fragments {
-            if let Some(sender) = self.sender_channels.get(&dest_id) {
-                let packet_sent = Packet {
-                    routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap()),
-                    pack_type: PacketType::MsgFragment(fragment),
-                    session_id
-                };
-                sender.send(packet_sent).unwrap();
-                // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
-                'internal: loop {
-                    match self.receiver_channel.recv(){
-                        Ok(packet) =>{
-                            match packet.pack_type{
-                                PacketType::Ack(_) => break 'internal,
-                                PacketType::Nack(_) =>{
-                                    //self.discover_network();
-                                    let packet = Packet {
-                                        routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap()),
-                                        pack_type: packet.pack_type,
-                                        session_id
-                                    };
-                                    sender.send(packet.clone()).unwrap();
-                                }
-                                _=> ()
-                            }
-                        }
-                        Err(e) => panic!("{e}")
-                    }
-                }
-            }
-        }
-    }
     // Handle incoming packets and call different methods based on the packet type. Ack and Nack handled in the upper function
     pub fn handle_packet(&mut self, packet: Packet){
         match packet.pack_type{
@@ -292,7 +265,6 @@ impl Client {
             PacketType::Ack(_) =>{
                 self.handle_ack(packet);
             }
-
              */
         }
     }
@@ -300,9 +272,11 @@ impl Client {
         // Call FileSystem::new() and Client::new() from NetworkInitializer then client.run()
         loop {
             match self.receiver_channel.recv(){
-                Ok(packet) =>{self.handle_packet(packet)},
-                Err(error) =>{panic!("{error}")}
+                Ok(packet) => self.handle_packet(packet),
+                Err(e) => println!("Error: {e}")
             }
+            //TODO link the user input part
+
         }
     }
 }
