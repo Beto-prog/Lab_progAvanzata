@@ -10,27 +10,6 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client {
-    /*
-    // Create a new path where to save received files
-    pub fn new_path(path: &str) -> String{
-        let path_dir = Path::new(path);
-
-        // Check if the directory exists
-        if path_dir.exists() {
-            if !path_dir.is_dir() {
-                panic!("Error: '{}' exists but is not a directory.", path);
-            }
-        } else {
-            // Create the directory if it doesn't exist
-            match fs::create_dir_all(path) {
-                Ok(_) => println!("Directory '{}' created.", path),
-                Err(err) => panic!("Error: Could not create directory '{}': {}", path, err),
-            }
-        }
-        path.to_string()
-        }
-     */
-
     // Handle user input received and send command to a dest_id (e.g. a server)
     pub fn handle_command(&mut self, command: &str, dest_id: NodeId) -> String{
         // Check for serverType in order to send only the correct set of messages

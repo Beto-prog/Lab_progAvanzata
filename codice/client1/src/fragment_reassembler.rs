@@ -15,6 +15,7 @@ pub struct FragmentReassembler {
 }
 
 impl FragmentReassembler {
+    // Create a new FragmentReassembler
     pub fn new() -> Self {
         Self {
             buffer: HashMap::new(),
