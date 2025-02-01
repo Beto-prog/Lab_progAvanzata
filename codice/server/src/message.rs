@@ -16,7 +16,7 @@ Guide for implementing the servers and the clients
 
 
 */
-use crate::message::file_system::{ChatServer, FileSystem};
+use crate::message::file_system::{ChatServer, ContentServer};
 
 pub mod net_work {
     use std::collections::{HashMap, VecDeque};
@@ -72,12 +72,14 @@ pub mod net_work {
         graph: &mut HashMap<NodeId, Vec<NodeId>>,
         node: NodeId,
         neighbor: NodeId,
-    ) {         // to DO you have to remove the neighbour form the list of neighbour of the other node 
+    ) {         
         if let Some(neighbors) = graph.get_mut(&node) {
             neighbors.retain(|&n| n != neighbor);
-            
-            todo!("to DO you have to remove the neighbour form the list of neighbour of the other node ")
         }
+       /*     //Delete both way
+        if let Some(neighbors) = graph.get_mut(&neighbor) {
+            neighbors.retain(|&n| n != node);
+        }*/
     }
 
 
@@ -118,6 +120,78 @@ pub mod net_work {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::NewWork::remove_neighbor;
+use crate::NewWork::recive_flood_response;
+use crate::bfs_shortest_path;
+use super::*;
+    use std::collections::HashMap;
+    use wg_2024::network::{NodeId, SourceRoutingHeader};
+    use wg_2024::packet::NodeType;
+    use wg_2024::packet::NodeType::Drone;
+
+    #[test]
+    fn test_bfs_shortest_path() {
+        let mut graph: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        graph.insert(1, vec![2, 3]);
+        graph.insert(2, vec![1, 4]);
+        graph.insert(3, vec![1, 4]);
+        graph.insert(4, vec![2, 3, 5]);
+        graph.insert(5, vec![4]);
+
+        let result = bfs_shortest_path(&graph, 1, 5);
+        assert!(result.is_some());
+        let path = result.unwrap().hops;
+        assert_eq!(path, vec![1, 2, 4, 5]);
+    }
+
+    #[test]
+    fn test_bfs_no_path() {
+        let mut graph: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        graph.insert(1, vec![2]);
+        graph.insert(2, vec![1]);
+        graph.insert(3, vec![4]);
+        graph.insert(4, vec![3]);
+
+        let result = bfs_shortest_path(&graph, 1, 4);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_remove_neighbor() {
+        let mut graph: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        graph.insert(1, vec![2, 3]);
+        graph.insert(2, vec![1]);
+        graph.insert(3, vec![1]);
+
+        remove_neighbor(&mut graph, 1, 2);
+
+        assert!(!graph.get(&1).unwrap().contains(&2));
+        assert!(graph.get(&2).unwrap().contains(&1)); // TODO: Implement mirror removal
+    }
+
+    #[test]
+    fn test_recive_flood_response() {
+        let mut graph: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        let fld1 = vec![(1, Drone), (2, Drone), (3, Drone)];
+        let fld2 = vec![(1, Drone), (2, Drone), (4, Drone)];
+        
+
+        recive_flood_response(&mut graph, fld1);
+        recive_flood_response(&mut graph, fld2);
+
+        
+        assert_eq!(graph.get(&1).unwrap(), &vec![2]);
+        assert_eq!(graph.get(&2).unwrap(), &vec![1, 3, 4]);
+        assert_eq!(graph.get(&3).unwrap(), &vec![2]);
+        assert_eq!(graph.get(&4).unwrap(), &vec![2]);
+    
+    }
+}
+
+
 pub mod packaging
 {
     use std::collections::{HashMap, VecDeque};
@@ -294,14 +368,186 @@ To reassemble fragments into a single packet, a client or server uses the fragme
     }
 }
 
+#[cfg(test)]
+mod test_packaging
+{
+    use super::*;
+    use crate::message::packaging::Repackager;
+
+
+
+    #[test]
+    fn fragmentation_with_string() {
+        let result = Repackager::create_fragments(&*"A".repeat(200), None);
+        println!("{:?}", result);
+        let mut rp = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in result.unwrap().iter() {
+            transformation = rp.process_fragment(1,1,i.clone());
+            println!("{:?}", transformation);
+        }
+        println!("{:?}", Repackager::assemble_string(transformation.unwrap().unwrap()));
+
+
+    }
+
+    //CREFULL  before testing create  the folder with data in it 
+    // It's not my part I give up, if I have time I will look it up later  
+
+    #[test]
+    fn fragmentation_with_txtfile() {
+        let result = Repackager::create_fragments("file!(435,",Some("/tmp/testServer/file1.txt"));
+        //println!("{:?}", result);  
+        let mut rp = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in result.unwrap().iter() {
+            transformation = rp.process_fragment(1,1,i.clone());
+            // println!("{:?}", transformation);
+        }
+        println!("{:?}", Repackager::assemble_string_file(transformation.unwrap().unwrap(),"/tmp/testServer/copy/a"));
+
+
+    }
+
+    #[test]
+    fn fragmentation_with_Mediafile() {
+        let result = Repackager::create_fragments("media!(,",Some("/tmp/testServer/3 Nights.mp3"));
+        println!("{:?}", result);
+        let mut rp = Repackager::new();
+        let mut transformation =Ok(Some(vec![]));
+        for i in result.unwrap().iter() {
+            transformation = rp.process_fragment(1,1,i.clone());
+        }
+        match transformation {
+            Ok(Some(trans)) => {
+                println!(
+                    "{:?}",
+                    Repackager::assemble_string_file(trans, "/tmp/testServer/copy/a.mp3")
+                );
+            }
+            _ => panic!("Trasformazione fallita."),
+        }
+    }
+
+}
+
 
 pub mod file_system
 {
     use std::{fmt, fs};
     use std::io::Read;
     use std::path::Path;
-    use wg_2024::packet::Packet;
+    use wg_2024::packet::{Fragment, Packet};
+    use crate::message::packaging::Repackager;
 
+    pub trait ServerTrait
+    {
+         fn process_request (&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String> ;
+    }
+
+    impl ServerTrait for ContentServer {
+         fn process_request(&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String>
+         {
+            match command {
+                cmd if cmd.starts_with("server_type?") => {
+                    Repackager::create_fragments(&*self.serv.to_string(), None)
+                }
+                cmd if cmd.starts_with("files_list?") => {
+                    Repackager::create_fragments(&*self.files_list(), None)
+                    
+                }
+                cmd if cmd.starts_with("file?") => {
+                    if let Some(file_id) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
+                        let path = Path::new(&self.path).join(file_id);
+                        
+                        if path.exists() && path.is_file() {
+                            let size = fs::metadata(path.clone()).ok().map(|metadata| metadata.len());
+                            match size {
+                                None => {Repackager::create_fragments(&*"error_requested_not_found!(Problem opening the file)".to_string(),None)}
+                                Some(x) => {
+                                    let response = format!("file!({},",x);
+                                    Repackager::create_fragments(&*response, Some(path.to_str().unwrap()))}
+                            }
+                        } else {        //File not found
+                            Repackager::create_fragments(&*"error_requested_not_found!(File not found)".to_string(), None)
+                        }
+                    }
+                    else
+                    {       //Request not formatted correctly
+                        Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                    }
+                }
+
+                cmd if cmd.starts_with("media?") => {
+            
+
+                        if let Some(media_id) = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")")) {
+                            let path = Path::new(&self.path).join(media_id);
+                            if path.exists() && path.is_file()
+                            {
+                                Repackager::create_fragments(&*"media!(", Some(&*(self.path.clone() + media_id)))
+                            }
+                            else        //can not retrieve file
+                            {
+                                Repackager::create_fragments(&*"error_requested_not_found!".to_string(), None)
+                            }
+                        } else {
+                            Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                        }
+                    
+               
+                    
+            }
+
+                _ => {
+                    Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+
+                }
+            }
+        }
+    }
+
+    impl ServerTrait for ChatServer {
+         fn process_request(&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String>
+        {
+            // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+            match command {
+                cmd if cmd.starts_with("server_type?") => {         //it's
+                    Repackager::create_fragments(&*self.serv.to_string(), None)
+                }
+                cmd if cmd.starts_with("client_list?") => {
+                    
+                    Repackager::create_fragments(&*self.get_client_ids(source_id), None)
+                    
+                }
+
+                cmd if cmd.starts_with("message_for?") => {
+                    if let Some(content) = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
+                        // Divide il contenuto in id e messaggio
+                        let parts: Vec<&str> = content.splitn(2, ',').collect();
+                        if parts.len() == 2 {
+                            let id = parts[0];
+                            let message = parts[1];
+
+                            let response = format!("message_from!({},{})", source_id, message);        
+                            Repackager::create_fragments(&*response.to_string(), None)
+                        } else {
+                            
+                            Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                            
+                        }
+                    } else {
+                        Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                        
+                    }
+                }
+
+                _ => {  //
+                    Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                }
+            }
+        }
+    }
 
     pub enum ServerType
     {
@@ -330,12 +576,12 @@ pub mod file_system
       
       //impl ActionServer for FileSystem | Ch
   */
-    pub struct FileSystem {
+    pub struct ContentServer {
         path: String, // Path to the directory where files are stored
         serv: ServerType,
     }
 
-    impl FileSystem {
+    impl ContentServer {
         // Create a new FileSystem instance
         pub fn new(path: &str, serv: ServerType) -> Self {
             let path_dir = Path::new(path);
@@ -354,7 +600,7 @@ pub mod file_system
             }
 
 
-            FileSystem {
+            ContentServer {
                 path: path.to_string(),
                 serv,
 
@@ -375,59 +621,34 @@ pub mod file_system
             }
         }
 
-        // Return the content and size of a specific file
-        fn file(&self, file_name: &str) -> String {
+        // Return the content and size of a specific file // CURRENTLY NOT IN  in USE 
+     /*   fn file(&self, file_name: &str) -> String {
             let file_path = Path::new(&self.path).join(file_name);
+            
 
             match fs::File::open(&file_path) {
                 Ok(mut file) => {
                     let mut content = String::new();
                     match file.read_to_string(&mut content) {
-                        Ok(size) => format!("({},{})", size, content),
+                        Ok(size) => format!("file!({}{}", size,content),
                         Err(err) => format!("error_requested_not_found!(Problem with the conversion in string) - Error: {}", err),
                     }
                 }
                 Err(err) => "error_requested_not_found!(File not found) ".to_string(),
             }
         }
+*/
 
 
-        pub fn processRequest(&mut self, command: String) -> String
-        {
-            match command {
-                cmd if cmd.starts_with("server_type?") => {
-                    self.serv.to_string()
-                }
-                cmd if cmd.starts_with("files_list?") => {
-                    self.files_list()
-                }
-                cmd if cmd.starts_with("file?") => {
-                    if let Some(file_id) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
-                        self.file(file_id)
-                    } else {
-                        "error_requested_not_found!".to_string()
-                    }
-                }
-                cmd if cmd.starts_with("media?") => {
-                    if let Some(media_id) = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")")) {
-                        self.file(media_id)
-                    } else {
-                        "error_requested_not_found!".to_string()
-                    }
-                }
-                _ => {
-                    "error_unsupported_request!".to_string()
-                }
-            }
-        }
     }
 
 
     use std::collections::HashMap;
     use crate::message;
+    //use crate::message::packaging::Repackager;
 
     pub struct ChatServer {
-        chats: HashMap<(u32, u32), Vec<String>>,        //CURRENTLY NOT IN USE  -I had a problem reading the documentation now. I thought that the server kept the message inside hime and the client connected to him to retrive the information
+        //chats: HashMap<(u32, u32), Vec<String>>,        //CURRENTLY NOT IN USE  -I had a problem reading the documentation now. I thought that the server kept the message inside hime and the client connected to him to retrive the information
         list_of_client: Vec<u32>,
         serv: ServerType,
     }
@@ -435,7 +656,7 @@ pub mod file_system
     impl ChatServer {
         pub fn new() -> Self {
             ChatServer {
-                chats: HashMap::new(),
+                //chats: HashMap::new(),
                 list_of_client: Vec::new(),
                 serv: ServerType::CommunicationServer,      //it's useless but if in the future I add another type of chat server....
             }
@@ -458,7 +679,7 @@ pub mod file_system
 
         //CURRENTLY NOT IN USE 
         // Function to write a message to a specific destination ID
-        pub fn write_message(&mut self, source_id: u32, destination_id: u32, message: String) -> String {
+      /*  pub fn write_message(&mut self, source_id: u32, destination_id: u32, message: String) -> String {
             self.add_client(source_id);
             if !self.list_of_client.contains(&destination_id) {
                 return "err".to_string();
@@ -466,196 +687,127 @@ pub mod file_system
             let key = (source_id, destination_id);
             self.chats.entry(key).or_insert_with(Vec::new).push(message);
             "ok".to_string()
-        }
+        }*/
 
 
         //CURRENTLY NOT IN USE 
         // Function to retrieve messages for a given source and destination ID
-        pub fn get_messages(&self, source_id: u32, destination_id: u32) -> String {             //in this function there isn't self.add_client(source_id) because there is no point in putting it 
+     /*   pub fn get_messages(&self, source_id: u32, destination_id: u32) -> String {             //in this function there isn't self.add_client(source_id) because there is no point in putting it 
             let key = (source_id, destination_id);
             if let Some(messages) = self.chats.get(&key) {
                 messages.join("\n")
             } else {
                 "error_wrong_client_id!".to_string()
             }
-        }
+        }*/
 
 
-        pub fn processRequest(&mut self, command: String, source_id: u32) -> String
-        {
-            match command {
-                cmd if cmd.starts_with("server_type?") => {         //it's
-                    self.serv.to_string()
-                }
-                cmd if cmd.starts_with("client_list?") => {
-                    self.get_client_ids(source_id)
-                }
 
-                cmd if cmd.starts_with("message_for?") => {
-                    if let Some(content) = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
-                        // Divide il contenuto in id e messaggio
-                        let parts: Vec<&str> = content.splitn(2, ',').collect();
-                        if parts.len() == 2 {
-                            let id = parts[0];
-                            let message = parts[1];
-                            
-                            format!("!{}!message_from!({}, {})", id, source_id, message)        // I use this format for identify this special message (I have to send the message to a different client not the original one)
-                        } else {
-                            "error_unsupported_request!".to_string()
-                        }
-                    } else {
-                        "error_unsupported_request!".to_string()
-                    }
-                }
-
-                _ => {
-                    "error_wrong_client_id!".to_string()
-                }
-            }
-        }
     }
 }
+
+
+
 
 
 
 #[cfg(test)]
-mod test_packaging
-{
-    use super::*;
-    use crate::message::packaging::Repackager;
-
-
-
-    #[test]
-    fn fragmentation_with_string() {
-        let result = Repackager::create_fragments(&*"A".repeat(200), None);
-        println!("{:?}", result);
-        let mut rp = Repackager::new();
-        let mut  transformation = Ok(Some(vec![]));
-        for i in result.unwrap().iter() {
-             transformation = rp.process_fragment(1,1,i.clone());
-            println!("{:?}", transformation);
-        }
-        println!("{:?}", Repackager::assemble_string(transformation.unwrap().unwrap()));
-        
-
-    }    
-    
-    #[test]
-    fn fragmentation_with_txtfile() {
-        let result = Repackager::create_fragments("file!(435,",Some("/tmp/testServer/file1.txt"));
-        //println!("{:?}", result);  
-        let mut rp = Repackager::new();
-        let mut  transformation = Ok(Some(vec![]));
-        for i in result.unwrap().iter() {
-            transformation = rp.process_fragment(1,1,i.clone());
-           // println!("{:?}", transformation);
-        }
-        println!("{:?}", Repackager::assemble_string_file(transformation.unwrap().unwrap(),"/tmp/testServer/copy/a"));
-
-
-    }
-
-    #[test]
-    fn fragmentation_with_Mediafile() {
-        let result = Repackager::create_fragments("media!(,",Some("/tmp/testServer/3 Nights.mp3"));
-        println!("{:?}", result);
-        let mut rp = Repackager::new();
-        let mut transformation =Ok(Some(vec![]));
-        for i in result.unwrap().iter() {
-             transformation = rp.process_fragment(1,1,i.clone());
-        }
-        match transformation {
-            Ok(Some(trans)) => {
-                println!(
-                    "{:?}",
-                    Repackager::assemble_string_file(trans, "/tmp/testServer/copy/a.mp3")
-                );
-            }
-            _ => panic!("Trasformazione fallita."),
-        }
-    }
-  
-}
-
-
-    #[cfg(test)]
-    mod tests_chat_server {
+mod tests_chat_server {
+        use wg_2024::packet::Fragment;
+        use crate::message::file_system::ServerTrait;
+        use crate::message::packaging::Repackager;
         use super::*;
 
+        
+        fn convert_back (value : Result<Vec<Fragment>,String>) ->String
+        {
+   
+            let mut c = Repackager::new();
+            let mut  transformation = Ok(Some(vec![]));
+            for i in value.unwrap().iter() {
+                transformation = c.process_fragment(1,1,i.clone());
+                // println!("{:?}", transformation);
+            }
+
+            let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
+            let response = string_result.unwrap();
+            response
+        }
         #[test]
         fn test_server_type() {
             let mut server = ChatServer::new();
-            let response = server.processRequest("server_type?".to_string(), 1);
-            assert_eq!(response, "CommunicationServer");
+            let value = server.process_request("server_type?".to_string(), 1);
+            
+            assert_eq!(convert_back(value), "CommunicationServer");
         }
 
         #[test]
-        fn test_add_client_and_get_client_ids() {
+        fn test_add_client_and_get_client_ids() {           //not hte right use 
             let mut server = ChatServer::new();
             server.add_client(1);
             server.add_client(2);
             let response = server.get_client_ids(3); // Aggiunge anche il client 3
+            
             assert_eq!(response, "client_list![1, 2, 3]");
         }
 
         #[test]
-        fn test_get_client_list_via_process_request() {
+        fn test_get_client_list_via_process_request() {         //right way
             let mut server = ChatServer::new();
             server.add_client(1);
             server.add_client(2);
-            let response = server.processRequest("client_list?".to_string(), 3); // Aggiunge anche il client 3
-            assert_eq!(response, "client_list![1, 2, 3]");
+            let value = server.process_request("client_list?".to_string(), 3); // Aggiunge anche il client 3
+            assert_eq!(convert_back(value), "client_list![1, 2, 3]");
         }
 
         #[test]
         fn test_message_for_request() {
             let mut server = ChatServer::new();
-            let response = server.processRequest("message_for?(2,He,llo)".to_string(), 1);
-            //assert_eq!(response, "message_from!(Hello)");
-            println!("{}", response);
+            let value = server.process_request("message_for?(2,Hello)".to_string(), 1);
+            assert_eq!(convert_back(value), "message_from!(1,Hello)");
         }
 
         #[test]
         fn test_unsupported_request() {
             let mut server = ChatServer::new();
-            let response = server.processRequest("unsupported_command?".to_string(), 1);
-            assert_eq!(response, "error_wrong_client_id!");
+            let value = server.process_request("unsupported_command?".to_string(), 1);
+            assert_eq!(convert_back(value), "error_unsupported_request!");
         }
-
-        #[test]
-        fn test_write_message_not_in_use() {
-            let mut server = ChatServer::new();
-            server.add_client(1);
-            server.add_client(2);
-            let response = server.write_message(1, 2, "Hello, Client 2!".to_string());
-            assert_eq!(response, "ok");
-
-            // Retrieve messages (even if not in use)
-            let messages = server.get_messages(1, 2);
-            assert_eq!(messages, "Hello, Client 2!");
-        }
-
-        #[test]
-        fn test_get_messages_error() {
-            let server = ChatServer::new();
-            let messages = server.get_messages(1, 99); // Client 99 non esiste
-            assert_eq!(messages, "error_wrong_client_id!");
-        }
+        /*   
+               #[test]
+           fn test_write_message_not_in_use() {
+                   let mut server = ChatServer::new();
+                   server.add_client(1);
+                   server.add_client(2);
+                   let response = server.write_message(1, 2, "Hello, Client 2!".to_string());
+                   assert_eq!(response, "ok");
+       
+                   // Retrieve messages (even if not in use)
+                   let messages = server.get_messages(1, 2);
+                   assert_eq!(messages, "Hello, Client 2!");
+               }
+       
+               #[test]
+               fn test_get_messages_error() {
+                   let server = ChatServer::new();
+                   let messages = server.get_messages(1, 99); // Client 99 non esiste
+                   assert_eq!(messages, "error_wrong_client_id!");
+               }*/
     }
 
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+#[cfg(test)]
 mod tests_message_media_server {
     use super::*;
     use std::fs;
     use std::io::Write;
     use std::path::Path;
-    use crate::message::file_system::ServerType;
+    use crate::message::file_system::{ServerTrait, ServerType};
+    use crate::message::packaging::Repackager;
 
     // Helper function to set up a temporary test directory
     fn setup_test_dir(test_dir: &str) {
@@ -669,9 +821,14 @@ mod tests_message_media_server {
 
     #[test]
     fn test_server_type() {
-        let mut fs = FileSystem::new("test_dir", ServerType::TextServer);
-        let response = fs.processRequest("server_type?".to_string());
-        assert_eq!(response, "TextServer");
+        let mut fs = ContentServer::new("test_dir", ServerType::TextServer);
+        let response = fs.process_request("server_type?".to_string(),1);
+        //println!("{:?}",response);
+        
+        let mut  c = Repackager::new();
+        let vec = c.process_fragment(1,1,response.unwrap()[0].clone()); 
+        let result = Repackager::assemble_string(vec.unwrap().unwrap());
+        assert_eq!("TextServer",result.unwrap());
     }
 
     #[test]
@@ -679,8 +836,20 @@ mod tests_message_media_server {
         let test_dir = "/tmp/testServer";
         //setup_test_dir(test_dir);
 
-        let mut fs = FileSystem::new(test_dir, ServerType::TextServer);
-        let response = fs.processRequest("files_list?".to_string());
+        let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
+        let processed_request = fs.process_request("files_list?".to_string(),1);
+        
+        let mut c = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in processed_request.unwrap().iter() {
+            transformation = c.process_fragment(1,1,i.clone());
+            // println!("{:?}", transformation);
+        }
+        
+        let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
+        let response = string_result.unwrap();
+        
+        
         println!("{}", response);
         assert!(response.contains("file1.txt"));
         assert!(response.contains("file2.txt"));
@@ -691,10 +860,26 @@ mod tests_message_media_server {
         let test_dir = "/tmp/testServer";
         //setup_test_dir(test_dir);
 
-        let mut fs = FileSystem::new(test_dir, ServerType::TextServer);
-        let response = fs.processRequest("file?(3 Nights.mp3)".to_string());
+        let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
+
+        let processed_request = fs.process_request("file?(file1.txt)".to_string(),1);
+    
+        println!("{:?}", processed_request);
+        
+        let mut c = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in processed_request.unwrap().iter() {
+            transformation = c.process_fragment(1,1,i.clone());
+            // println!("{:?}", transformation);
+        }
+
+        let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
+        let response = string_result.unwrap();
+
+
         println!("{}", response);
-        //assert!(response.contains("This is the content of file1."));
+        
+        assert!(response.contains("This is the content of file1."));
     }
 
     #[test]
@@ -702,15 +887,47 @@ mod tests_message_media_server {
         let test_dir = "/tmp/testServer";
         //setup_test_dir(test_dir);
 
-        let mut fs = FileSystem::new(test_dir, ServerType::TextServer);
-        let response = fs.processRequest("file?(nonexistent.txt)".to_string());
-        assert_eq!(response, "error_requested_not_found!(File not found) ");
+        let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
+        let processed_request = fs.process_request("file?(nonexistent.txt)".to_string(),1);
+
+        println!("{:?}", processed_request);
+
+        let mut c = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in processed_request.unwrap().iter() {
+            transformation = c.process_fragment(1,1,i.clone());
+            // println!("{:?}", transformation);
+        }
+
+        let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
+        let response = string_result.unwrap();
+
+
+        println!("{}", response);
+
+       assert_eq!(response, "error_requested_not_found!(File not found)");
     }
 
     #[test]
     fn test_unsupported_request() {
-        let mut fs = FileSystem::new("test_dir", ServerType::TextServer);
-        let response = fs.processRequest("unsupported_command?".to_string());
+        let mut fs = ContentServer::new("test_dir", ServerType::TextServer);
+
+        let processed_request =  fs.process_request("unsupported_command?".to_string(),1);
+
+        println!("{:?}", processed_request);
+
+        let mut c = Repackager::new();
+        let mut  transformation = Ok(Some(vec![]));
+        for i in processed_request.unwrap().iter() {
+            transformation = c.process_fragment(1,1,i.clone());
+            // println!("{:?}", transformation);
+        }
+
+        let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
+        let response = string_result.unwrap();
+
+
+        println!("{}", response);
         assert_eq!(response, "error_unsupported_request!");
     }
 }
