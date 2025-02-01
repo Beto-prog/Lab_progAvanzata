@@ -1,7 +1,8 @@
 #![allow(warnings)]
+
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
-use std::ptr::eq;
+use crossbeam_channel::unbounded;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
 use crate::Client;
@@ -9,6 +10,7 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client {
+    /*
     // Create a new path where to save received files
     pub fn new_path(path: &str) -> String{
         let path_dir = Path::new(path);
@@ -26,7 +28,9 @@ impl Client {
             }
         }
         path.to_string()
-    }
+        }
+     */
+
     // Handle user input received and send command to a dest_id (e.g. a server)
     pub fn handle_command(&mut self, command: &str, dest_id: NodeId) -> String{
         // Check for serverType in order to send only the correct set of messages
@@ -178,11 +182,17 @@ impl Client {
             msg if msg.starts_with("file!(") && msg.ends_with(")") =>{
                 match Client::get_file_values(msg){
                     Some(res) =>{
-                        if let Err(e) = fs::write(self.path.as_mut(), res) {
-                            format!("Error while writing file: {}", e)
+                        if !res.is_empty(){
+                            let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).unwrap();
+                            let first_hop = hops[1].clone();
+                            let new_pack = Packet::new_ack(
+                                SourceRoutingHeader::with_first_hop(hops), session_id, 0);
+                            self.received_files.push(res.clone());
+                            self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                            res.to_string()
                         }
                         else{
-                            "OK".to_string()
+                            "Error: no file".to_string()
                         }
                     }
                     None => "Error while extracting file from message".to_string()
@@ -197,12 +207,10 @@ impl Client {
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops),session_id,0);
                             self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
-                        }
-                        if let Err(e) = fs::write(self.path.as_mut(), clean_data) {
-                            format!("Error while writing file: {}", e)
+                            clean_data.to_string()
                         }
                         else{
-                            "OK".to_string()
+                            "Error: no media".to_string()
                         }
                     }
                     None => "No media in the message".to_string()
@@ -214,7 +222,7 @@ impl Client {
             msg if msg == "error_unsupported_request!"=>{
                 "error_unsupported_request!".to_string()
             }
-            msg if msg.starts_with("client_list![") && msg.ends_with("]") =>{
+            msg if msg.starts_with("client_list!([") && msg.ends_with("])") =>{
                 match Client::get_ids(msg){
                     Some(val) =>{
                         for e in val{
@@ -268,7 +276,7 @@ impl Client {
 
     }
     pub fn get_ids(msg: String) -> Option<Vec<NodeId>>{
-        if let Some(raw_data) = msg.strip_prefix("client_list![").and_then(|s|s.strip_suffix("]")){
+        if let Some(raw_data) = msg.strip_prefix("client_list!([").and_then(|s|s.strip_suffix("])")){
             if !raw_data.is_empty(){
                 Some(raw_data.split(",").filter_map(|s|s.trim().parse::<NodeId>().ok()).collect())
             }
@@ -313,8 +321,8 @@ mod test{
 // Test of helper functions
 #[test]
 fn test_get_ids(){
-    let valid_command = "client_list![1,2,3,4]".to_string();
-    let invalid_command = "client_list![]".to_string();
+    let valid_command = "client_list!([1,2,3,4])".to_string();
+    let invalid_command = "client_list!([])".to_string();
     assert!([1,2,3,4].to_vec().eq(&Client::get_ids(valid_command).unwrap()));
     assert!(Client::get_ids(invalid_command).is_none());
 }
@@ -333,4 +341,46 @@ fn test_get_file_vec(){
     assert!(&Client::get_file_vec(invalid_command).is_none());
 }
 // Test of returned values
+#[test]
+fn test_handle_commands(){
+    // Initialize dummy client
+    let (snd,rcv) = unbounded::<Packet>();
+    let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+    cl.sender_channels.insert(2,snd);
+    cl.network.insert(1,vec![2]);
+    cl.other_client_ids.push(2);
+    // Tests
+    let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
+    let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
+    assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
+    assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
+
+    let file_txt = fs::read("src/test/file1").unwrap();
+    let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
+    let mut msg= String::from("file!(6,");
+    msg.push_str(&file_txt2);
+    msg.push_str(")");
+    assert_eq!(cl.handle_msg(msg,3,2),file_txt2);
+
+    let test_msg3 = "file!(6,file.txt)".to_string();
+    let test_msg4 = "media!(file.mp3)".to_string();
+    //assert_eq!(cl.handle_msg(test_msg4,3,2),"OK"); // TODO solve problems with w permission. Consider to eliminate the path and save received messages in a vector
+
+    let file_media = fs::read("src/test/testMedia.mp3").unwrap();
+    let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
+    let mut msg= String::from("media!(");
+    msg.push_str(&file_media2);
+    msg.push_str(")");
+    assert_eq!(cl.handle_msg(msg,3,2),file_media2);
+
+    let test_msg5 = "client_list!([1,2,3,4])".to_string();
+    assert_eq!(cl.handle_msg(test_msg5,3,2),"OK");
+
+    let test_msg7 = "test_error".to_string();
+    assert_eq!(cl.handle_msg(test_msg7,3,2),"Error");
+
+    let test_msg6 = "message_from!(1,file.txt)".to_string();
+    //assert_eq!(cl.handle_msg(test_msg6,3,2),"OK"); //TODO error while calculating hops need to check
+
+}
 
