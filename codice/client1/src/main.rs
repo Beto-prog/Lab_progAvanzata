@@ -1,11 +1,10 @@
 #![allow(warnings)]
 mod fragment_reassembler;
 mod communication;
-use communication::*;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::Path;
-use crossbeam_channel::{select, select_biased, Receiver, Sender};
+use std::io;
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
@@ -21,14 +20,15 @@ pub struct Client {
     receiver_channel: Receiver<Packet>,
     flood_ids: Vec<(u64,NodeId)>,
     network: Graph,
-    fragment_reassembler: FragmentReassembler,
-    path: String,
-    other_client_ids: Vec<NodeId>, // TODO use it in send req part
-    files_names: Vec<String>,
-    server: (NodeId,String)
+    fragment_reassembler: FragmentReassembler, // Used to handle fragments
+    path: String,   // Path where to save files received
+    other_client_ids: Vec<NodeId>, // Storage other client IDs
+    files_names: Vec<String>,   // Storage of file names
+    server: (NodeId,String) // NodeID of the server and server type
 }
 
 impl Client {
+    // Create a new Client with parameters from Network Initializer
     pub fn new(node_id: NodeId,
                neighbors: HashSet<NodeId>,
                sender_channels:HashMap<NodeId,Sender<Packet>>,
@@ -45,7 +45,7 @@ impl Client {
             path: Self::new_path("/src/files"),
             other_client_ids: vec![],
             files_names: vec![],
-            server: (0,String::new())
+            server: (255,String::new()) // Initialized to a dummy value
         }
     }
     // Network discovery
@@ -66,7 +66,7 @@ impl Client {
         if self.neighbors.iter().count() == 1{
             self.sender_channels.get(&previous).expect("Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("Error while sending message");
         }
-        //More than one neighbor
+        // More than one neighbor
         else{
             for &neighbor in &self.neighbors {
                 if neighbor != previous{
@@ -122,7 +122,6 @@ impl Client {
             _=>{panic!("Wrong packet type received")}
         }
     }
-
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
         match packet.pack_type{
@@ -137,37 +136,6 @@ impl Client {
             _ => {panic!("Wrong packet type received")}
         }
     }
-    // Handle received packets of type Ack
-    /*
-    pub fn handle_ack(&mut self,packet: Packet){
-        //take sender of the Ack and remove it from packets field of Client
-        //let sender_id:NodeId = packet.routing_header.hops[packet.routing_header.hops.len()-1].clone();
-        self.sent_packets.remove(&(packet.session_id)).expect("Error: sender not found");
-
-    }
-    // Handle received packets of type Nack. Simply sends again the message to the dest_id
-    pub fn handle_nack(&mut self, packet: Packet){
-        match packet.pack_type{
-            PacketType::Nack(nack) =>{
-                match nack.nack_type {
-                    _ => {
-                        self.discover_network();
-                        let original_packet = self.sent_packets.get(&packet.session_id).expect("Failed to retrieve original packet");
-                        let original_dest = original_packet.routing_header.hops[original_packet.routing_header.hops.len()-1];
-                        let new_packet = Packet{
-                            routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,original_dest).unwrap()),
-                            session_id: original_packet.session_id.clone(),
-                            pack_type: original_packet.pack_type.clone(),
-                        };
-                        let neighbor = new_packet.routing_header.hops[0];
-                        self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(new_packet).expect("Error while sending packet");
-                    }
-                }
-            }
-            _ =>{panic!("Wrong packet type received")}
-        }
-    }
-     */
     // Handle received packets of type MsgFragment. Fragments put together and reassembled
     pub fn handle_msg_fragment(&mut self, packet: Packet){
         match packet.pack_type{
@@ -178,15 +146,16 @@ impl Client {
                         match FragmentReassembler::assemble_string_file(message,self.path.as_str()){ //TODO check the output path
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-                                // A message is reconstructed: send back an Ack and handle command
 
+                                // A message is reconstructed: create and send back an Ack
                                 let mut new_hops = packet.routing_header.hops.clone();
-                                let first_hop = new_hops[1].clone();
+                                let first_hop: NodeId = new_hops[1].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1].clone();
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
                                 self.sender_channels.get(&new_first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                                //Handle the command in the reconstructed message
                                 self.handle_msg(msg,packet.session_id,first_hop); // TODO
                             },
                             // FragmentReassembler encountered an error
@@ -206,6 +175,7 @@ impl Client {
     pub fn generate_session_id() -> u64{
         rand::random()
     }
+
     // Update the knowledge of the network based on flood responses
     pub fn update_graph(&mut self, response: FloodResponse){ //TODO: check if value is effectively updated, create return value
         let path = &response.path_trace;
@@ -267,25 +237,31 @@ impl Client {
                 self.handle_msg_fragment(packet);
             }
              _ => ()
-            /*
-            PacketType::Nack(_) =>{
-                self.handle_nack(packet);
-            }
-            PacketType::Ack(_) =>{
-                self.handle_ack(packet);
-            }
-             */
         }
     }
     pub fn run(&mut self) {
+        //Initialize the network field
+        self.discover_network();
+        let mut input_buffer = String::new();
         // Call FileSystem::new() and Client::new() from NetworkInitializer then client.run()
         loop {
+            //Simple implementation of user input
+            io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
+            // Simple way to shut down client in case of some issue (hope it works)
+            if input_buffer.eq("OFF"){
+                break;
+            }
+            match self.server.0{
+                255 =>{println!("Not linked to a server")}
+                _=>{
+                    println!("{}",self.handle_command(&input_buffer.clone(),self.server.0));
+                }
+            }
+            //handled packets in the meantime
             match self.receiver_channel.recv(){
                 Ok(packet) => self.handle_packet(packet),
                 Err(e) => println!("Error: {e}")
             }
-            //TODO link the user input part
-
         }
     }
 }
