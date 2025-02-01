@@ -120,10 +120,10 @@ impl FragmentReassembler {
         }
     }
 }
+//Some tests about different files fragmented and reconstructed
 #[cfg(test)]
 mod test{
     use super::*;
-    use crate::FragmentReassembler;
 }
 
 #[test]
