@@ -8,7 +8,7 @@ use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
-//TODO user commands
+
 
 //Client struct and functions/methods related. Client has some additional fields for handling more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
@@ -21,7 +21,7 @@ pub struct Client {
     flood_ids: Vec<(u64,NodeId)>,
     network: Graph,
     fragment_reassembler: FragmentReassembler, // Used to handle fragments
-    path: String,   // Path where to save files received
+    received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
     server: (NodeId,String) // NodeID of the server and server type
@@ -42,7 +42,7 @@ impl Client {
             flood_ids: vec![],
             network: Graph::new(),
             fragment_reassembler: FragmentReassembler::new(),
-            path: Self::new_path("/src/files"),
+            received_files: vec![],
             other_client_ids: vec![],
             files_names: vec![],
             server: (255,String::new()) // Initialized to a dummy value
@@ -143,7 +143,7 @@ impl Client {
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Error while processing fragment"){
                     Some(message) =>{
-                        match FragmentReassembler::assemble_string_file(message,self.path.as_str()){ //TODO check the output path
+                        match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
 
@@ -156,7 +156,7 @@ impl Client {
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
                                 self.sender_channels.get(&new_first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
                                 //Handle the command in the reconstructed message
-                                self.handle_msg(msg,packet.session_id,first_hop); // TODO
+                                self.handle_msg(msg,packet.session_id,first_hop); 
                             },
                             // FragmentReassembler encountered an error
                             Err(e) => println!("{e}")
