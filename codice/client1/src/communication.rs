@@ -52,7 +52,7 @@ impl Client {
                     }
                     cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
                         if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
-                            if self.files_names.contains(&name.parse::<String>().ok().unwrap()){ //TODO fix
+                            if self.files_names.contains(&name.parse::<String>().ok().unwrap()){
                                 self.send_message(dest_id,cmd);
                                 "OK".to_string()
                             }
@@ -169,9 +169,7 @@ impl Client {
                             self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
                             res.to_string()
                         }
-                        else{
-                            "Error: no file".to_string()
-                        }
+                        else{ "Error: no file".to_string() }
                     }
                     None => "Error while extracting file from message".to_string()
                 }
@@ -187,9 +185,7 @@ impl Client {
                             self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
                             clean_data.to_string()
                         }
-                        else{
-                            "Error: no media".to_string()
-                        }
+                        else{ "Error: no media".to_string() }
                     }
                     None => "No media in the message".to_string()
                 }
@@ -245,35 +241,25 @@ impl Client {
                 let values = raw_data.split_once(",").expect("Failed to get values");
                 Some((values.0.parse::<NodeId>().unwrap(), values.1))
             }
-            else{
-                None
-            }
+            else{ None }
         }
         else if cmd.starts_with("message_from!(") && cmd.ends_with(")"){
             if let Some(raw_data) = cmd.strip_prefix("message_from!(").and_then(|s|s.strip_suffix(")")) {
                 let values = raw_data.split_once(",").expect("Failed to get values");
                 Some((values.0.parse::<NodeId>().unwrap(), values.1))
             }
-            else{
-                None
-            }
+            else{ None }
         }
-        else{
-            None
-        }
+        else{ None }
     }
     pub fn get_ids(msg: String) -> Option<Vec<NodeId>>{
         if let Some(raw_data) = msg.strip_prefix("client_list!([").and_then(|s|s.strip_suffix("])")){
             if !raw_data.is_empty(){
                 Some(raw_data.split(",").filter_map(|s|s.trim().parse::<NodeId>().ok()).collect())
             }
-            else{
-                None
-            }
+            else{ None }
         }
-        else{
-           None
-        }
+        else{ None }
     }
     pub fn get_file_values(cmd: String) -> Option<String>{
         if let Some(raw_data) = cmd.strip_prefix("file!(").and_then(|s| s.strip_suffix(")")){
@@ -281,26 +267,19 @@ impl Client {
             if !values.1.is_empty(){
                 Some(values.1.to_string())
             }
-            else{
-                None
-            }
-        } else {
-            None
-        }
+            else{ None }
+        } else { None }
     }
     pub fn get_file_vec(cmd: String) -> Option<Vec<String>>{
         if let Some(raw_data) = cmd.strip_prefix("files_list!([").and_then(|s| s.strip_suffix("])")){
             if !raw_data.is_empty(){
                 Some(raw_data.split(",").filter_map(|s|s.trim().parse::<String>().ok()).collect())
             }
-            else{
-                None
-            }
-        } else {
-            None
-        }
+            else{ None }
+        } else { None }
     }
 }
+// Tests of helper functions and received messages
 #[cfg(test)]
 mod test{
     use super::*;
@@ -325,7 +304,6 @@ mod test{
         assert!(["file1".to_string(),"file2".to_string(),"file3".to_string()].to_vec().eq(&Client::get_file_vec(valid_command).unwrap()));
         assert!(&Client::get_file_vec(invalid_command).is_none());
     }
-    // Test of returned values
     #[test]
     fn test_handle_msg_received(){
         // Initialize dummy client
@@ -335,7 +313,6 @@ mod test{
         cl.network.insert(1,vec![2]);
         cl.other_client_ids.push(2);
 
-        // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
         assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
@@ -376,11 +353,6 @@ mod test{
         let test_msg8 = "test_error".to_string();
         assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
     }
-    /*
-    #[test]
-    fn test_handle_user_commands(){}
-    
-     */ //TODO woip
 }
 
 
