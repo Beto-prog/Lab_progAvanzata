@@ -122,42 +122,43 @@ impl FragmentReassembler {
 #[cfg(test)]
 mod test{
     use super::*;
+    #[test]
+    fn test_fragment_string_assembled_correctly(){
+        let (_,rcv) = unbounded::<Packet>();
+        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut fr = FragmentReassembler::new();
+        let test_data = &"A".repeat(200);
+        let test_result = FragmentReassembler::generate_fragments(test_data);
+        let mut fragm_vec = Ok(Some(vec![]));
+        for e in test_result.unwrap().iter(){
+            fragm_vec = fr.add_fragment(1,1,e.clone());
+        }
+        let res = FragmentReassembler::assemble_string_file(fragm_vec.unwrap().unwrap(),&mut client_test.received_files);
+        assert!(test_data.eq(&res.unwrap()));
+    }
+    #[test]
+    fn test_fragment_txt_assembled_correctly(){
+        let (_,rcv) = unbounded::<Packet>();
+        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let test_text_content = fs::read("src/test/file1");
+        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
+        assert_eq!(test_result.unwrap(),"test 123456 advanced_programming");
+        //need to check where the file is written lol
+    }
+    #[test]
+    fn test_fragment_mediaFile_assembled_correctly(){
+        let (_,rcv) = unbounded::<Packet>();
+        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let test_text_content = fs::read("src/test/testMedia.mp3");
+        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
+        match test_result{
+            Ok(_) => (),
+            Err(_) => panic!("Error")
+        }
+    }
 }
 
-#[test]
-fn test_fragment_string_assembled_correctly(){
-    let (_,rcv) = unbounded::<Packet>();
-    let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
-    let mut fr = FragmentReassembler::new();
-    let test_data = &"A".repeat(200);
-    let test_result = FragmentReassembler::generate_fragments(test_data);
-    let mut fragm_vec = Ok(Some(vec![]));
-    for e in test_result.unwrap().iter(){
-        fragm_vec = fr.add_fragment(1,1,e.clone());
-    }
-    let res = FragmentReassembler::assemble_string_file(fragm_vec.unwrap().unwrap(),&mut client_test.received_files);
-    assert!(test_data.eq(&res.unwrap()));
-}
-#[test]
-fn test_fragment_txt_assembled_correctly(){
-    let (_,rcv) = unbounded::<Packet>();
-    let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
-    let test_text_content = fs::read("src/test/file1");
-    let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
-    assert_eq!(test_result.unwrap(),"test 123456 advanced_programming");
-    //need to check where the file is written lol
-}
-#[test]
-fn test_fragment_mediaFile_assembled_correctly(){
-    let (_,rcv) = unbounded::<Packet>();
-    let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
-    let test_text_content = fs::read("src/test/testMedia.mp3");
-    let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
-    match test_result{
-        Ok(_) => (),
-        Err(_) => panic!("Error")
-    }
-}
+
 
 
 
