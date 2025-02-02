@@ -1,10 +1,33 @@
+/*
+INFO
+
+This is the implementation of a Client made by Lorenzo Cortese for the AP project of academic year 2024/2025 held by professor Marco Patrignani.
+
+CONTENTS
+
+There are three files and a folder in total in the /src folder : 'main.rs', 'communication.rs', 'fragment_reassembler.rs', 'tests'.
+
+Their contents are:
+
+* 'main.rs' : Client struct with the necessary methods and functions
+ to handle the user input and the incoming packets and also some helpers functions.
+
+* 'communication.rs' : methods and functions related to the aforementioned file used to handle both user commands and messages received at a lower level
+and, in fact, do the effective communication part.
+
+* 'fragment_reassembler.rs' : FragmentReassembler struct with related methods used to store,reconstruct and assemble the MsgFragment packet types.
+
+* 'tests' folder: couple of files used to test the FragmentReassembler functionalities.
+
+All the aforementioned files have some tests within to ensure their most important functions behave correctly.
+*/
 #![allow(warnings)]
 mod fragment_reassembler;
 mod communication;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
@@ -275,7 +298,7 @@ impl Client {
 }
 fn main() {}
 
-// Tests bfs and network update based on FloodResponses
+// Tests for bfs and network update based on FloodResponses
 #[cfg(test)]
 mod test{
     use super::*;
@@ -322,7 +345,7 @@ mod test{
         assert!(test_res.is_none());
     }
     #[test]
-    fn test_udpdate_graph(){
+    fn test_update_graph(){
         let (snd, rcv) = unbounded::<Packet>();
         let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
         cl.sender_channels.insert(2, snd);
