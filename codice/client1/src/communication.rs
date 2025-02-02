@@ -376,9 +376,11 @@ mod test{
         let test_msg8 = "test_error".to_string();
         assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
     }
+    /*
     #[test]
     fn test_handle_user_commands(){}
+    
+     */ //TODO woip
 }
-// Test of helper functions
 
 

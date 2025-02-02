@@ -1,12 +1,10 @@
 #![allow(warnings)]
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
 use crossbeam_channel::{unbounded};
 use wg_2024::network::NodeId;
 use wg_2024::packet::{Fragment, Packet};
 use crate::Client;
-// Struct and functions to handle fragment reassembly and collection
 
 // Struct FragmentReassembler to manage reassembly of fragments
 pub struct FragmentReassembler {
@@ -82,7 +80,6 @@ impl FragmentReassembler {
                 data,
             });
         }
-
         Ok(fragments)
     }
     // Assemble the Vec and save the result
