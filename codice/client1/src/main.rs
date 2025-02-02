@@ -4,7 +4,7 @@ mod communication;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
-use crossbeam_channel::{select_biased, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
@@ -146,7 +146,6 @@ impl Client {
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-
                                 // A message is reconstructed: create and send back an Ack
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let first_hop: NodeId = new_hops[1].clone();
@@ -177,22 +176,32 @@ impl Client {
     }
 
     // Update the knowledge of the network based on flood responses
-    pub fn update_graph(&mut self, response: FloodResponse){ //TODO: check if value is effectively updated, create return value
+    pub fn update_graph(&mut self, response: FloodResponse){
         let path = &response.path_trace;
 
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
-                // Add node1 -> node2
-                self.network.entry(*node1).or_insert_with(Vec::new).push(*node2);
 
+                self.network.entry(*node1).or_insert_with(Vec::new);
+                // Add node1 -> node2
+                if let Some(neighbors) = self.network.get_mut(&node1){
+                    if !neighbors.contains(&node2){
+                        neighbors.push(*node2);
+                    }
+                }
+                self.network.entry(*node2).or_insert_with(Vec::new);
                 // Add node2 -> node1 (bidirectional edge)
-                self.network.entry(*node2).or_insert_with(Vec::new).push(*node1);
+                if let Some(neighbors) = self.network.get_mut(&node2){
+                    if !neighbors.contains(&node1){
+                        self.network.entry(*node2).or_insert_with(Vec::new).push(*node1);
+                    }
+                }
             }
         }
     }
-    // Calculates shortest path between two nodes. Complexity: O(V+E)
-    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> { //TODO handle return value
+    // Calculates shortest path between two nodes
+    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
         let mut queue = VecDeque::new();
         let mut visited = HashMap::new();
         let mut parent = HashMap::new();
@@ -202,7 +211,6 @@ impl Client {
 
         while let Some(current) = queue.pop_front() {
             if current == end {
-                // Reconstruct of the path
                 let mut path = vec![end];
                 let mut node = end;
                 while let Some(&p) = parent.get(&node) {
@@ -236,7 +244,7 @@ impl Client {
             PacketType::MsgFragment(_) =>{
                 self.handle_msg_fragment(packet);
             }
-             _ => ()
+            _ => ()
         }
     }
     pub fn run(&mut self) {
@@ -266,3 +274,75 @@ impl Client {
     }
 }
 fn main() {}
+
+// Tests bfs
+#[cfg(test)]
+mod test{
+    use super::*;
+    use Client;
+    #[test]
+    fn test_bfs_shortest_path() {
+        let (snd, rcv) = unbounded::<Packet>();
+        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        cl.sender_channels.insert(19, snd);
+        cl.network.insert(1, vec![2, 3]);
+        cl.other_client_ids.push(2);
+        cl.network.insert(2, vec![1, 4]);
+        cl.network.insert(3, vec![1, 4]);
+        cl.network.insert(4, vec![2, 3, 6]);
+        cl.network.insert(5, vec![1, 4]);
+        cl.network.insert(6, vec![5, 8, 10]);
+        cl.network.insert(7, vec![2, 3]);
+        cl.network.insert(8, vec![7, 9]);
+        cl.network.insert(9, vec![2, 3]);
+        cl.network.insert(10, vec![3 ,6, 14]);
+        cl.network.insert(14, vec![10]);
+        let test_res1 = Client::bfs_compute_path(&cl.network, 1, 9).unwrap();
+        assert_eq!(test_res1, vec![1, 2, 4, 6, 8, 9]);
+
+        let test_res2 = Client::bfs_compute_path(&cl.network, 1, 14).unwrap();
+        assert_eq!(test_res2, vec![1, 2, 4, 6, 10, 14]);
+    }
+    #[test]
+    fn test_bfs_no_shortest_path() {
+        let (snd, rcv) = unbounded::<Packet>();
+        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        cl.sender_channels.insert(2, snd);
+        cl.network.insert(1, vec![2, 3]);
+        cl.other_client_ids.push(2);
+        cl.network.insert(2, vec![1, 4]);
+        cl.network.insert(3, vec![1, 4]);
+        cl.network.insert(4, vec![2, 3]);
+        cl.network.insert(5, vec![1, 4]);
+        cl.network.insert(6, vec![5, 8]);
+        cl.network.insert(7, vec![2, 3]);
+        cl.network.insert(8, vec![7, 9]);
+        cl.network.insert(9, vec![2, 3]);
+        let test_res = Client::bfs_compute_path(&cl.network, 1, 9);
+        assert!(test_res.is_none());
+    }
+    #[test]
+    fn test_udpdate_graph(){
+        let (snd, rcv) = unbounded::<Packet>();
+        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        cl.sender_channels.insert(2, snd);
+        cl.network.insert(1, vec![2]);
+        let mut f_req = FloodRequest::new(1234, 1);
+        f_req.path_trace.push((2,NodeType::Drone));
+        f_req.path_trace.push((3,NodeType::Drone));
+        f_req.path_trace.push((4,NodeType::Drone));
+        f_req.path_trace.push((5,NodeType::Drone));
+        f_req.path_trace.push((6,NodeType::Server));
+
+        let resp = cl.create_flood_response(1234,f_req);
+        match resp.pack_type{
+            PacketType::FloodResponse(fr)=>{
+                cl.update_graph(fr);
+            }
+            _=> ()
+        }
+        let test_res = Client::bfs_compute_path(&cl.network, 1, 6).unwrap();
+        assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
+    }
+}
+
