@@ -42,7 +42,6 @@ impl Client {
                     }
                     _=> "Not a valid communication command".to_string()
                 }
-
             }
             // In the other cases more messages can be sent
             _=>{
@@ -93,7 +92,7 @@ impl Client {
         }
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
-    pub fn send_message(&mut self, dest_id: NodeId, data: &str) { //TODO check for high level message sent
+    pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         for fragment in fragments {
@@ -330,7 +329,7 @@ fn test_get_file_vec(){
 }
 // Test of returned values
 #[test]
-fn test_handle_commands(){
+fn test_handle_msg_received(){
     // Initialize dummy client
     let (snd,rcv) = unbounded::<Packet>();
     let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
@@ -379,7 +378,9 @@ fn test_handle_commands(){
 
     let test_msg8 = "test_error".to_string();
     assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
-
+}
+#[test]
+fn test_handle_user_commads(){
 
 }
 
