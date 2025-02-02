@@ -1,8 +1,6 @@
 use crossbeam_channel::unbounded;
 use serde::Deserialize;
-use simulation_controller::node_stats::ClientStats;
 use simulation_controller::node_stats::DroneStats;
-use simulation_controller::node_stats::ServerStats;
 use simulation_controller::SimulationController;
 use simulation_controller::SimulationControllerUI;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -200,8 +198,6 @@ impl NetworkInitializer {
         let mut drone_command_receivers = HashMap::new();
 
         let mut drone_stats = HashMap::new();
-        let mut client_stats = HashMap::new();
-        let mut server_stats = HashMap::new();
 
         //let mut client_senders = HashMap::new();
         //let mut server_senders = HashMap::new();
@@ -266,24 +262,11 @@ impl NetworkInitializer {
 
         // Initialize clients
         for client_config in &config.client {
-            client_stats.insert(
-                client_config.id,
-                ClientStats::new(HashSet::from_iter(
-                    client_config.connected_drone_ids.clone(),
-                )),
-            );
-
             std::thread::spawn(move || {});
         }
 
         // Initialize servers
         for server_config in &config.server {
-            server_stats.insert(
-                server_config.id,
-                ServerStats::new(HashSet::from_iter(
-                    server_config.connected_drone_ids.clone(),
-                )),
-            );
             std::thread::spawn(move || {
                 // TODO: Implement server logic
             });
@@ -294,8 +277,8 @@ impl NetworkInitializer {
         let network_topology = Self::get_network_topology(&config);
 
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
-        let client_stats_arc = Arc::new(Mutex::new(client_stats));
-        let server_stats_arc = Arc::new(Mutex::new(server_stats));
+
+        let (ui_command_sender, ui_command_receiver) = unbounded();
 
         // Spawn simulation controller thread
         let mut simulation_controller = SimulationController::new(
@@ -309,9 +292,7 @@ impl NetworkInitializer {
             config.server.iter().map(|c| c.id).collect(),
             next_drone_impl_index as u8,
             drone_stats_arc.clone(),
-            client_stats_arc.clone(),
-            server_stats_arc.clone(),
-            //context.unwrap(),
+            ui_command_receiver,
         );
 
         thread::spawn(move || simulation_controller.run());
@@ -328,8 +309,7 @@ impl NetworkInitializer {
                 let simulation_controller_ui = Box::new(SimulationControllerUI::new(
                     cc,
                     drone_stats_arc.clone(),
-                    client_stats_arc.clone(),
-                    server_stats_arc.clone(),
+                    ui_command_sender,
                 ));
                 Ok(simulation_controller_ui)
             }),

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use wg_2024::network::NodeId;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct DroneStats {
     pub neigbours: HashSet<NodeId>,
     pub packets_forwarded: u32,
@@ -25,42 +26,6 @@ impl DroneStats {
             nacks_forwarded: 0,
             crashed: false,
             pdr,
-        }
-    }
-}
-
-pub struct ClientStats {
-    pub neigbours: HashSet<NodeId>,
-    packets_sent: u32,
-    packets_received: u32,
-    acks_sent: u32,
-}
-
-impl ClientStats {
-    pub fn new(neigbours: HashSet<NodeId>) -> Self {
-        Self {
-            neigbours,
-            packets_sent: 0,
-            packets_received: 0,
-            acks_sent: 0,
-        }
-    }
-}
-
-pub struct ServerStats {
-    neigbours: HashSet<NodeId>,
-    packets_sent: u32,
-    packets_received: u32,
-    acks_sent: u32,
-}
-
-impl ServerStats {
-    pub fn new(neigbours: HashSet<NodeId>) -> Self {
-        Self {
-            neigbours,
-            packets_sent: 0,
-            packets_received: 0,
-            acks_sent: 0,
         }
     }
 }

@@ -1,8 +1,9 @@
 use crate::get_drone_impl;
-use crate::node_stats::ClientStats;
+
 use crate::node_stats::DroneStats;
-use crate::node_stats::ServerStats;
-use crossbeam_channel::{Receiver, Sender};
+use crate::ui_commands::UICommand;
+
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -36,8 +37,8 @@ pub struct SimulationController {
     next_drone_impl_index: u8,
 
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
-    client_stats: Arc<Mutex<HashMap<NodeId, ClientStats>>>,
-    server_stats: Arc<Mutex<HashMap<NodeId, ServerStats>>>,
+
+    ui_command_receiver: Receiver<UICommand>,
 }
 
 impl SimulationController {
@@ -53,8 +54,8 @@ impl SimulationController {
         server_nodes: Vec<NodeId>,
         next_drone_impl_index: u8,
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
-        client_stats: Arc<Mutex<HashMap<NodeId, ClientStats>>>,
-        server_stats: Arc<Mutex<HashMap<NodeId, ServerStats>>>,
+
+        ui_command_receiver: Receiver<UICommand>,
         //ui_context: Context,
     ) -> Self {
         let mut node_types = HashMap::new();
@@ -80,87 +81,89 @@ impl SimulationController {
             node_types,
             next_drone_impl_index,
             drone_stats,
-            client_stats,
-            server_stats,
-            //ui_context,
+            ui_command_receiver,
         }
     }
 
     /// Runs the simulation controller
     pub fn run(&mut self) {
-        /*let mut sel = Select::new();
-        let mut keys = Vec::new(); // Track the order of registration.
+        loop {
+            select_biased! {
+                recv(self.event_receiver) -> event => {
+                   if let Ok (event) = event {
+                        self.handle_event(event);
+                }
+                }
+                recv(self.ui_command_receiver) -> ui_command => {
+                    if let Ok (ui_command) = ui_command {
 
-        // Register all receivers and track their keys in registration order.
-        for (key, receiver) in &self.drone_event_receivers {
-            sel.recv(receiver); // No need to store the token.
-            keys.push(*key); // Store the key in the registration order.
+                    self.handle_ui_command(ui_command);
+                    }
+                }
+            }
         }
+    }
 
-        let selected_op = sel.select();
-        let selected_index = selected_op.index(); // Get the index of the selected operation.
-
-        // Retrieve the key using the index.
-        let selected_key = keys[selected_index];
-        let receiver = self.drone_event_receivers.get(&selected_key).unwrap(); */
-
-        // Receive the message.
-        if let Ok(event) = self.event_receiver.recv() {
-            self.handle_event(0, event);
+    fn handle_ui_command(&mut self, ui_command: UICommand) {
+        match ui_command {
+            UICommand::SetPDR(node_id, pdr) => {
+                self.set_packet_drop_rate(node_id, pdr);
+            }
+            UICommand::CrashDrone(node_id) => {
+                self.crash_drone(node_id);
+            }
         }
     }
 
     /// Handles events received from drones
-    fn handle_event(&mut self, drone_id: NodeId, event: DroneEvent) {
+    fn handle_event(&mut self, event: DroneEvent) {
         match event {
             DroneEvent::PacketSent(packet) => {
-                self.drone_stats
-                    .lock()
-                    .unwrap()
-                    .get_mut(&drone_id)
-                    .unwrap()
-                    .packets_forwarded += 1;
-                match packet.pack_type {
-                    PacketType::MsgFragment(_) => {}
-                    PacketType::Ack(_) => {
-                        self.drone_stats
-                            .lock()
-                            .unwrap()
-                            .get_mut(&drone_id)
-                            .unwrap()
-                            .acks_forwarded += 1;
-                    }
-                    PacketType::Nack(_) => {
-                        self.drone_stats
-                            .lock()
-                            .unwrap()
-                            .get_mut(&drone_id)
-                            .unwrap()
-                            .nacks_forwarded += 1;
-                    }
-                    PacketType::FloodResponse(_) => {
-                        self.drone_stats
-                            .lock()
-                            .unwrap()
-                            .get_mut(&drone_id)
-                            .unwrap()
-                            .flood_responses_forwarded += 1;
-                    }
-                    PacketType::FloodRequest(_) => {
-                        self.drone_stats
-                            .lock()
-                            .unwrap()
-                            .get_mut(&drone_id)
-                            .unwrap()
-                            .flood_requests_forwarded += 1;
+                let node_id = packet.routing_header.previous_hop().unwrap();
+                if *self.node_types.get(&node_id).unwrap() == NodeType::Drone {
+                    match packet.pack_type {
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {
+                            self.drone_stats
+                                .lock()
+                                .unwrap()
+                                .get_mut(&node_id)
+                                .unwrap()
+                                .acks_forwarded += 1;
+                        }
+                        PacketType::Nack(_) => {
+                            self.drone_stats
+                                .lock()
+                                .unwrap()
+                                .get_mut(&node_id)
+                                .unwrap()
+                                .nacks_forwarded += 1;
+                        }
+                        PacketType::FloodResponse(_) => {
+                            self.drone_stats
+                                .lock()
+                                .unwrap()
+                                .get_mut(&node_id)
+                                .unwrap()
+                                .flood_responses_forwarded += 1;
+                        }
+                        PacketType::FloodRequest(_) => {
+                            self.drone_stats
+                                .lock()
+                                .unwrap()
+                                .get_mut(&node_id)
+                                .unwrap()
+                                .flood_requests_forwarded += 1;
+                        }
                     }
                 }
             }
-            DroneEvent::PacketDropped(_) => {
+            DroneEvent::PacketDropped(packet) => {
+                let node_id = packet.routing_header.previous_hop().unwrap();
                 self.drone_stats
                     .lock()
                     .unwrap()
-                    .get_mut(&drone_id)
+                    .get_mut(&node_id)
                     .unwrap()
                     .packets_dropped += 1;
             }
@@ -180,12 +183,14 @@ impl SimulationController {
     }
 
     /// Sends a command to a specific drone
-    pub fn send_command(&self, drone_id: NodeId, command: DroneCommand) {
+    pub fn send_command(&self, drone_id: NodeId, command: DroneCommand) -> bool {
         if self.is_command_allowed(drone_id, &command) {
             if let Some(sender) = self.node_command_senders.get(&drone_id) {
                 sender.send(command).unwrap();
+                return true;
             }
         }
+        false
     }
 
     /// Adds a new drone to the network
@@ -270,14 +275,19 @@ impl SimulationController {
             .get_mut(&drone_id)
             .unwrap()
             .pdr = pdr;
-        println!("Drone {} PDR: {}", drone_id, pdr);
-        //self.ui_context.request_repaint();
     }
 
     /// Crashes a drone
     pub fn crash_drone(&mut self, drone_id: NodeId) {
-        self.send_command(drone_id, DroneCommand::Crash);
-        self.remove_drone(drone_id);
+        if self.send_command(drone_id, DroneCommand::Crash) {
+            self.remove_drone(drone_id);
+            self.drone_stats
+                .lock()
+                .unwrap()
+                .get_mut(&drone_id)
+                .unwrap()
+                .crashed = true;
+        }
     }
 
     /// Adds a connection between two nodes
@@ -454,6 +464,8 @@ fn initialize_mock_network() -> SimulationController {
 
     let (event_sender, event_receiver) = unbounded();
 
+    let (ui_command_sender, ui_command_receiver) = unbounded();
+
     let mut network_topology = HashMap::new();
     let mut node_types = HashMap::new();
 
@@ -531,8 +543,7 @@ fn initialize_mock_network() -> SimulationController {
         vec![6],
         0,
         Arc::new(Mutex::new(drone_stats)),
-        Arc::new(Mutex::new(HashMap::new())),
-        Arc::new(Mutex::new(HashMap::new())),
+        ui_command_receiver,
     )
 }
 
