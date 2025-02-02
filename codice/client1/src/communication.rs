@@ -304,83 +304,81 @@ impl Client {
 #[cfg(test)]
 mod test{
     use super::*;
+    #[test]
+    fn test_get_ids(){
+        let valid_command = "client_list!([1,2,3,4])".to_string();
+        let invalid_command = "client_list!([])".to_string();
+        assert!([1,2,3,4].to_vec().eq(&Client::get_ids(valid_command).unwrap()));
+        assert!(Client::get_ids(invalid_command).is_none());
+    }
+    #[test]
+    fn test_get_file_values(){
+        let valid_command = "file!(4,file.txt)".to_string();
+        let invalid_command = "file!(4,)".to_string();
+        assert!("file.txt".eq(&Client::get_file_values(valid_command).unwrap()));
+        assert!(&Client::get_file_values(invalid_command).is_none());
+    }
+    #[test]
+    fn test_get_file_vec(){
+        let valid_command = "files_list!([file1,file2,file3])".to_string();
+        let invalid_command = "files_list!([])".to_string();
+        assert!(["file1".to_string(),"file2".to_string(),"file3".to_string()].to_vec().eq(&Client::get_file_vec(valid_command).unwrap()));
+        assert!(&Client::get_file_vec(invalid_command).is_none());
+    }
+    // Test of returned values
+    #[test]
+    fn test_handle_msg_received(){
+        // Initialize dummy client
+        let (snd,rcv) = unbounded::<Packet>();
+        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        cl.sender_channels.insert(2,snd);
+        cl.network.insert(1,vec![2]);
+        cl.other_client_ids.push(2);
+
+        // Tests
+        let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
+        let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
+        assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
+
+        let file_txt = fs::read("src/test/file1").unwrap();
+        let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
+        let mut msg= String::from("file!(6,");
+        msg.push_str(&file_txt2);
+        msg.push_str(")");
+        assert_eq!(cl.handle_msg(msg,3,2),file_txt2);
+
+        let file_media = fs::read("src/test/testMedia.mp3").unwrap();
+        let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
+        let mut msg= String::from("media!(");
+        msg.push_str(&file_media2);
+        msg.push_str(")");
+        assert_eq!(cl.handle_msg(msg,3,2),file_media2);
+
+        let test_msg1 = "client_list!([1,2,3,4])".to_string();
+        assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
+
+        let test_msg2 = "message_from!(2,file.txt)".to_string();
+        assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
+
+        let test_msg4 = "error_requested_not_found!(File not found)".to_string() ;
+        assert_eq!(cl.handle_msg(test_msg4.clone(),3,2),test_msg4);
+
+        let test_msg5 = "error_requested_not_found!(Problem opening the file)".to_string() ;
+        assert_eq!(cl.handle_msg(test_msg5.clone(),3,2),test_msg5);
+
+        let test_msg6 = "error_requested_not_found!".to_string() ;
+        assert_eq!(cl.handle_msg(test_msg6.clone(),3,2),test_msg6);
+
+        let test_msg7 = "error_unsupported_request!".to_string() ;
+        assert_eq!(cl.handle_msg(test_msg7.clone(),3,2),test_msg7);
+
+        let test_msg8 = "test_error".to_string();
+        assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
+    }
+    #[test]
+    fn test_handle_user_commands(){}
 }
 // Test of helper functions
-#[test]
-fn test_get_ids(){
-    let valid_command = "client_list!([1,2,3,4])".to_string();
-    let invalid_command = "client_list!([])".to_string();
-    assert!([1,2,3,4].to_vec().eq(&Client::get_ids(valid_command).unwrap()));
-    assert!(Client::get_ids(invalid_command).is_none());
-}
-#[test]
-fn test_get_file_values(){
-    let valid_command = "file!(4,file.txt)".to_string();
-    let invalid_command = "file!(4,)".to_string();
-    assert!("file.txt".eq(&Client::get_file_values(valid_command).unwrap()));
-    assert!(&Client::get_file_values(invalid_command).is_none());
-}
-#[test]
-fn test_get_file_vec(){
-    let valid_command = "files_list!([file1,file2,file3])".to_string();
-    let invalid_command = "files_list!([])".to_string();
-    assert!(["file1".to_string(),"file2".to_string(),"file3".to_string()].to_vec().eq(&Client::get_file_vec(valid_command).unwrap()));
-    assert!(&Client::get_file_vec(invalid_command).is_none());
-}
-// Test of returned values
-#[test]
-fn test_handle_msg_received(){
-    // Initialize dummy client
-    let (snd,rcv) = unbounded::<Packet>();
-    let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
-    cl.sender_channels.insert(2,snd);
-    cl.network.insert(1,vec![2]);
-    cl.other_client_ids.push(2);
 
-    // Tests
-    let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
-    let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
-    assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
-    assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
-
-    let file_txt = fs::read("src/test/file1").unwrap();
-    let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
-    let mut msg= String::from("file!(6,");
-    msg.push_str(&file_txt2);
-    msg.push_str(")");
-    assert_eq!(cl.handle_msg(msg,3,2),file_txt2);
-
-
-    let file_media = fs::read("src/test/testMedia.mp3").unwrap();
-    let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
-    let mut msg= String::from("media!(");
-    msg.push_str(&file_media2);
-    msg.push_str(")");
-    assert_eq!(cl.handle_msg(msg,3,2),file_media2);
-
-    let test_msg1 = "client_list!([1,2,3,4])".to_string();
-    assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
-
-    let test_msg2 = "message_from!(2,file.txt)".to_string();
-    assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
-
-    let test_msg4 = "error_requested_not_found!(File not found)".to_string() ;
-    assert_eq!(cl.handle_msg(test_msg4.clone(),3,2),test_msg4);
-
-    let test_msg5 = "error_requested_not_found!(Problem opening the file)".to_string() ;
-    assert_eq!(cl.handle_msg(test_msg5.clone(),3,2),test_msg5);
-
-    let test_msg6 = "error_requested_not_found!".to_string() ;
-    assert_eq!(cl.handle_msg(test_msg6.clone(),3,2),test_msg6);
-
-    let test_msg7 = "error_unsupported_request!".to_string() ;
-    assert_eq!(cl.handle_msg(test_msg7.clone(),3,2),test_msg7);
-
-    let test_msg8 = "test_error".to_string();
-    assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
-}
-#[test]
-fn test_handle_user_commads(){
-
-}
 

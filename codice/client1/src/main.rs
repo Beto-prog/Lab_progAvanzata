@@ -10,7 +10,7 @@ use wg_2024::packet::*;
 use wg_2024::network::*;
 
 
-//Client struct and functions/methods related. Client has some additional fields for handling more things
+//Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
 
 pub struct Client {
@@ -24,7 +24,7 @@ pub struct Client {
     received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
-    server: (NodeId,String) // NodeID of the server and server type
+    server: (NodeId,String) // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
 }
 
 impl Client {
@@ -262,7 +262,7 @@ impl Client {
             match self.server.0{
                 255 =>{println!("Not linked to a server")}
                 _=>{
-                    println!("{}",self.handle_command(&input_buffer.clone(),self.server.0));
+                    println!("{}",self.handle_command(&input_buffer.trim().clone(),self.server.0));
                 }
             }
             //handled packets in the meantime
@@ -275,7 +275,7 @@ impl Client {
 }
 fn main() {}
 
-// Tests bfs
+// Tests bfs and network update based on FloodResponses
 #[cfg(test)]
 mod test{
     use super::*;
