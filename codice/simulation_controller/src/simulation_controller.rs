@@ -3,14 +3,13 @@ use crate::node_stats::ClientStats;
 use crate::node_stats::DroneStats;
 use crate::node_stats::ServerStats;
 use crossbeam_channel::{Receiver, Sender};
-use egui::Context;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
+use wg_2024::packet::PacketType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
@@ -25,10 +24,10 @@ pub struct SimulationController {
     node_command_senders: HashMap<NodeId, Sender<DroneCommand>>,
     // Map of node IDs to their respective senders for packets
     node_packet_senders: HashMap<NodeId, Sender<Packet>>,
-    // Sender to pass events from drones to the controller
-    event_sender: Sender<DroneEvent>,
     // Receiver for events from drones
     event_receiver: Receiver<DroneEvent>,
+    // Sender for events to drones
+    event_sender: Sender<DroneEvent>,
     // Network topology information
     network_topology: HashMap<NodeId, HashSet<NodeId>>,
     // Map of node IDs to their types
@@ -36,7 +35,6 @@ pub struct SimulationController {
     // Index of the next drone implementation to use
     next_drone_impl_index: u8,
 
-    //ui_context: Context,
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
     client_stats: Arc<Mutex<HashMap<NodeId, ClientStats>>>,
     server_stats: Arc<Mutex<HashMap<NodeId, ServerStats>>>,
@@ -47,8 +45,8 @@ impl SimulationController {
     pub fn new(
         node_command_senders: HashMap<NodeId, Sender<DroneCommand>>,
         node_packet_senders: HashMap<NodeId, Sender<Packet>>,
-        event_sender: Sender<DroneEvent>,
         event_receiver: Receiver<DroneEvent>,
+        event_sender: Sender<DroneEvent>,
         network_topology: HashMap<NodeId, HashSet<NodeId>>,
         drone_nodes: Vec<NodeId>,
         client_nodes: Vec<NodeId>,
@@ -76,8 +74,8 @@ impl SimulationController {
         Self {
             node_command_senders,
             node_packet_senders,
-            event_sender,
             event_receiver,
+            event_sender,
             network_topology,
             node_types,
             next_drone_impl_index,
@@ -90,25 +88,83 @@ impl SimulationController {
 
     /// Runs the simulation controller
     pub fn run(&mut self) {
-        loop {
-            // Handle events from drones
-            if let Ok(event) = self.event_receiver.recv() {
-                self.handle_event(event);
-            }
+        /*let mut sel = Select::new();
+        let mut keys = Vec::new(); // Track the order of registration.
+
+        // Register all receivers and track their keys in registration order.
+        for (key, receiver) in &self.drone_event_receivers {
+            sel.recv(receiver); // No need to store the token.
+            keys.push(*key); // Store the key in the registration order.
+        }
+
+        let selected_op = sel.select();
+        let selected_index = selected_op.index(); // Get the index of the selected operation.
+
+        // Retrieve the key using the index.
+        let selected_key = keys[selected_index];
+        let receiver = self.drone_event_receivers.get(&selected_key).unwrap(); */
+
+        // Receive the message.
+        if let Ok(event) = self.event_receiver.recv() {
+            self.handle_event(0, event);
         }
     }
 
     /// Handles events received from drones
-    fn handle_event(&mut self, event: DroneEvent) {
+    fn handle_event(&mut self, drone_id: NodeId, event: DroneEvent) {
         match event {
             DroneEvent::PacketSent(packet) => {
-                println!("Packet sent: {:?}", packet);
+                self.drone_stats
+                    .lock()
+                    .unwrap()
+                    .get_mut(&drone_id)
+                    .unwrap()
+                    .packets_forwarded += 1;
+                match packet.pack_type {
+                    PacketType::MsgFragment(_) => {}
+                    PacketType::Ack(_) => {
+                        self.drone_stats
+                            .lock()
+                            .unwrap()
+                            .get_mut(&drone_id)
+                            .unwrap()
+                            .acks_forwarded += 1;
+                    }
+                    PacketType::Nack(_) => {
+                        self.drone_stats
+                            .lock()
+                            .unwrap()
+                            .get_mut(&drone_id)
+                            .unwrap()
+                            .nacks_forwarded += 1;
+                    }
+                    PacketType::FloodResponse(_) => {
+                        self.drone_stats
+                            .lock()
+                            .unwrap()
+                            .get_mut(&drone_id)
+                            .unwrap()
+                            .flood_responses_forwarded += 1;
+                    }
+                    PacketType::FloodRequest(_) => {
+                        self.drone_stats
+                            .lock()
+                            .unwrap()
+                            .get_mut(&drone_id)
+                            .unwrap()
+                            .flood_requests_forwarded += 1;
+                    }
+                }
             }
-            DroneEvent::PacketDropped(packet) => {
-                println!("Packet dropped: {:?}", packet);
+            DroneEvent::PacketDropped(_) => {
+                self.drone_stats
+                    .lock()
+                    .unwrap()
+                    .get_mut(&drone_id)
+                    .unwrap()
+                    .packets_dropped += 1;
             }
             DroneEvent::ControllerShortcut(packet) => {
-                // Handle Ack, Nack, or FloodResponse packets that need to be sent directly to the destination
                 self.send_packet_directly(packet);
             }
         }
@@ -390,15 +446,18 @@ fn initialize_mock_network() -> SimulationController {
     use std::thread;
 
     // Create channels for the simulation controller
-    let (controller_event_send, controller_event_recv) = unbounded();
 
     let mut node_senders = HashMap::new();
     let mut node_recievers = HashMap::new();
     let mut drone_command_senders = HashMap::new();
     let mut drone_command_recievers = HashMap::new();
 
+    let (event_sender, event_receiver) = unbounded();
+
     let mut network_topology = HashMap::new();
     let mut node_types = HashMap::new();
+
+    let mut drone_stats = HashMap::new();
 
     network_topology.insert(1, HashSet::from([2, 3, 5]));
     network_topology.insert(2, HashSet::from([1, 3, 4, 6]));
@@ -415,6 +474,7 @@ fn initialize_mock_network() -> SimulationController {
         node_recievers.insert(i, drone_recv.clone());
         drone_command_senders.insert(i, command_send.clone());
         drone_command_recievers.insert(i, command_recv.clone());
+
         node_types.insert(i, NodeType::Drone);
     }
 
@@ -440,11 +500,16 @@ fn initialize_mock_network() -> SimulationController {
             neighbor_senders.insert(*neighbor, node_senders.get(neighbor).unwrap().clone());
         }
 
+        drone_stats.insert(
+            i,
+            DroneStats::new(network_topology.get(&i).unwrap().clone(), 0.1),
+        );
+
         // Create the drone using the `get_drone_impl` function
         let mut drone = get_drone_impl::get_drone_impl(
             i, // Implementation index
             i, // Drone ID
-            controller_event_send.clone(),
+            event_sender.clone(),
             drone_command_recievers.get(&i).unwrap().clone(),
             node_recievers.get(&i).unwrap().clone(),
             neighbor_senders.clone(), // Neighbor senders (empty for now)
@@ -458,17 +523,16 @@ fn initialize_mock_network() -> SimulationController {
     SimulationController::new(
         drone_command_senders,
         node_senders,
-        controller_event_send,
-        controller_event_recv,
+        event_receiver,
+        event_sender,
         network_topology,
         vec![1, 2, 3],
         vec![4, 5],
         vec![6],
         0,
+        Arc::new(Mutex::new(drone_stats)),
         Arc::new(Mutex::new(HashMap::new())),
         Arc::new(Mutex::new(HashMap::new())),
-        Arc::new(Mutex::new(HashMap::new())),
-        //Context::default(),
     )
 }
 
