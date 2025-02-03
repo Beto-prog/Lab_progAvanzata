@@ -1,7 +1,9 @@
 #![allow(warnings)]
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::rc::Rc;
 use crossbeam_channel::unbounded;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
@@ -95,42 +97,54 @@ impl Client {
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
-        for fragment in fragments {
-            if let Some(sender) = self.sender_channels.get(&dest_id) {
-                let packet_sent = Packet {
-                    routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap()),
-                    pack_type: PacketType::MsgFragment(fragment.clone()),
-                    session_id
-                };
-                sender.send(packet_sent).expect("Failed to send message");
-                // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
-                'internal: loop {
-                    match self.receiver_channel.recv(){
-                        Ok(packet) =>{
-                            match packet.pack_type{
-                                PacketType::Ack(_) =>{
-                                    // In case I receive an Ack with same session_id message arrived correctly: restored normal course of the program
-                                    if packet.session_id == session_id{break 'internal}
-                                },
-                                PacketType::Nack(_) =>{
-                                    if packet.session_id == session_id{
-                                        // In case I receive a Nack with same session_id I need to send again the message.
-                                        //self.discover_network(); // I hope it works with the new route
-                                        let packet = Packet {
-                                            routing_header: SourceRoutingHeader::with_first_hop(Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap()),
-                                            pack_type: PacketType::MsgFragment(fragment.clone()),
-                                            session_id
-                                        };
-                                        sender.send(packet.clone()).unwrap();
+        let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
+        match path{
+            Some(p) =>{
+                let path_rc = Rc::new(RefCell::new(p));
+                for fragment in fragments {
+                    if let Some(sender) = self.sender_channels.get(&dest_id) {
+                        let packet_sent = Packet {
+                            routing_header: SourceRoutingHeader::with_first_hop(path_rc.borrow().clone()),
+                            pack_type: PacketType::MsgFragment(fragment.clone()),
+                            session_id
+                        };
+                        sender.send(packet_sent).expect("Failed to send message");
+                        // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
+                        'internal: loop {
+                            match self.receiver_channel.recv(){
+                                Ok(packet) =>{
+                                    match packet.pack_type{
+                                        PacketType::Ack(_) =>{
+                                            // In case I receive an Ack with same session_id message arrived correctly: restored normal course of the program
+                                            if packet.session_id == session_id{break 'internal}
+                                        },
+                                        PacketType::Nack(_) =>{
+                                            if packet.session_id == session_id{
+                                                // In case I receive a Nack with same session_id I need to send again the message.
+                                                //self.discover_network(); // I hope it works with the new route
+                                                match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
+                                                    Some(path) =>{
+                                                        let packet = Packet {
+                                                            routing_header: SourceRoutingHeader::with_first_hop(path),
+                                                            pack_type: PacketType::MsgFragment(fragment.clone()),
+                                                            session_id
+                                                        };
+                                                        sender.send(packet.clone()).unwrap();
+                                                    }
+                                                    None =>{println!("Error: no path to the dest_id")}
+                                                }
+                                            }
+                                        }
+                                        _=> ()
                                     }
                                 }
-                                _=> ()
+                                Err(e) => panic!("{e}")
                             }
                         }
-                        Err(e) => panic!("{e}")
                     }
                 }
             }
+            None => {println!("Error: no path to dest_id")}
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
@@ -312,7 +326,7 @@ mod test{
         cl.sender_channels.insert(2,snd);
         cl.network.insert(1,vec![2]);
         cl.other_client_ids.push(2);
-
+        // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
         assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
