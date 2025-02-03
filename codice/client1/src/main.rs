@@ -98,7 +98,7 @@ impl Client {
             }
         }
     }
-    // Creation of packet with packet.type = FloodResponse
+    // Creation of Packet with packet.type = FloodResponse
     fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
         for &e in &request.path_trace{
@@ -108,7 +108,7 @@ impl Client {
         let srh = SourceRoutingHeader::with_first_hop(hops);
         let flood_resp = FloodResponse{
             flood_id: request.flood_id,
-            path_trace: request.path_trace.clone()
+            path_trace: request.path_trace
         };
         Packet::new_flood_response(srh,session_id,flood_resp)
 
@@ -274,7 +274,7 @@ impl Client {
         //Initialize the network field
         self.discover_network();
         let mut input_buffer = String::new();
-        // Call FileSystem::new() and Client::new() from NetworkInitializer then client.run()
+        //Client::new(params) from NetworkInitializer or what then client.run()
         loop {
             //Simple implementation of user input
             io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
