@@ -91,7 +91,7 @@ impl FragmentReassembler {
         let separator_pos = clean_data.iter().position(|&b| b == b'(' );
 
         if let Some(pos) = separator_pos {
-            // Take the initial string
+            // Take initial string
             let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
                 Ok(s) => s,
                 Err(e) => return Err(format!("Error while converting initial string: {}", e)),
@@ -100,9 +100,11 @@ impl FragmentReassembler {
             // Extract file content
             let file_data = &clean_data[pos + 1..];
 
-            // If file has data save it in the specified path
+            // If file has data save it in the received_files vector
             if !file_data.is_empty() {
-                received_files.push(initial_string.clone());
+                if received_files.contains(&initial_string){
+                    received_files.push(initial_string.clone());
+                }
             }
             // Return  value
             Ok(initial_string)
