@@ -694,6 +694,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
+name = "client1"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "log",
+ "rand 0.9.0",
+ "wg_2024",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2102,6 +2112,7 @@ dependencies = [
 name = "network_init"
 version = "0.1.0"
 dependencies = [
+ "client1",
  "crossbeam-channel",
  "eframe",
  "egui",

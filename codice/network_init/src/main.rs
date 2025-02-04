@@ -14,6 +14,8 @@ use wg_2024::network::NodeId;
 use server::Server;
 
 
+use client1::Client1;
+
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -284,7 +286,23 @@ impl NetworkInitializer {
 
         // Initialize clients
         for client_config in &config.client {
-            std::thread::spawn(move || {});
+            let mut neighbor_senders = HashMap::new();
+            let mut neighbors = HashSet::new();
+            // Find drones that are connected to this client
+            for drone_config in &config.drone {
+                if drone_config.connected_node_ids.contains(&client_config.id) {
+                    neighbor_senders.insert(
+                        drone_config.id,
+                        node_senders.get(&drone_config.id).unwrap().clone(),
+                    );
+                    neighbors.insert(drone_config.id.clone() );
+                }
+            }
+            // Clone the specific receiver for this client before moving into the thread
+            let client_receiver = node_recievers.get(&client_config.id).unwrap().clone();
+            // Initialize the client with neighbor_senders
+            let mut client = Client1::new(client_config.id,neighbors,neighbor_senders.clone(),client_receiver);
+            std::thread::spawn(move || client.run());
         }
 
         
