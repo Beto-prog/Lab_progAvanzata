@@ -6,8 +6,6 @@ use std::collections::{HashMap, HashSet, VecDeque, BTreeMap};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use std::thread;
 use wg_2024::packet::*;
 use wg_2024::network::*;
 use crossbeam_channel::Sender;
@@ -19,7 +17,6 @@ pub struct Client2 {
     neighbor_senders: HashMap<NodeId, Sender<Packet>>,
     network_graph: Arc<Mutex<HashMap<NodeId, HashSet<NodeId>>>>,
     server: Option<NodeId>,
-    fragment_buffer: HashMap<u64, BTreeMap<u64, Fragment>>,
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
     repackager: Repackager,
 }
@@ -32,7 +29,6 @@ impl Client2 {
             neighbor_senders,
             network_graph: Arc::new(Mutex::new(HashMap::new())),
             server: None,
-            fragment_buffer: HashMap::new(),
             sent_packets: HashMap::new(), // Initialize the sent packets map
             repackager: Repackager::new(),
         }
@@ -136,7 +132,6 @@ impl Client2 {
     }
 
     // Handle received packet (Ack, Nack, etc.)
-    // Handle received packet (Ack, Nack, etc.)
     pub fn handle_packet(&mut self, packet: Packet) {
         match packet.pack_type {
             PacketType::MsgFragment(fragment) => {
@@ -147,6 +142,10 @@ impl Client2 {
                 println!("CLIENT2: Client {} received Ack: {:?}", self.node_id, ack);
             }
             PacketType::Nack(nack) => {
+                //Check again all nodes and connections
+                self.discovered_drones = Arc::new(Mutex::new(HashMap::new()));
+                self.network_graph = Arc::new(Mutex::new(HashMap::new()));
+                self.discover_network();
                 println!("CLIENT2: Client {} received Nack: {:?}", self.node_id, nack);
                 // Resend the original packet
                 if let Some(original_packet) = self.sent_packets.get(&packet.session_id) {
@@ -170,7 +169,8 @@ impl Client2 {
         match self.repackager.process_fragment(session_id, src_id, fragment) {
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
-                self.process_complete_message(reassembled_message);
+                let msg = Repackager::assemble_string(reassembled_message);
+                println!("CLIENT2: Converted fragments into message: {:?}", msg);
             }
             Ok(None) => {
                 println!("CLIENT2: Not all fragments received yet for message ID {}", message_id);
@@ -178,15 +178,6 @@ impl Client2 {
             Err(error_code) => {
                 println!("CLIENT2: Error processing fragment: {}", error_code);
             }
-        }
-    }
-
-    // Process the complete message (e.g., convert to string or handle data)
-    pub fn process_complete_message(&self,
-                                    message: Vec<u8>) {
-        match String::from_utf8(message) {
-            Ok(msg_str) => println!("CLIENT2: Reassembled Message: {}", msg_str),
-            Err(_) => println!("CLIENT2: Received non-UTF8 message."),
         }
     }
 
@@ -242,5 +233,9 @@ impl Client2 {
 
     fn generate_session_id(&self) -> u64 {
         rand::random()
+    }
+
+    pub fn run(&mut self) {
+        self.discover_network();
     }
 }
