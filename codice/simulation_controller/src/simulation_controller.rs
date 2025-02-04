@@ -119,7 +119,8 @@ impl SimulationController {
     fn handle_event(&mut self, event: DroneEvent) {
         match event {
             DroneEvent::PacketSent(packet) => {
-                let node_id = packet.routing_header.previous_hop().unwrap();
+                println!("{:#?}", packet);
+                let node_id = packet.routing_header.current_hop().unwrap();
                 if *self.node_types.get(&node_id).unwrap() == NodeType::Drone {
                     match packet.pack_type {
                         PacketType::MsgFragment(_) => {}
