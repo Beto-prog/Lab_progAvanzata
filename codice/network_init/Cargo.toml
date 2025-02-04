@@ -20,4 +20,5 @@ egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
 
 simulation_controller = { path = "../simulation_controller" }
+client1 = { path = "../client1" }
 crossbeam-channel = "0.5.13"
