@@ -10,3 +10,6 @@ serde_json = "1.0"
 crossbeam-channel = "0.5.13"
 rand = "0.8.5"
 
+[lib]
+name = "server"
+path = "src/lib.rs"

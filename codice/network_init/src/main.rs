@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use crossbeam_channel::unbounded;
 use serde::Deserialize;
 use simulation_controller::node_stats::DroneStats;
@@ -9,6 +11,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use wg_2024::network::NodeId;
+use server::Server;
+
+
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -202,6 +207,8 @@ impl NetworkInitializer {
         //let mut client_senders = HashMap::new();
         //let mut server_senders = HashMap::new();
 
+        
+        
         // Initialize drones
         for drone_config in &config.drone {
             let (drone_send, drone_recv) = unbounded();
@@ -226,6 +233,21 @@ impl NetworkInitializer {
             node_senders.insert(server_config.id, server_send.clone());
             node_recievers.insert(server_config.id, server_recv.clone());
         }
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
         for (index, drone_config) in config.drone.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
@@ -265,12 +287,73 @@ impl NetworkInitializer {
             std::thread::spawn(move || {});
         }
 
+        
+        
+        
+        
+        
         // Initialize servers
-        for server_config in &config.server {
-            std::thread::spawn(move || {
-                // TODO: Implement server logic
-            });
+        for (index,server_config) in config.server.iter().enumerate() {
+            let mut neighbor_senders = HashMap::new();
+            for neighbor_id in &server_config.connected_drone_ids {
+                neighbor_senders.insert(
+                    neighbor_id.clone(),
+                    node_senders.get(&neighbor_id).unwrap().clone(),
+                );
+            }
+
+            let packet_reciver = node_recievers.get(&server_config.id).unwrap();
+
+            let mut server;
+
+            if (index %2==0) //Chat server 
+            {
+                server = server::Server::new(
+                    server_config.id,
+                    packet_reciver.clone(),
+                    neighbor_senders,
+                    Box::new(server::file_system::ChatServer::new()) // Allocazione su heap
+                );
+
+            }
+            else if index%3 == 0
+            {
+                std::fs::create_dir("/tmp/ServerTxt");
+                 server = server::Server::new(server_config.id,
+                                              packet_reciver.clone(),
+                                              neighbor_senders,
+                                              Box::new(server::file_system::ContentServer::new("/tmp/ServerTxt",server::file_system::ServerType::TextServer)))
+
+            }
+            
+            else
+            {
+                std::fs::create_dir("/tmp/ServerMedia");
+                server = server::Server::new(server_config.id,packet_reciver.clone(),
+                                             neighbor_senders,
+                                             Box::new( server::file_system::ContentServer::new("/tmp/ServerMedia",server::file_system::ServerType::MediaServer)))
+
+            }
+            
+         
+
+            std::thread::spawn(move || server.run());
+
         }
+
+
+        /*
+   id: NodeId,
+packet_recv: Receiver<Packet>,
+packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour.  
+server_type: &'a mut dyn ServerTrait,
+
+// extra field
+graph: HashMap<NodeId, Vec<NodeId>>,            //I nees this for bfs
+package_handler: Repackager,
+paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,
+ */
+        
 
         let next_drone_impl_index = config.drone.len() % 10;
 

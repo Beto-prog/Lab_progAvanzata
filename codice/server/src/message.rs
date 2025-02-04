@@ -439,8 +439,8 @@ pub mod file_system
     use wg_2024::packet::{Fragment, Packet};
     use crate::message::packaging::Repackager;
 
-    pub trait ServerTrait
-    {
+    pub trait ServerTrait: Send + Sync {
+    
          fn process_request (&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String> ;
     }
 

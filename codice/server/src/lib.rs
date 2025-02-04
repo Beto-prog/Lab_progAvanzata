@@ -19,12 +19,13 @@ use wg_2024::packet::{Ack, FloodRequest, Fragment, NodeType, Packet, PacketType}
 use NewWork::bfs_shortest_path;
 use crate::PacketType::FloodRequest as FloodRequestType;
 
-struct  Server  <'a>
+pub use message::file_system;
+pub struct  Server  
 {
     id: NodeId,
     packet_recv: Receiver<Packet>,
     packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour.  
-    server_type: &'a mut dyn ServerTrait,
+    server_type: Box<dyn ServerTrait>,
   
     // extra field
     graph: HashMap<NodeId, Vec<NodeId>>,            //I nees this for bfs
@@ -33,15 +34,14 @@ struct  Server  <'a>
 }
 
 
-impl <'a> Server <'a>
-{
+impl Server{
 
-    fn new(
+    pub fn new(
         id: NodeId,
         packet_recv: Receiver<Packet>,
         packet_send : HashMap<NodeId, Sender<Packet>>,
         
-        server_type: &'a mut dyn ServerTrait,
+        server_type: Box< dyn ServerTrait>,
     ) -> Self {
         
         let mut graph = HashMap::new();
@@ -72,13 +72,13 @@ and the list of it's neighbour
  
     
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         loop {
             select_biased! {        
                 recv(self.packet_recv) -> packet => {
                     match packet {
                         Ok(packet) => {
-                          // self.handle_packet(packet);
+                           self.handle_packet(packet);
                         },
                         Err(e) => {
                             eprintln!("Error packet reception of server {}: {}", self.id, e)
@@ -319,10 +319,5 @@ and the list of it's neighbour
        // self.send_packet_sent_event(packet);
     }
 
-
-}
-
-
-fn main() {
 
 }
