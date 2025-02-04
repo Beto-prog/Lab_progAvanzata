@@ -78,7 +78,7 @@ and the list of it's neighbour
                 recv(self.packet_recv) -> packet => {
                     match packet {
                         Ok(packet) => {
-                          // self.handle_packet(packet);
+                           self.handle_packet(packet);
                         },
                         Err(e) => {
                             eprintln!("Error packet reception of server {}: {}", self.id, e)
