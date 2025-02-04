@@ -303,6 +303,11 @@ and the list of it's neighbour
         match NewWork::bfs_shortest_path(&self.graph, self.id, dest_id) {
             Some(path) => { 
                 packet.routing_header = path;
+                let c =self.packet_send.get(&packet.routing_header.hops[1]);
+                match c {
+                    None => {}
+                    Some(x) => {x.send(packet);}
+                }
             },
             None => {print!("Error not found a valid path to follow")}
         }

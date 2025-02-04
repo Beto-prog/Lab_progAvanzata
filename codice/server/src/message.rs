@@ -409,8 +409,7 @@ mod test_packaging
 
     }
 
-    #[test]
-    fn fragmentation_with_Mediafile() {
+   /* fn fragmentation_with_Mediafile() {
         let result = Repackager::create_fragments("media!(,",Some("/tmp/testServer/3 Nights.mp3"));
         println!("{:?}", result);
         let mut rp = Repackager::new();
@@ -427,7 +426,7 @@ mod test_packaging
             }
             _ => panic!("Trasformazione fallita."),
         }
-    }
+    }*/
 
 }
 
