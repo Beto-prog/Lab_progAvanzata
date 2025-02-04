@@ -25,7 +25,7 @@ getdroned = { git = "https://github.com/GetDroned/Drone.git" }
 rusty_drones = { git = "https://github.com/rusty-drone-2024/rusty-drone.git" }
 rust-roveri = { git = "https://git@github.com/RustRoveri/rust-roveri.git" }
 rust_do_it = { git = "https://github.com/RustDoIt/Drone.git" }
-trust_drone = { git = "https://github.com/Beto-prog/TrustDone", package = "drone" }
+krusty_drone = { git = "https://github.com/Danylo37/krusty_drone.git" }
 
 
 [lib]

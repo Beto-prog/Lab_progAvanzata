@@ -11,7 +11,7 @@ use rusty_drones::RustyDrone;
 
 use std::collections::HashMap;
 
-use trust_drone::TrustDrone;
+use krusty_drone::KrustyCrapDrone;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
@@ -101,7 +101,7 @@ pub fn get_drone_impl(
             packet_send,
             pdr,
         )),
-        10 => Box::new(TrustDrone::new(
+        10 => Box::new(KrustyCrapDrone::new(
             id,
             controller_send,
             controller_recv,

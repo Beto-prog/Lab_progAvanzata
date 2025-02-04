@@ -950,16 +950,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f25c0e292a7ca6d6498557ff1df68f32c99850012b6ea401cf8daf771f22ff53"
 
 [[package]]
-name = "drone"
-version = "0.1.0"
-source = "git+https://github.com/Beto-prog/TrustDone#4b1b0bd915f0db5f2d7b4830b9358f00cf12302e"
-dependencies = [
- "crossbeam-channel",
- "rand 0.8.5",
- "wg_2024",
-]
-
-[[package]]
 name = "ecolor"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1904,6 +1894,17 @@ name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
+
+[[package]]
+name = "krusty_drone"
+version = "0.1.0"
+source = "git+https://github.com/Danylo37/krusty_drone.git#ba59c6ff03b4d0f6e964c4f69337050b5a0d2fd3"
+dependencies = [
+ "crossbeam-channel",
+ "log",
+ "rand 0.9.0-beta.3",
+ "wg_2024",
+]
 
 [[package]]
 name = "lazy_static"
@@ -2926,11 +2927,11 @@ version = "0.1.0"
 dependencies = [
  "bagel_bomber",
  "crossbeam-channel",
- "drone",
  "eframe",
  "egui",
  "env_logger 0.10.2",
  "getdroned",
+ "krusty_drone",
  "lockheedrustin-drone",
  "null-pointer-drone",
  "rust-roveri",
