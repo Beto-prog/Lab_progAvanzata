@@ -4,7 +4,7 @@ use std::fs;
 use crossbeam_channel::{unbounded};
 use wg_2024::network::NodeId;
 use wg_2024::packet::{Fragment, Packet};
-use crate::Client;
+use crate::Client1;
 
 // Struct FragmentReassembler to manage reassembly of fragments
 pub struct FragmentReassembler {
@@ -124,7 +124,7 @@ mod test{
     #[test]
     fn test_fragment_string_assembled_correctly(){
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut client_test = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         let mut fr = FragmentReassembler::new();
         let test_data = &"A".repeat(200);
         let test_result = FragmentReassembler::generate_fragments(test_data);
@@ -138,7 +138,7 @@ mod test{
     #[test]
     fn test_fragment_txt_assembled_correctly(){
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut client_test = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         let test_text_content = fs::read("src/test/file1");
         let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
         assert_eq!(test_result.unwrap(),"test 123456 advanced_programming");
@@ -147,7 +147,7 @@ mod test{
     #[test]
     fn test_fragment_mediaFile_assembled_correctly(){
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut client_test = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         let test_text_content = fs::read("src/test/testMedia.mp3");
         let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
         match test_result{

@@ -7,11 +7,11 @@ use std::rc::Rc;
 use crossbeam_channel::unbounded;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
-use crate::Client;
+use crate::Client1;
 use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
-impl Client {
+impl Client1 {
     // Handle user input received and send command to a dest_id (e.g. a server)
     pub fn handle_command(&mut self, command: &str, dest_id: NodeId) -> String{
         // Check for serverType in order to send only the correct set of messages
@@ -161,7 +161,7 @@ impl Client {
                 }
             }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") =>{
-                match Client::get_file_vec(msg){
+                match Client1::get_file_vec(msg){
                     Some(val) =>{
                         for e in val{
                             self.files_names.push(e);
@@ -172,7 +172,7 @@ impl Client {
                 }
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") =>{
-                match Client::get_file_values(msg){
+                match Client1::get_file_values(msg){
                     Some(res) =>{
                         if !res.is_empty(){
                             let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).unwrap();
@@ -221,7 +221,7 @@ impl Client {
                 "error_unsupported_request!".to_string()
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") =>{
-                match Client::get_ids(msg){
+                match Client1::get_ids(msg){
                     Some(val) =>{
                         for e in val{
                             self.other_client_ids.push(e);
@@ -301,28 +301,28 @@ mod test{
     fn test_get_ids(){
         let valid_command = "client_list!([1,2,3,4])".to_string();
         let invalid_command = "client_list!([])".to_string();
-        assert!([1,2,3,4].to_vec().eq(&Client::get_ids(valid_command).unwrap()));
-        assert!(Client::get_ids(invalid_command).is_none());
+        assert!([1,2,3,4].to_vec().eq(&Client1::get_ids(valid_command).unwrap()));
+        assert!(Client1::get_ids(invalid_command).is_none());
     }
     #[test]
     fn test_get_file_values(){
         let valid_command = "file!(4,file.txt)".to_string();
         let invalid_command = "file!(4,)".to_string();
-        assert!("file.txt".eq(&Client::get_file_values(valid_command).unwrap()));
-        assert!(&Client::get_file_values(invalid_command).is_none());
+        assert!("file.txt".eq(&Client1::get_file_values(valid_command).unwrap()));
+        assert!(&Client1::get_file_values(invalid_command).is_none());
     }
     #[test]
     fn test_get_file_vec(){
         let valid_command = "files_list!([file1,file2,file3])".to_string();
         let invalid_command = "files_list!([])".to_string();
-        assert!(["file1".to_string(),"file2".to_string(),"file3".to_string()].to_vec().eq(&Client::get_file_vec(valid_command).unwrap()));
-        assert!(&Client::get_file_vec(invalid_command).is_none());
+        assert!(["file1".to_string(),"file2".to_string(),"file3".to_string()].to_vec().eq(&Client1::get_file_vec(valid_command).unwrap()));
+        assert!(&Client1::get_file_vec(invalid_command).is_none());
     }
     #[test]
     fn test_handle_msg_received(){
         // Initialize dummy client
         let (snd,rcv) = unbounded::<Packet>();
-        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         cl.sender_channels.insert(2,snd);
         cl.network.insert(1,vec![2]);
         cl.other_client_ids.push(2);

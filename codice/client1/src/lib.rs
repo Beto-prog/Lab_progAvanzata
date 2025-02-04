@@ -5,11 +5,11 @@ This is the implementation of a Client made by Lorenzo Cortese for the AP projec
 
 CONTENTS
 
-There are three files and a folder in total in the /src folder : 'main.rs', 'communication.rs', 'fragment_reassembler.rs', 'tests'.
+There are three files and a folder in total in the /src folder : 'lib', 'communication.rs', 'fragment_reassembler.rs', 'tests'.
 
 Their contents are:
 
-* 'main.rs' : Client struct with the necessary methods and functions
+* 'lib' : Client struct with the necessary methods and functions
  to handle the user input and the incoming packets and also some helpers functions.
 
 * 'communication.rs' : methods and functions related to the aforementioned file used to handle both user commands and messages received at a lower level
@@ -36,7 +36,7 @@ use wg_2024::network::*;
 //Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
 
-pub struct Client {
+pub struct Client1 {
     node_id: NodeId,
     neighbors: HashSet<NodeId>,
     sender_channels: HashMap<NodeId,Sender<Packet>>,
@@ -50,7 +50,7 @@ pub struct Client {
     server: (NodeId,String) // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
 }
 
-impl Client {
+impl Client1 {
     // Create a new Client with parameters from Network Initializer
     pub fn new(node_id: NodeId,
                neighbors: HashSet<NodeId>,
@@ -72,7 +72,7 @@ impl Client {
         }
     }
     // Network discovery
-    fn discover_network(&mut self) {
+    pub fn discover_network(&mut self) {
         let request = FloodRequest {
             flood_id: Self::generate_flood_id(),
             initiator_id: self.node_id,
@@ -84,7 +84,7 @@ impl Client {
         }
     }
     // Forward FloodRequest to the neighbors
-    fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
+    pub fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
         //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
         if self.neighbors.iter().count() == 1{
             self.sender_channels.get(&previous).expect("Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("Error while sending message");
@@ -99,7 +99,7 @@ impl Client {
         }
     }
     // Creation of Packet with packet.type = FloodResponse
-    fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
+    pub fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
         for &e in &request.path_trace{
             hops.push(e.0.clone());
@@ -114,7 +114,7 @@ impl Client {
 
     }
     // Creation of a packet of type FloodRequest
-    fn create_flood_request(&self, request: FloodRequest, neighbor: NodeId,session_id: u64) -> Packet{
+    pub fn create_flood_request(&self, request: FloodRequest, neighbor: NodeId,session_id: u64) -> Packet{
         let hops: Vec<NodeId> = vec![self.node_id,neighbor]; // TODO check if correct
         let srh = SourceRoutingHeader::with_first_hop(hops);
         Packet::new_flood_request(srh,session_id,request)
@@ -224,7 +224,7 @@ impl Client {
         }
     }
     // Calculates shortest path between two nodes
-    fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
+    pub fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
         let mut queue = VecDeque::new();
         let mut visited = HashMap::new();
         let mut parent = HashMap::new();
@@ -277,6 +277,7 @@ impl Client {
         //Client::new(params) from NetworkInitializer or what then client.run()
         loop {
             //Simple implementation of user input
+            input_buffer.clear();
             io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
             // Simple way to shut down client in case of some issue (hope it works)
             if input_buffer.eq("OFF"){
@@ -296,17 +297,15 @@ impl Client {
         }
     }
 }
-fn main() {}
-
 // Tests for bfs and network update based on FloodResponses
 #[cfg(test)]
 mod test{
     use super::*;
-    use Client;
+    use Client1;
     #[test]
     fn test_bfs_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         cl.sender_channels.insert(19, snd);
         cl.network.insert(1, vec![2, 3]);
         cl.other_client_ids.push(2);
@@ -320,16 +319,16 @@ mod test{
         cl.network.insert(9, vec![2, 3]);
         cl.network.insert(10, vec![3 ,6, 14]);
         cl.network.insert(14, vec![10]);
-        let test_res1 = Client::bfs_compute_path(&cl.network, 1, 9).unwrap();
+        let test_res1 = Client1::bfs_compute_path(&cl.network, 1, 9).unwrap();
         assert_eq!(test_res1, vec![1, 2, 4, 6, 8, 9]);
 
-        let test_res2 = Client::bfs_compute_path(&cl.network, 1, 14).unwrap();
+        let test_res2 = Client1::bfs_compute_path(&cl.network, 1, 14).unwrap();
         assert_eq!(test_res2, vec![1, 2, 4, 6, 10, 14]);
     }
     #[test]
     fn test_bfs_no_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2, 3]);
         cl.other_client_ids.push(2);
@@ -341,13 +340,13 @@ mod test{
         cl.network.insert(7, vec![2, 3]);
         cl.network.insert(8, vec![7, 9]);
         cl.network.insert(9, vec![2, 3]);
-        let test_res = Client::bfs_compute_path(&cl.network, 1, 9);
+        let test_res = Client1::bfs_compute_path(&cl.network, 1, 9);
         assert!(test_res.is_none());
     }
     #[test]
     fn test_update_graph(){
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2]);
         let mut f_req = FloodRequest::new(1234, 1);
@@ -364,7 +363,7 @@ mod test{
             }
             _=> ()
         }
-        let test_res = Client::bfs_compute_path(&cl.network, 1, 6).unwrap();
+        let test_res = Client1::bfs_compute_path(&cl.network, 1, 6).unwrap();
         assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
     }
 }
