@@ -14,6 +14,7 @@ use std::thread;
 use wg_2024::network::NodeId;
 
 use client1::Client1;
+use client2::Client2;
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -287,7 +288,7 @@ impl NetworkInitializer {
         }
 
         // Initialize clients
-        for client_config in &config.client {
+        for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             // Find drones that are connected to this client
             for neighbor_id in &client_config.connected_drone_ids {
@@ -300,13 +301,21 @@ impl NetworkInitializer {
             // Clone the specific receiver for this client before moving into the thread
             let client_receiver = node_recievers.get(&client_config.id).unwrap().clone();
             // Initialize the client with neighbor_senders
-            let mut client = Client1::new(
-                client_config.id,
-                HashSet::from_iter(client_config.connected_drone_ids.clone()),
-                neighbor_senders.clone(),
-                client_receiver,
-            );
-            std::thread::spawn(move || client.run());
+            if index % 2 == 0 {
+                let mut client = Client1::new(
+                    client_config.id,
+                    HashSet::from_iter(client_config.connected_drone_ids.clone()),
+                    neighbor_senders.clone(),
+                    client_receiver,
+                );
+                std::thread::spawn(move || client.run());
+            } else {
+                let mut client = Client2::new(
+                    client_config.id,
+                    neighbor_senders.clone(),
+                );
+                std::thread::spawn(move || client.run());
+            }
         }
 
         // Initialize servers
@@ -323,7 +332,7 @@ impl NetworkInitializer {
 
             let mut server;
 
-            if (index % 2 == 0)
+            if (index % 3 == 0)
             //Chat server
             {
                 server = server::Server::new(
@@ -332,7 +341,7 @@ impl NetworkInitializer {
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()), // Allocazione su heap
                 );
-            } else if index % 3 == 0 {
+            } else if index % 3 == 1 {
                 std::fs::create_dir("/tmp/ServerTxt");
                 server = server::Server::new(
                     server_config.id,
@@ -412,7 +421,7 @@ impl NetworkInitializer {
 }
 
 fn main() {
-    if let Err(e) = NetworkInitializer::run("network_config.toml") {
+    if let Err(e) = NetworkInitializer::run("src/network_config.toml") {
         eprintln!("Error initializing network: {}", e);
     }
 }
