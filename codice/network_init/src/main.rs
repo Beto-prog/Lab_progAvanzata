@@ -64,6 +64,10 @@ impl NetworkInitializer {
             adjacency_list.insert(server.id, server.connected_drone_ids.clone());
         }
 
+        if !Self::is_bidirectional(&adjacency_list) {
+            return false;
+        }
+
         // Perform BFS to check connectivity
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -86,6 +90,21 @@ impl NetworkInitializer {
 
         // Check if all nodes are visited
         visited.len() == adjacency_list.len()
+    }
+
+    fn is_bidirectional(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> bool {
+        for (&node_id, neighbors) in adjacency_list {
+            for &neighbor_id in neighbors {
+                if let Some(neighbor_neighbors) = adjacency_list.get(&neighbor_id) {
+                    if !neighbor_neighbors.contains(&node_id) {
+                        return false; // Missing reverse connection.
+                    }
+                } else {
+                    return false; // Neighbor node does not exist.
+                }
+            }
+        }
+        true
     }
 
     fn validate_config(config: &NetworkConfig) -> Result<(), String> {
@@ -157,7 +176,9 @@ impl NetworkInitializer {
             }
         }
 
-        NetworkInitializer::is_graph_connected(config);
+        if !NetworkInitializer::is_graph_connected(config) {
+            return Err(format!("Network is not bidirectionally connected"));
+        }
 
         Ok(())
     }
