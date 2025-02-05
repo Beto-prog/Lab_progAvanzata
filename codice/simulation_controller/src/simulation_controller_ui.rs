@@ -15,7 +15,7 @@ pub struct SimulationControllerUI {
 
 impl SimulationControllerUI {
     pub fn new(
-        cc: &eframe::CreationContext<'_>,
+        _cc: &eframe::CreationContext<'_>,
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
         ui_command_sender: Sender<UICommand>,
     ) -> Self {

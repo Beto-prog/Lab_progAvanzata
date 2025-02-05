@@ -119,12 +119,39 @@ impl SimulationController {
     fn handle_event(&mut self, event: DroneEvent) {
         match event {
             DroneEvent::PacketSent(packet) => {
-                println!("{:#?}", packet);
-                let node_id = packet.routing_header.current_hop().unwrap();
-                if *self.node_types.get(&node_id).unwrap() == NodeType::Drone {
-                    match packet.pack_type {
-                        PacketType::MsgFragment(_) => {}
-                        PacketType::Ack(_) => {
+                let node_id: NodeId;
+                match packet.pack_type {
+                    PacketType::MsgFragment(_) => {
+                        node_id = packet
+                            .routing_header
+                            .previous_hop()
+                            .expect("there should always be a previous hop");
+                        if *self
+                            .node_types
+                            .get(&node_id)
+                            .expect("Previous hops should always exist")
+                            == NodeType::Drone
+                        {
+                            self.drone_stats
+                                .lock()
+                                .expect("Should be able to unlock")
+                                .get_mut(&node_id)
+                                .expect("The node Id should be valid")
+                                .fragments_forwarded += 1;
+                        }
+                    }
+                    PacketType::Ack(_) => {
+                        node_id = packet
+                            .routing_header
+                            .previous_hop()
+                            .expect("there should always be a previous hop");
+
+                        if *self
+                            .node_types
+                            .get(&node_id)
+                            .expect("Previous hops should always exist")
+                            == NodeType::Drone
+                        {
                             self.drone_stats
                                 .lock()
                                 .unwrap()
@@ -132,7 +159,18 @@ impl SimulationController {
                                 .unwrap()
                                 .acks_forwarded += 1;
                         }
-                        PacketType::Nack(_) => {
+                    }
+                    PacketType::Nack(_) => {
+                        node_id = packet
+                            .routing_header
+                            .previous_hop()
+                            .expect("there should always be a previous hop");
+                        if *self
+                            .node_types
+                            .get(&node_id)
+                            .expect("Previous hops should always exist")
+                            == NodeType::Drone
+                        {
                             self.drone_stats
                                 .lock()
                                 .unwrap()
@@ -140,32 +178,76 @@ impl SimulationController {
                                 .unwrap()
                                 .nacks_forwarded += 1;
                         }
-                        PacketType::FloodResponse(_) => {
+                    }
+                    PacketType::FloodRequest(flood_request) => {
+                        node_id = flood_request
+                            .path_trace
+                            .last()
+                            .expect("Flood requests should have a last hop")
+                            .clone()
+                            .0;
+
+                        if *self
+                            .node_types
+                            .get(&node_id)
+                            .expect("A node inside a flood request should exist")
+                            == NodeType::Drone
+                        {
                             self.drone_stats
                                 .lock()
-                                .unwrap()
+                                .expect("Should be able to unlock")
                                 .get_mut(&node_id)
-                                .unwrap()
-                                .flood_responses_forwarded += 1;
-                        }
-                        PacketType::FloodRequest(_) => {
-                            self.drone_stats
-                                .lock()
-                                .unwrap()
-                                .get_mut(&node_id)
-                                .unwrap()
+                                .expect("The node Id should be valid")
                                 .flood_requests_forwarded += 1;
                         }
                     }
+                    PacketType::FloodResponse(flood_response) => {
+                        node_id = flood_response
+                            .path_trace
+                            .last()
+                            .expect("Flood requests should have a last hop")
+                            .clone()
+                            .0;
+
+                        if *self
+                            .node_types
+                            .get(&node_id)
+                            .expect("A node inside a flood request should exist")
+                            == NodeType::Drone
+                        {
+                            self.drone_stats
+                                .lock()
+                                .expect("Should be able to unlock")
+                                .get_mut(&node_id)
+                                .expect("The node Id should be valid")
+                                .flood_responses_forwarded += 1;
+                        }
+                    }
+                }
+                if *self
+                    .node_types
+                    .get(&node_id)
+                    .expect("Node id should be valid")
+                    == NodeType::Drone
+                {
+                    self.drone_stats
+                        .lock()
+                        .expect("Should be able to unlock")
+                        .get_mut(&node_id)
+                        .expect("The node Id should be valid")
+                        .packets_forwarded += 1;
                 }
             }
             DroneEvent::PacketDropped(packet) => {
-                let node_id = packet.routing_header.previous_hop().unwrap();
+                let node_id = packet
+                    .routing_header
+                    .previous_hop()
+                    .expect("Previous hop should always be valid");
                 self.drone_stats
                     .lock()
-                    .unwrap()
+                    .expect("Should always be able to unlock")
                     .get_mut(&node_id)
-                    .unwrap()
+                    .expect("The node Id should be valid")
                     .packets_dropped += 1;
             }
             DroneEvent::ControllerShortcut(packet) => {
@@ -451,7 +533,7 @@ impl SimulationController {
     }
 }
 
-fn initialize_mock_network() -> SimulationController {
+fn _initialize_mock_network() -> SimulationController {
     use crossbeam_channel::unbounded;
     use std::collections::{HashMap, HashSet};
     use std::thread;
@@ -465,7 +547,7 @@ fn initialize_mock_network() -> SimulationController {
 
     let (event_sender, event_receiver) = unbounded();
 
-    let (ui_command_sender, ui_command_receiver) = unbounded();
+    let (_ui_command_sender, ui_command_receiver) = unbounded();
 
     let mut network_topology = HashMap::new();
     let mut node_types = HashMap::new();
@@ -550,13 +632,13 @@ fn initialize_mock_network() -> SimulationController {
 
 #[test]
 fn test_send_command() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     controller.send_command(1, DroneCommand::SetPacketDropRate(0.5));
 }
 
 #[test]
 fn test_add_drone() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.add_drone(7, vec![1, 2], 0.1);
     assert!(controller.network_topology.contains_key(&7));
     assert_eq!(controller.node_types.get(&7), Some(&NodeType::Drone));
@@ -564,7 +646,7 @@ fn test_add_drone() {
 
 #[test]
 fn test_remove_drone() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.remove_drone(1);
     assert!(!controller.network_topology.contains_key(&1));
     assert!(!controller.node_types.contains_key(&1));
@@ -572,13 +654,13 @@ fn test_remove_drone() {
 
 #[test]
 fn test_set_packet_drop_rate() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     controller.set_packet_drop_rate(1, 0.5);
 }
 
 #[test]
 fn test_crash_drone() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.crash_drone(1);
     assert!(!controller.network_topology.contains_key(&1));
     assert!(!controller.node_types.contains_key(&1));
@@ -586,7 +668,7 @@ fn test_crash_drone() {
 
 #[test]
 fn test_add_connection() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.add_connection(1, 3);
     assert!(controller.network_topology[&1].contains(&3));
     assert!(controller.network_topology[&3].contains(&1));
@@ -594,7 +676,7 @@ fn test_add_connection() {
 
 #[test]
 fn test_remove_connection() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.remove_connection(1, 2);
     assert!(!controller.network_topology[&1].contains(&2));
     assert!(!controller.network_topology[&2].contains(&1));
@@ -602,32 +684,32 @@ fn test_remove_connection() {
 
 #[test]
 fn test_is_command_allowed() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     assert!(controller.is_command_allowed(1, &DroneCommand::SetPacketDropRate(0.5)));
     assert!(!controller.is_command_allowed(1, &DroneCommand::RemoveSender(5)));
 }
 
 #[test]
 fn test_is_network_connected_after_removal() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     assert!(controller.is_network_connected_after_edge_removal(1, 2));
 }
 
 #[test]
 fn test_is_network_connected_after_crash() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     assert!(controller.is_network_connected_after_crash(2));
 }
 
 #[test]
 fn test_is_network_connected() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     assert!(controller.is_network_connected(&controller.network_topology));
 }
 
 #[test]
 fn test_is_connection_valid() {
-    let controller = initialize_mock_network();
+    let controller = _initialize_mock_network();
     assert!(controller.is_adding_connection_valid(1)); // Drone
     assert!(!controller.is_adding_connection_valid(4)); // Client
     assert!(controller.is_adding_connection_valid(6)); // Server
@@ -635,7 +717,7 @@ fn test_is_connection_valid() {
 
 #[test]
 fn test_add_drone_no_connections() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.add_drone(8, vec![], 0.1);
     assert!(controller.network_topology.contains_key(&8));
     assert_eq!(controller.network_topology[&8].len(), 0);
@@ -644,7 +726,7 @@ fn test_add_drone_no_connections() {
 
 #[test]
 fn test_remove_non_existent_drone() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     let initial_topology = controller.network_topology.clone();
     controller.remove_drone(99); // Non-existent drone ID
     assert_eq!(controller.network_topology, initial_topology);
@@ -652,7 +734,7 @@ fn test_remove_non_existent_drone() {
 
 #[test]
 fn test_add_connection_non_existent_nodes() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     let initial_topology = controller.network_topology.clone();
     controller.add_connection(99, 100); // Non-existent node IDs
     assert_eq!(controller.network_topology, initial_topology);
@@ -660,7 +742,7 @@ fn test_add_connection_non_existent_nodes() {
 
 #[test]
 fn test_remove_connection_non_existent_nodes() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     let initial_topology = controller.network_topology.clone();
     controller.remove_connection(99, 100); // Non-existent node IDs
     assert_eq!(controller.network_topology, initial_topology);
@@ -668,7 +750,7 @@ fn test_remove_connection_non_existent_nodes() {
 
 #[test]
 fn test_add_client_with_more_than_two_connections() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.add_connection(4, 1); // Client 4 is already connected to 1 drone
     controller.add_connection(4, 2); // Client 4 is now connected to 2 drones
     controller.add_connection(4, 3); // Attempt to connect to a third drone
@@ -677,7 +759,7 @@ fn test_add_client_with_more_than_two_connections() {
 
 #[test]
 fn test_add_drone_with_duplicate_connections() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.add_drone(8, vec![1, 1, 2, 2], 0.1); // Duplicate connections
     assert!(controller.network_topology.contains_key(&8));
     assert_eq!(controller.network_topology[&8].len(), 2); // Only unique connections should be added
@@ -685,14 +767,14 @@ fn test_add_drone_with_duplicate_connections() {
 
 #[test]
 fn test_remove_connection_client_drone() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     controller.remove_connection(4, 1); // Client 4 is connected to drone 1
     assert!(controller.network_topology[&4].len() >= 1); // Client should still have at least one connection
 }
 
 #[test]
 fn test_add_connection_client_server() {
-    let mut controller = initialize_mock_network();
+    let mut controller = _initialize_mock_network();
     let initial_topology = controller.network_topology.clone();
     controller.add_connection(4, 6); // Client 4 and server 6
     assert_eq!(controller.network_topology, initial_topology); // Connection should not be added
