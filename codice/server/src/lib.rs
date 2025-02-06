@@ -14,10 +14,9 @@ use crate::message::packaging::Repackager;
 use message::net_work as NewWork;
 use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
-use wg_2024::packet::PacketType::{Ack as AckType, MsgFragment};
+use wg_2024::packet::PacketType::{Ack as AckType,  MsgFragment};
 use wg_2024::packet::{Ack, FloodRequest, Fragment, NodeType, Packet, PacketType};
 use NewWork::bfs_shortest_path;
-use crate::PacketType::FloodRequest as FloodRequestType;
 
 pub use message::file_system;
 pub struct  Server  
@@ -73,6 +72,7 @@ and the list of it's neighbour
     
 
     pub fn run(&mut self) {
+        self.sendflod_request();
         loop {
             select_biased! {        
                 recv(self.packet_recv) -> packet => {
@@ -128,43 +128,48 @@ and the list of it's neighbour
 
         //first thing you do is calculatre the right path to deliver the packet
         let source = packet.routing_header.hop_index;
-        let path = bfs_shortest_path(&self.graph, self.id, source as NodeId);
-        let source_id = packet.routing_header.hops[0];
+        let mut source_id :NodeId = 0; 
+            match packet.routing_header.hops.get(0){
+                None => {println!("SERVER :  I was unable to find the source of the packet . It could be a flood request ");}
+                Some(x) => {source_id =*x}
+            }
         
+        let mut response = packet.clone();  //The response will be modified later . For now, it's just a copy
         
-        match path {
-            Some(x) => {
-
-                //start creating the new packet
-                let mut response = Packet
-                {
-                    routing_header: x,
-                    session_id: packet.session_id,
-                    pack_type: packet.pack_type.clone()        //just to fill up the filed it will be changed in a moment
-                };
-
-
-                match packet.pack_type {
+                match packet.pack_type {                    //Process different packet type
                     PacketType::MsgFragment(msg) => {
 
                         //Send back an ack 
                         response.pack_type = AckType(Ack {          
                             fragment_index: msg.fragment_index,
                         });
-                        self.send_valid_packet(packet.routing_header.hop_index as NodeId, response.clone());
+                        self.send_valid_packet(source_id as NodeId, response.clone());
                         
                         //Start transforming the fragment in a vector with all the data in it 
-                        let result = self.package_handler.process_fragment(packet.session_id, packet.routing_header.hop_index as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
+                        let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
                         
                         
-                        
+                        //If we are able to reassemble the data we proceed
                         match result { 
                             Ok(Some(data)) => {
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
                                 
-                                //Process the rewquest
+                                /*Here there is an exception if the message start with messageFor?(...)
+                                
+                                It means that is a message for another user, so I have to change the source id
+                                */
+                                let msg_work = message.clone().unwrap();
+                                if let Some(content) = msg_work.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
+                                    let parts: Vec<&str> = content.splitn(2, ',').collect();
+                                    if parts.len() == 2 {
+                                        source_id = parts[0].parse::<NodeId>().unwrap();
+                                       // let message = parts[1];  copyed from message
+                                    }
+                                }
+
+                                    //Process the request
                                 let result =self.server_type.process_request(message.unwrap(),source as u32);
                                 match result {
                                     Ok(value) => {
@@ -187,6 +192,11 @@ and the list of it's neighbour
                         //let message = Repackager::reassembled_to_string(result);
                         
                     }
+                    
+                    
+                    
+                    
+                    
                     PacketType::Nack(msg) => {
                         
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
@@ -205,9 +215,11 @@ and the list of it's neighbour
                         }
                         
                     }
-                    PacketType::Ack(msg) => {
-                        
-                        
+                    
+                    
+                    
+                    
+                    PacketType::Ack(msg) => {   //Send the next packet 
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
                         match result {
                             None => {println!("Received an Ack but I can't trace buck the number to any packet {:?}", msg)}
@@ -227,15 +239,17 @@ and the list of it's neighbour
                                 }
                             }
                         }
-                        
-                        
-                        //self.send_valid_packet(next_hop, packet);
                     }
 
+                    
+                    
+                    
                     PacketType::FloodResponse(path) => {
                         NewWork::recive_flood_response(&mut self.graph, path.path_trace);            //It's not the job of the server to propagate the message is not a drone
-
                     }
+                    
+                    
+                    
 
                     PacketType::FloodRequest(mut flood_packet) =>
                         {
@@ -247,39 +261,45 @@ and the list of it's neighbour
                                 let response = flood_packet.generate_response(packet.session_id);
                                 NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
-                                self.send_packet(previous_neighbour,response );
+                                for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
+                                    sendr.send(response.clone());
+                                }
                             } else {
                                 panic!("Can not find neighbour who send this packet {} ", flood_packet);
                             }
                         }
                 }
-            }
-            None => { println!("No path found for source {}  found !!ERROR!!", source);}
+        
 
 
-
-        }
+        
     }
 
     fn sendflod_request(& self)
     {
-        let request = FloodRequest {
-            flood_id : rand::random(),
-            initiator_id: self.id,
-            path_trace: vec![(self.id, NodeType::Server)],
-        };
+
         
         
         //Send flood request to all his neighbour
-        println!("Sending flood request: {:?}", request);                               
         for (node,sender) in self.packet_send.iter() {
             println!("Sending flood request to node {:?}",  node);
+
+            let request = FloodRequest {
+                flood_id : rand::random(),
+                initiator_id: self.id,
+                path_trace: vec![(self.id, NodeType::Server)],
+            };
             
-            self.send_valid_packet(*node,Packet{
+            let p = Packet
+            {
                 routing_header: Default::default(),
-                session_id: rand::random(),
-                pack_type: FloodRequestType(request.clone()),
-            });
+                session_id: 0,
+                pack_type: PacketType::FloodRequest(request ),
+            };
+            
+             //send flood request to all his neibourgh
+            sender.send(p.clone());
+            
         }
     }
     
