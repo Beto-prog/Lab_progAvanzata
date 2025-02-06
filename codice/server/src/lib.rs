@@ -264,6 +264,7 @@ and the list of it's neighbour
                             if let Some(last) = flood_packet.path_trace.last()
                             {
                                 previous_neighbour = last.0;
+                                flood_packet.path_trace.push((self.id,NodeType::Server)); //TODO fixed here
                                 //The Server is note a drone so when he receives a flood request he can send back a flood response with no problem
                                 let new_hops = flood_packet.path_trace
                                     .iter()
@@ -273,17 +274,16 @@ and the list of it's neighbour
                                     .collect();
 
                                 let srh = SourceRoutingHeader::with_first_hop(new_hops);
-
                                 let flood_resp = FloodResponse{
                                     flood_id: flood_packet.flood_id,
                                     path_trace: flood_packet.path_trace.clone()
                                 };
-                                
                                 let response = Packet::new_flood_response(srh,packet.session_id,flood_resp);
+                                //println!("SERVER: {:?}",response);
                                 NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
                                 for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
-                                    sendr.send(response.clone());
+                                    sendr.send(response.clone()).expect("Server: Error while sending FloodResponse");
                                 }
                             } else {
                                 panic!("Can not find neighbour who send this packet {} ", flood_packet);

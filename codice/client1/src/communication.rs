@@ -20,18 +20,18 @@ impl Client1 {
                 match command{
                     cmd if cmd == "server_type?" =>{
                         self.send_message(dest_id,cmd);
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     cmd if cmd == "client_list?" =>{
                         self.send_message(dest_id,cmd);
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     cmd if cmd.starts_with("message_for?(") =>{
                         match Self::get_values(cmd){
                             Some(values) =>{
                                 if self.other_client_ids.contains(&values.0){
                                     self.send_message(values.0,values.1);
-                                    "OK".to_string()
+                                    "CLIENT1: OK".to_string()
                                 }
                                 else{
                                     "Error: invalid dest_id".to_string()
@@ -50,13 +50,13 @@ impl Client1 {
                 match command{
                     cmd if cmd == "files_list?" =>{
                         self.send_message(dest_id,cmd);
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
                         if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
                             if self.files_names.contains(&name.parse::<String>().ok().unwrap()){
                                 self.send_message(dest_id,cmd);
-                                "OK".to_string()
+                                "CLIENT1: OK".to_string()
                             }
                             else{
                                 "Error: invalid file_id".to_string()
@@ -73,7 +73,7 @@ impl Client1 {
                             }
                             else{
                                 self.send_message(dest_id,cmd);
-                                "OK".to_string()
+                                "CLIENT1: OK".to_string()
                             }
                         }
                         else{
@@ -82,11 +82,11 @@ impl Client1 {
                     }
                     cmd if cmd == "registration_to_chat" =>{
                         self.send_message(dest_id,cmd);
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     cmd if cmd == "client_list?" =>{
                         self.send_message(dest_id,cmd);
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     _ =>{"Not a valid command".to_string()}
                 }
@@ -155,7 +155,7 @@ impl Client1 {
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
                         self.server.1 = serverType.to_string();
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     None =>{"Not valid server type".to_string()}
                 }
@@ -166,7 +166,7 @@ impl Client1 {
                         for e in val{
                             self.files_names.push(e);
                         }
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     None => "There are no file_IDs in the message".to_string()
                 }
@@ -226,7 +226,7 @@ impl Client1 {
                         for e in val{
                             self.other_client_ids.push(e);
                         }
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     None => "There are no other clients in the network right now".to_string()
                 }
@@ -240,7 +240,7 @@ impl Client1 {
                         let new_pack = Packet::new_ack(
                             SourceRoutingHeader::with_first_hop(hops),session_id,0);
                         self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
-                        "OK".to_string()
+                        "CLIENT1: OK".to_string()
                     }
                     None => "Failed to get message content".to_string()
                 }
@@ -329,8 +329,8 @@ mod test{
         // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
-        assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2),"CLIENT1: OK");
 
         let file_txt = fs::read("src/test/file1").unwrap();
         let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
@@ -347,10 +347,10 @@ mod test{
         assert_eq!(cl.handle_msg(msg,3,2),file_media2);
 
         let test_msg1 = "client_list!([1,2,3,4])".to_string();
-        assert_eq!(cl.handle_msg(test_msg1,3,2),"OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2),"CLIENT1: OK");
 
         let test_msg2 = "message_from!(2,file.txt)".to_string();
-        assert_eq!(cl.handle_msg(test_msg2,3,2),"OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2),"CLIENT1: OK");
 
         let test_msg4 = "error_requested_not_found!(File not found)".to_string() ;
         assert_eq!(cl.handle_msg(test_msg4.clone(),3,2),test_msg4);

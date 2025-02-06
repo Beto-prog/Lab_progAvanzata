@@ -27,7 +27,7 @@ mod communication;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
@@ -80,20 +80,21 @@ impl Client1 {
         };
         let session_id = Self::generate_session_id();
         for &neighbor in &self.neighbors{
-            self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)).expect("Error while sending the FloodRequest");
+            println!("CLIENT1: Sending flood request to Drone {}",neighbor);
+            self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)).expect("CLIENT1: Error while sending the FloodRequest");
         }
     }
     // Forward FloodRequest to the neighbors
     pub fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
         //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
         if self.neighbors.iter().count() == 1{
-            self.sender_channels.get(&previous).expect("Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("Error while sending message");
+            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("CLIENT1: Error while sending message");
         }
         // More than one neighbor
         else{
             for &neighbor in &self.neighbors {
                 if neighbor != previous{
-                    self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(packet.clone()).expect("Error while sending message");
+                    self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(packet.clone()).expect("CLIENT1: Error while sending message");
                 }
             }
         }
@@ -131,22 +132,25 @@ impl Client1 {
                         if self.flood_ids.contains(&(request.flood_id,request.initiator_id)){
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
                             let resp = self.create_flood_response(packet.session_id,request);
-                            self.sender_channels.get(&previous).expect("Didn't find neighbor").send(resp).expect("Error while sending message");
+                            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp).expect("CLIENT1: Error while sending message");
                         }
                         else{
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
                             self.flood_ids.push((request.flood_id,request.initiator_id));
-                            self.forward_flood_request(packet_clone,previous,request);
+                            //self.forward_flood_request(packet_clone,previous,request);
+                            let resp = self.create_flood_response(packet.session_id,request);
+                            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp).expect("CLIENT1: Error while sending message");
                         }
                     }
-                    _ => {panic!("Can't find neighbour who sent this packet {} ", request);}
+                    _ => {panic!("CLIENT1: Can't find neighbour who sent this packet {} ", request);}
                 }
             }
-            _=>{panic!("Wrong packet type received")}
+            _=>{panic!("CLIENT1: Wrong packet type received")}
         }
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
+        println!("CLIENT1 : arrived FloodResponse");
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
                 for node in &response.path_trace{
@@ -156,7 +160,7 @@ impl Client1 {
                 }
                 self.update_graph(response);
             }
-            _ => {panic!("Wrong packet type received")}
+            _ => {panic!("CLIENT1: Wrong packet type received")}
         }
     }
     // Handle received packets of type MsgFragment. Fragments put together and reassembled
@@ -164,7 +168,7 @@ impl Client1 {
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
                 // Check if a fragment with the same (session_id,src_id) has already been received
-                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Error while processing fragment"){
+                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
                     Some(message) =>{
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
@@ -176,7 +180,7 @@ impl Client1 {
                                 let new_first_hop = new_hops[1].clone();
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
-                                self.sender_channels.get(&new_first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                                self.sender_channels.get(&new_first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack).expect("CLIENT1: Error while sending packet");
                                 //Handle the command in the reconstructed message
                                 self.handle_msg(msg,packet.session_id,first_hop); 
                             },
@@ -187,7 +191,7 @@ impl Client1 {
                     None => ()
                 }
             }
-            _ =>{panic!("Wrong packet type received")}
+            _ =>{panic!("CLIENT1: Wrong packet type received")}
         }
     }
     // Helper functions
@@ -201,7 +205,7 @@ impl Client1 {
     // Update the knowledge of the network based on flood responses
     pub fn update_graph(&mut self, response: FloodResponse){
         let path = &response.path_trace;
-
+        println!("CLIENT1: ses {:?}",path);
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
@@ -222,6 +226,7 @@ impl Client1 {
                 }
             }
         }
+        println!("Network: {:?}",self.network);
     }
     // Calculates shortest path between two nodes
     pub fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
@@ -262,6 +267,7 @@ impl Client1 {
                 self.handle_flood_request(packet);
             }
             PacketType::FloodResponse(_) =>{
+                //println!("{:?}",packet);
                 self.handle_flood_response(packet);
             }
             PacketType::MsgFragment(_) =>{
@@ -274,25 +280,31 @@ impl Client1 {
         //Initialize the network field
         self.discover_network();
         let mut input_buffer = String::new();
-        //Client::new(params) from NetworkInitializer or what then client.run()
         loop {
+            //handled packets in the meantime
+            select_biased!{
+                recv(self.receiver_channel) -> packet =>{
+                    match packet{
+                        Ok(packet) => {println!("CLIENT1: received packet");self.handle_packet(packet)},
+                        Err(e) => println!("CLIENT1: Error: {e}")
+                    }
+                }
+            }
             //Simple implementation of user input
             input_buffer.clear();
-            io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
+            io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
             // Simple way to shut down client in case of some issue (hope it works)
             if input_buffer.eq("OFF"){
                 break;
             }
             match self.server.0{
-                255 =>{println!("Not linked to a server")}
+                255 => {
+                    println!("CLIENT1: Not linked to a server");
+                    //println!("Network: {:?}",self.network);
+                }
                 _=>{
                     println!("{}",self.handle_command(&input_buffer.trim().clone(),self.server.0));
                 }
-            }
-            //handled packets in the meantime
-            match self.receiver_channel.recv(){
-                Ok(packet) => self.handle_packet(packet),
-                Err(e) => println!("Error: {e}")
             }
         }
     }
