@@ -2,6 +2,7 @@
 
 use crossbeam_channel::unbounded;
 use serde::Deserialize;
+use server::Server;
 use simulation_controller::node_stats::DroneStats;
 use simulation_controller::SimulationController;
 use simulation_controller::SimulationControllerUI;
@@ -11,11 +12,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use wg_2024::network::NodeId;
-use server::Server;
-
 
 use client1::Client1;
-
+use client2::Client2;
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -66,6 +65,10 @@ impl NetworkInitializer {
             adjacency_list.insert(server.id, server.connected_drone_ids.clone());
         }
 
+        if !Self::is_bidirectional(&adjacency_list) {
+            return false;
+        }
+
         // Perform BFS to check connectivity
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -88,6 +91,21 @@ impl NetworkInitializer {
 
         // Check if all nodes are visited
         visited.len() == adjacency_list.len()
+    }
+
+    fn is_bidirectional(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> bool {
+        for (&node_id, neighbors) in adjacency_list {
+            for &neighbor_id in neighbors {
+                if let Some(neighbor_neighbors) = adjacency_list.get(&neighbor_id) {
+                    if !neighbor_neighbors.contains(&node_id) {
+                        return false; // Missing reverse connection.
+                    }
+                } else {
+                    return false; // Neighbor node does not exist.
+                }
+            }
+        }
+        true
     }
 
     fn validate_config(config: &NetworkConfig) -> Result<(), String> {
@@ -159,7 +177,9 @@ impl NetworkInitializer {
             }
         }
 
-        NetworkInitializer::is_graph_connected(config);
+        if !NetworkInitializer::is_graph_connected(config) {
+            return Err(format!("Network is not bidirectionally connected"));
+        }
 
         Ok(())
     }
@@ -209,8 +229,6 @@ impl NetworkInitializer {
         //let mut client_senders = HashMap::new();
         //let mut server_senders = HashMap::new();
 
-        
-        
         // Initialize drones
         for drone_config in &config.drone {
             let (drone_send, drone_recv) = unbounded();
@@ -235,21 +253,6 @@ impl NetworkInitializer {
             node_senders.insert(server_config.id, server_send.clone());
             node_recievers.insert(server_config.id, server_recv.clone());
         }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
 
         for (index, drone_config) in config.drone.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
@@ -285,33 +288,38 @@ impl NetworkInitializer {
         }
 
         // Initialize clients
-        for client_config in &config.client {
+        for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
-            let mut neighbors = HashSet::new();
             // Find drones that are connected to this client
-            for drone_config in &config.drone {
-                if drone_config.connected_node_ids.contains(&client_config.id) {
-                    neighbor_senders.insert(
-                        drone_config.id,
-                        node_senders.get(&drone_config.id).unwrap().clone(),
-                    );
-                    neighbors.insert(drone_config.id.clone() );
-                }
+            for neighbor_id in &client_config.connected_drone_ids {
+                neighbor_senders.insert(
+                    neighbor_id.clone(),
+                    node_senders.get(&neighbor_id).unwrap().clone(),
+                );
             }
+
             // Clone the specific receiver for this client before moving into the thread
             let client_receiver = node_recievers.get(&client_config.id).unwrap().clone();
             // Initialize the client with neighbor_senders
-            let mut client = Client1::new(client_config.id,neighbors,neighbor_senders.clone(),client_receiver);
-            std::thread::spawn(move || client.run());
+            if index % 2 == 0 {
+                let mut client = Client1::new(
+                    client_config.id,
+                    HashSet::from_iter(client_config.connected_drone_ids.clone()),
+                    neighbor_senders.clone(),
+                    client_receiver,
+                );
+                std::thread::spawn(move || client.run());
+            } else {
+                let mut client = Client2::new(
+                    client_config.id,
+                    neighbor_senders.clone(),
+                );
+                std::thread::spawn(move || client.run());
+            }
         }
 
-        
-        
-        
-        
-        
         // Initialize servers
-        for (index,server_config) in config.server.iter().enumerate() {
+        for (index, server_config) in config.server.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &server_config.connected_drone_ids {
                 neighbor_senders.insert(
@@ -324,54 +332,41 @@ impl NetworkInitializer {
 
             let mut server;
 
-            if (index %2==0) //Chat server 
+            if (index % 3 == 0)
+            //Chat server
             {
                 server = server::Server::new(
                     server_config.id,
                     packet_reciver.clone(),
                     neighbor_senders,
-                    Box::new(server::file_system::ChatServer::new()) // Allocazione su heap
+                    Box::new(server::file_system::ChatServer::new()), // Allocazione su heap
                 );
-
-            }
-            else if index%3 == 0
-            {
+            } else if index % 3 == 1 {
                 std::fs::create_dir("/tmp/ServerTxt");
-                 server = server::Server::new(server_config.id,
-                                              packet_reciver.clone(),
-                                              neighbor_senders,
-                                              Box::new(server::file_system::ContentServer::new("/tmp/ServerTxt",server::file_system::ServerType::TextServer)))
-
-            }
-            
-            else
-            {
+                server = server::Server::new(
+                    server_config.id,
+                    packet_reciver.clone(),
+                    neighbor_senders,
+                    Box::new(server::file_system::ContentServer::new(
+                        "/tmp/ServerTxt",
+                        server::file_system::ServerType::TextServer,
+                    )),
+                )
+            } else {
                 std::fs::create_dir("/tmp/ServerMedia");
-                server = server::Server::new(server_config.id,packet_reciver.clone(),
-                                             neighbor_senders,
-                                             Box::new( server::file_system::ContentServer::new("/tmp/ServerMedia",server::file_system::ServerType::MediaServer)))
-
+                server = server::Server::new(
+                    server_config.id,
+                    packet_reciver.clone(),
+                    neighbor_senders,
+                    Box::new(server::file_system::ContentServer::new(
+                        "/tmp/ServerMedia",
+                        server::file_system::ServerType::MediaServer,
+                    )),
+                )
             }
-            
-         
 
             std::thread::spawn(move || server.run());
-
         }
-
-
-        /*
-   id: NodeId,
-packet_recv: Receiver<Packet>,
-packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour.  
-server_type: &'a mut dyn ServerTrait,
-
-// extra field
-graph: HashMap<NodeId, Vec<NodeId>>,            //I nees this for bfs
-package_handler: Repackager,
-paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,
- */
-        
 
         let next_drone_impl_index = config.drone.len() % 10;
 
@@ -426,7 +421,7 @@ paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,
 }
 
 fn main() {
-    if let Err(e) = NetworkInitializer::run("network_config.toml") {
+    if let Err(e) = NetworkInitializer::run("src/network_config.toml") {
         eprintln!("Error initializing network: {}", e);
     }
 }
