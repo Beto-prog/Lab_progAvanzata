@@ -15,7 +15,7 @@ use message::net_work as NewWork;
 use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
 use wg_2024::packet::PacketType::{Ack as AckType,  MsgFragment};
-use wg_2024::packet::{Ack, FloodRequest, Fragment, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
 use NewWork::bfs_shortest_path;
 
 pub use message::file_system;
@@ -265,7 +265,21 @@ and the list of it's neighbour
                             {
                                 previous_neighbour = last.0;
                                 //The Server is note a drone so when he receives a flood request he can send back a flood response with no problem
-                                let response = flood_packet.generate_response(packet.session_id);
+                                let new_hops = flood_packet.path_trace
+                                    .iter()
+                                    .cloned()
+                                    .map(|(id, _)| id)
+                                    .rev()
+                                    .collect();
+
+                                let srh = SourceRoutingHeader::with_first_hop(new_hops);
+
+                                let flood_resp = FloodResponse{
+                                    flood_id: flood_packet.flood_id,
+                                    path_trace: flood_packet.path_trace.clone()
+                                };
+                                
+                                let response = Packet::new_flood_response(srh,packet.session_id,flood_resp);
                                 NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
                                 for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
