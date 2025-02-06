@@ -150,12 +150,13 @@ impl Client1 {
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
-        println!("CLIENT1 : arrived FloodResponse");
+        println!("CLIENT1: arrived FloodResponse");
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
                         self.server.0 = node.0;
+                        println!("CLIENT1: found server with id: {}",self.server.0);
                     }
                 }
                 self.update_graph(response);
@@ -205,7 +206,7 @@ impl Client1 {
     // Update the knowledge of the network based on flood responses
     pub fn update_graph(&mut self, response: FloodResponse){
         let path = &response.path_trace;
-        println!("CLIENT1: ses {:?}",path);
+        //println!("CLIENT1:{:?}",path);
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
@@ -226,7 +227,7 @@ impl Client1 {
                 }
             }
         }
-        println!("Network: {:?}",self.network);
+        //println!("Network: {:?}",self.network);
     }
     // Calculates shortest path between two nodes
     pub fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
@@ -297,6 +298,7 @@ impl Client1 {
             if input_buffer.eq("OFF"){
                 break;
             }
+            //println!("CLIENT1: server id : {}",self.server.0);
             match self.server.0{
                 255 => {
                     println!("CLIENT1: Not linked to a server");

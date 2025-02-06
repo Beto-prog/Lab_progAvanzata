@@ -14,83 +14,73 @@ use crate::fragment_reassembler::FragmentReassembler;
 impl Client1 {
     // Handle user input received and send command to a dest_id (e.g. a server)
     pub fn handle_command(&mut self, command: &str, dest_id: NodeId) -> String{
-        // Check for serverType in order to send only the correct set of messages
-        match &self.server.1{
-            server_type if server_type.eq("CommunicationServer") =>{
-                match command{
-                    cmd if cmd == "server_type?" =>{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    cmd if cmd == "client_list?" =>{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    cmd if cmd.starts_with("message_for?(") =>{
-                        match Self::get_values(cmd){
-                            Some(values) =>{
-                                if self.other_client_ids.contains(&values.0){
-                                    self.send_message(values.0,values.1);
-                                    "CLIENT1: OK".to_string()
-                                }
-                                else{
-                                    "Error: invalid dest_id".to_string()
-                                }
-                            }
-                            None =>{
-                                "Error: command not formatted correctly".to_string()
-                            }
-                        }
-                    }
-                    _=> "Not a valid communication command".to_string()
-                }
+        // Check for serverType in order to send only the correct set of messages TODO
+        match command{
+            cmd if cmd == "server_type?" =>{
+                self.send_message(dest_id,cmd);
+                "CLIENT1: OK".to_string()
             }
-            // In the other cases more messages can be sent
-            _=>{
-                match command{
-                    cmd if cmd == "files_list?" =>{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
-                        if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
-                            if self.files_names.contains(&name.parse::<String>().ok().unwrap()){
-                                self.send_message(dest_id,cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            else{
-                                "Error: invalid file_id".to_string()
-                            }
+            cmd if cmd == "client_list?" =>{
+                self.send_message(dest_id,cmd);
+                "CLIENT1: OK".to_string()
+            }
+            cmd if cmd.starts_with("message_for?(") =>{
+                match Self::get_values(cmd){
+                    Some(values) =>{
+                        if self.other_client_ids.contains(&values.0){
+                            self.send_message(values.0,values.1);
+                            "CLIENT1: OK".to_string()
                         }
                         else{
-                            "Error: command not formatted correctly".to_string()
+                            "Error: invalid dest_id".to_string()
                         }
                     }
-                    cmd if cmd.starts_with("media?(") && cmd.ends_with(")") =>{
-                        if let Some(id) = cmd.strip_prefix("media?(").and_then(|s|s.strip_suffix(")")){
-                            if id.is_empty(){
-                                "Error: invalid media_id".to_string()
-                            }
-                            else{
-                                self.send_message(dest_id,cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                        }
-                        else{
-                            "Error: command not formatted correctly".to_string()
-                        }
+                    None =>{
+                        "Error: command not formatted correctly".to_string()
                     }
-                    cmd if cmd == "registration_to_chat" =>{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    cmd if cmd == "client_list?" =>{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    _ =>{"Not a valid command".to_string()}
                 }
             }
+            cmd if cmd == "files_list?" =>{
+                self.send_message(dest_id,cmd);
+                "CLIENT1: OK".to_string()
+            }
+            cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
+                if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
+                    if self.files_names.contains(&name.parse::<String>().ok().unwrap()){
+                        self.send_message(dest_id,cmd);
+                        "CLIENT1: OK".to_string()
+                    }
+                    else{
+                        "Error: invalid file_id".to_string()
+                    }
+                }
+                else{
+                    "Error: command not formatted correctly".to_string()
+                }
+            }
+            cmd if cmd.starts_with("media?(") && cmd.ends_with(")") =>{
+                if let Some(id) = cmd.strip_prefix("media?(").and_then(|s|s.strip_suffix(")")){
+                    if id.is_empty(){
+                        "Error: invalid media_id".to_string()
+                    }
+                    else{
+                        self.send_message(dest_id,cmd);
+                        "CLIENT1: OK".to_string()
+                    }
+                }
+                else{
+                    "Error: command not formatted correctly".to_string()
+                }
+            }
+            cmd if cmd == "registration_to_chat" =>{
+                self.send_message(dest_id,cmd);
+                "CLIENT1: OK".to_string()
+            }
+            cmd if cmd == "client_list?" =>{
+                self.send_message(dest_id,cmd);
+                "CLIENT1: OK".to_string()
+            }
+            _ =>{"Not a valid command".to_string()}
         }
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
