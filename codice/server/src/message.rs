@@ -222,7 +222,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
 
     1. The client or server receives a fragment.
     2. It first checks the (session_id, src_id) tuple in the header.    
-    3. If it has not received a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
+    3. If it has not recived a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
     4. It would then copy length elements of the data array at the correct offset in the vector.
 
 
@@ -272,7 +272,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
                 self.processed_packet.remove(&key);
                 Ok(Some(complete_data)) // Message reassembled successfully
             } else {
-                Ok(None) // Not all fragments received yet
+                Ok(None) // Not all fragments recived yet
             }
         }
 

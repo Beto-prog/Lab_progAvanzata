@@ -130,7 +130,14 @@ and the list of it's neighbour
         let source = packet.routing_header.hop_index;
         let mut source_id :NodeId = 0; 
             match packet.routing_header.hops.get(0){
-                None => {println!("SERVER :  I was unable to find the source of the packet . It could be a flood request ");}
+                None => {
+                        match &packet.pack_type
+                    {
+                        PacketType::FloodRequest(_) => {println!("SERVER :  Received FloodRequest")}
+                        PacketType::FloodResponse(_) => {println!("SERVER :  Received FloodResponse")}
+                        _ => {println!("SERVER :  I received an packet without headers");}
+                    }
+                }
                 Some(x) => {source_id =*x}
             }
         
