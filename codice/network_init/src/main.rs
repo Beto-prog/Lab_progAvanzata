@@ -304,7 +304,6 @@ impl NetworkInitializer {
             if index % 2 == 0 {
                 let mut client = Client1::new(
                     client_config.id,
-                    HashSet::from_iter(client_config.connected_drone_ids.clone()),
                     neighbor_senders.clone(),
                     client_receiver,
                 );

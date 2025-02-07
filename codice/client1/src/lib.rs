@@ -1,4 +1,4 @@
-/*
+/* // TODO match on the .send() and in case it fails remove neighbor
 INFO
 
 This is the implementation of a Client made by Lorenzo Cortese for the AP project of academic year 2024/2025 held by professor Marco Patrignani.
@@ -38,7 +38,6 @@ type Graph = HashMap<NodeId,Vec<NodeId>>;
 
 pub struct Client1 {
     node_id: NodeId,
-    neighbors: HashSet<NodeId>,
     sender_channels: HashMap<NodeId,Sender<Packet>>,
     receiver_channel: Receiver<Packet>,
     flood_ids: Vec<(u64,NodeId)>,
@@ -53,13 +52,11 @@ pub struct Client1 {
 impl Client1 {
     // Create a new Client with parameters from Network Initializer
     pub fn new(node_id: NodeId,
-               neighbors: HashSet<NodeId>,
                sender_channels:HashMap<NodeId,Sender<Packet>>,
                receiver_channel: Receiver<Packet>
     ) -> Self {
         Self {
             node_id,
-            neighbors,
             sender_channels,
             receiver_channel,
             flood_ids: vec![],
@@ -79,12 +76,16 @@ impl Client1 {
             path_trace: vec![(self.node_id, NodeType::Client)],
         };
         let session_id = Self::generate_session_id();
-        for &neighbor in &self.neighbors{
+        for &neighbor in &self.sender_channels.iter(){
             println!("CLIENT1: Sending flood request to Drone {}",neighbor);
-            self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)).expect("CLIENT1: Error while sending the FloodRequest");
+            match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)){
+                Ok(_) => (),
+                Err(_) =>{self.sender_channels.remove(&neighbor); self.discover_network() }
+            }
         }
     }
     // Forward FloodRequest to the neighbors
+    /*
     pub fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
         //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
         if self.neighbors.iter().count() == 1{
@@ -99,6 +100,8 @@ impl Client1 {
             }
         }
     }
+
+     */
     // Creation of Packet with packet.type = FloodResponse
     pub fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
@@ -122,7 +125,7 @@ impl Client1 {
     }
     // Function to handle received packets of type FloodRequest
     pub fn handle_flood_request(&mut self,packet: Packet) {
-        let packet_clone = packet.clone();
+        //let packet_clone = packet.clone();
         match packet.pack_type{
             PacketType::FloodRequest(mut request)=>{
                 let mut previous = 0;
@@ -132,14 +135,20 @@ impl Client1 {
                         if self.flood_ids.contains(&(request.flood_id,request.initiator_id)){
                             request.path_trace.push((self.node_id.clone(),NodeType::Client));
                             let resp = self.create_flood_response(packet.session_id,request);
-                            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp).expect("CLIENT1: Error while sending message");
+                            match self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp){
+                                Ok(_) => (),
+                                Err(_) =>{self.sender_channels.remove(&previous); self.discover_network(); }
+                            }
                         }
-                        else{
-                            request.path_trace.push((self.node_id.clone(),NodeType::Client));
-                            self.flood_ids.push((request.flood_id,request.initiator_id));
+                        else {
+                            request.path_trace.push((self.node_id.clone(), NodeType::Client));
+                            self.flood_ids.push((request.flood_id, request.initiator_id));
                             //self.forward_flood_request(packet_clone,previous,request);
-                            let resp = self.create_flood_response(packet.session_id,request);
-                            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp).expect("CLIENT1: Error while sending message");
+                            let resp = self.create_flood_response(packet.session_id, request);
+                            match self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp){
+                                Ok(_) => (),
+                                Err(_) =>{self.sender_channels.remove(&previous); self.discover_network(); }
+                            }
                         }
                     }
                     _ => {panic!("CLIENT1: Can't find neighbour who sent this packet {} ", request);}
@@ -176,14 +185,31 @@ impl Client1 {
                             Ok(msg) => {
                                 // A message is reconstructed: create and send back an Ack
                                 let mut new_hops = packet.routing_header.hops.clone();
-                                let first_hop: NodeId = new_hops[1].clone();
+                                let dest_id = new_hops[0];
                                 new_hops.reverse();
-                                let new_first_hop = new_hops[1].clone();
+                                let new_first_hop = new_hops[1];
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,0);
-                                self.sender_channels.get(&new_first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack).expect("CLIENT1: Error while sending packet");
+
+                                match self.sender_channels.get(&new_first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
+                                    Ok(_) => (),
+                                    Err(_) =>{ // Error: the first node is crashed
+
+                                        self.sender_channels.remove(&new_first_hop);
+                                        self.discover_network();
+
+                                        let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                                        let first_hop = new_path[1];
+
+                                        let packet_sent = Packet::new_ack(
+                                            SourceRoutingHeader::with_first_hop(new_path),packet.session_id,0);
+                                        if let Some(sender) = self.sender_channels.get(&first_hop){
+                                            sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                                        }
+                                    }
+                                }
                                 //Handle the command in the reconstructed message
-                                self.handle_msg(msg,packet.session_id,first_hop); 
+                                self.handle_msg(msg,packet.session_id,new_first_hop);
                             },
                             // FragmentReassembler encountered an error
                             Err(e) => println!("{e}")

@@ -88,49 +88,67 @@ impl Client1 {
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
+        let first_hop = path[1];
         match path{
             Some(p) =>{
                 let path_rc = Rc::new(RefCell::new(p));
                 for fragment in fragments {
-                    if let Some(sender) = self.sender_channels.get(&dest_id) {
+                    if let Some(sender) = self.sender_channels.get(&first_hop) {
                         let packet_sent = Packet {
                             routing_header: SourceRoutingHeader::with_first_hop(path_rc.borrow().clone()),
                             pack_type: PacketType::MsgFragment(fragment.clone()),
                             session_id
                         };
-                        sender.send(packet_sent).expect("Failed to send message");
-                        // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
-                        'internal: loop {
-                            match self.receiver_channel.recv(){
-                                Ok(packet) =>{
-                                    match packet.pack_type{
-                                        PacketType::Ack(_) =>{
-                                            // In case I receive an Ack with same session_id message arrived correctly: restored normal course of the program
-                                            if packet.session_id == session_id{break 'internal}
-                                        },
-                                        PacketType::Nack(_) =>{
-                                            if packet.session_id == session_id{
-                                                // In case I receive a Nack with same session_id I need to send again the message.
-                                                //self.discover_network(); // I hope it works with the new route
-                                                match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
-                                                    Some(path) =>{
-                                                        let packet = Packet {
-                                                            routing_header: SourceRoutingHeader::with_first_hop(path),
-                                                            pack_type: PacketType::MsgFragment(fragment.clone()),
-                                                            session_id
-                                                        };
-                                                        sender.send(packet.clone()).unwrap();
-                                                    }
-                                                    None =>{println!("Error: no path to the dest_id")}
-                                                }
-                                            }
-                                        }
-                                        _=> ()
-                                    }
-                                }
-                                Err(e) => panic!("{e}")
-                            }
-                        }
+                       match sender.send(packet_sent){
+                           // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
+                           Ok(_) =>{
+                               'internal: loop {
+                                   match self.receiver_channel.recv(){
+                                       Ok(packet) =>{
+                                           match packet.pack_type{
+                                               PacketType::Ack(_) =>{
+                                                   // In case I receive an Ack with same session_id message arrived correctly: restored normal course of the program
+                                                   if packet.session_id == session_id{break 'internal}
+                                               },
+                                               PacketType::Nack(_) =>{
+                                                   if packet.session_id == session_id{
+                                                       // In case I receive a Nack with same session_id I need to send again the message.
+                                                       //self.discover_network(); // I hope it works with the new route
+                                                       match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
+                                                           Some(path) =>{
+                                                               let packet = Packet {
+                                                                   routing_header: SourceRoutingHeader::with_first_hop(path),
+                                                                   pack_type: PacketType::MsgFragment(fragment.clone()),
+                                                                   session_id
+                                                               };
+                                                               sender.send(packet.clone()).unwrap();
+                                                           }
+                                                           None =>{println!("Error: no path to the dest_id")}
+                                                       }
+                                                   }
+                                               }
+                                               _=> ()
+                                           }
+                                       }
+                                       Err(e) => panic!("{e}")
+                                   }
+                               }
+                           }
+                           Err(_) =>{ // Case of crashed drone
+                               self.sender_channels.remove(&first_hop);
+                               self.discover_network();
+                               let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                               let first_hop = new_path[1];
+                               let packet_sent = Packet {
+                                   routing_header: SourceRoutingHeader::with_first_hop(new_path),
+                                   pack_type: PacketType::MsgFragment(fragment.clone()),
+                                   session_id
+                               };
+                               if let Some(sender) = self.sender_channels.get(&first_hop){
+                                   sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                               }
+                           }
+                       }
                     }
                 }
             }
@@ -170,7 +188,23 @@ impl Client1 {
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops), session_id, 0);
                             self.received_files.push(res.clone());
-                            self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                            match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
+                                Ok(_) => (),
+                                Err(_) =>{ // Error: the first node is crashed
+
+                                    self.sender_channels.remove(&first_hop);
+                                    self.discover_network();
+
+                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                    let first_hop = new_path[1];
+
+                                    let packet_sent = Packet::new_ack(
+                                        SourceRoutingHeader::with_first_hop(new_path),session_id,0);
+                                    if let Some(sender) = self.sender_channels.get(&first_hop){
+                                        sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                                    }
+                                }
+                            }
                             res.to_string()
                         }
                         else{ "Error: no file".to_string() }
@@ -186,7 +220,23 @@ impl Client1 {
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops),session_id,0);
-                            self.sender_channels.get(&first_hop).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                            match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
+                                Ok(_) => (),
+                                Err(_) =>{ // Error: the first node is crashed
+
+                                    self.sender_channels.remove(&first_hop);
+                                    self.discover_network();
+
+                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                    let first_hop = new_path[1];
+
+                                    let packet_sent = Packet::new_ack(
+                                        SourceRoutingHeader::with_first_hop(new_path),session_id,0);
+                                    if let Some(sender) = self.sender_channels.get(&first_hop){
+                                        sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                                    }
+                                }
+                            }
                             clean_data.to_string()
                         }
                         else{ "Error: no media".to_string() }
@@ -229,7 +279,23 @@ impl Client1 {
                         let neighbor = hops[1];
                         let new_pack = Packet::new_ack(
                             SourceRoutingHeader::with_first_hop(hops),session_id,0);
-                        self.sender_channels.get(&neighbor).expect("Didn't find neighbor").send(new_pack).expect("Error while sending packet");
+                        match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(new_pack){
+                            Ok(_) => (),
+                            Err(_) =>{ // Error: the first node is crashed
+
+                                self.sender_channels.remove(&neighbor);
+                                self.discover_network();
+
+                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                let first_hop = new_path[1];
+
+                                let packet_sent = Packet::new_ack(
+                                    SourceRoutingHeader::with_first_hop(new_path),session_id,0);
+                                if let Some(sender) = self.sender_channels.get(&first_hop){
+                                    sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                                }
+                            }
+                        }
                         "CLIENT1: OK".to_string()
                     }
                     None => "Failed to get message content".to_string()
