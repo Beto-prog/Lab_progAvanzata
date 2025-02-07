@@ -26,7 +26,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
 3. If it has not received a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
 4. It would then copy length elements of the data array at the correct offset in the vector.
 */
-    pub fn process_fragment(&mut self, session_id: u64, src_id: u64, fragment: Fragment) -> Result<Option<Vec<u8>>, u8> {
+    pub fn process_fragment(&mut self, session_id: u64, src_id: u64, fragment: &Fragment) -> Result<Option<Vec<u8>>, u8> {
         let key = (session_id, src_id);
 
         // Check if buffer for this session_id and src_id exists, if not, create it
