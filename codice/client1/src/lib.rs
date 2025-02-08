@@ -75,8 +75,9 @@ impl Client1 {
             initiator_id: self.node_id,
             path_trace: vec![(self.node_id, NodeType::Client)],
         };
+        let neighbors: Vec<_> = self.sender_channels.keys().cloned().collect();
         let session_id = Self::generate_session_id();
-        for &neighbor in &self.sender_channels.iter(){
+        for neighbor in neighbors{
             println!("CLIENT1: Sending flood request to Drone {}",neighbor);
             match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)){
                 Ok(_) => (),
@@ -159,7 +160,7 @@ impl Client1 {
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
-        println!("CLIENT1: arrived FloodResponse");
+        //println!("CLIENT1: arrived FloodResponse");
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
                 for node in &response.path_trace{
@@ -312,25 +313,29 @@ impl Client1 {
             select_biased!{
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
-                        Ok(packet) => {println!("CLIENT1: received packet");self.handle_packet(packet)},
+                        Ok(packet) => {
+                            //println!("CLIENT1: received packet");
+                            self.handle_packet(packet)},
+
                         Err(e) => println!("CLIENT1: Error: {e}")
                     }
                 }
             }
-            //Simple implementation of user input
-            input_buffer.clear();
-            io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
-            // Simple way to shut down client in case of some issue (hope it works)
-            if input_buffer.eq("OFF"){
-                break;
-            }
+
             //println!("CLIENT1: server id : {}",self.server.0);
             match self.server.0{
-                255 => {
-                    println!("CLIENT1: Not linked to a server");
+                255 => { ()
+                    //println!("CLIENT1: Not linked to a server");
                     //println!("Network: {:?}",self.network);
                 }
                 _=>{
+                    //Simple implementation of user input
+                    input_buffer.clear();
+                    io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
+                    // Simple way to shut down client in case of some issue (hope it works)
+                    if input_buffer.eq("OFF"){
+                        break;
+                    }
                     println!("{}",self.handle_command(&input_buffer.trim().clone(),self.server.0));
                 }
             }
@@ -345,7 +350,7 @@ mod test{
     #[test]
     fn test_bfs_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
         cl.sender_channels.insert(19, snd);
         cl.network.insert(1, vec![2, 3]);
         cl.other_client_ids.push(2);
@@ -368,7 +373,7 @@ mod test{
     #[test]
     fn test_bfs_no_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2, 3]);
         cl.other_client_ids.push(2);
@@ -386,7 +391,7 @@ mod test{
     #[test]
     fn test_update_graph(){
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2]);
         let mut f_req = FloodRequest::new(1234, 1);

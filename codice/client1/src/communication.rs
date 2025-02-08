@@ -88,9 +88,9 @@ impl Client1 {
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
-        let first_hop = path[1];
         match path{
             Some(p) =>{
+                let first_hop = p[1];
                 let path_rc = Rc::new(RefCell::new(p));
                 for fragment in fragments {
                     if let Some(sender) = self.sender_channels.get(&first_hop) {
@@ -378,7 +378,7 @@ mod test{
     fn test_handle_msg_received(){
         // Initialize dummy client
         let (snd,rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashSet::new(), HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
         cl.sender_channels.insert(2,snd);
         cl.network.insert(1,vec![2]);
         cl.other_client_ids.push(2);
