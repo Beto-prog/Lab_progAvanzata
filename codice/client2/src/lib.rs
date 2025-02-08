@@ -2,13 +2,12 @@
 
 mod repackager;
 
-use std::collections::{HashMap, HashSet, VecDeque, BTreeMap};
-use std::fs::File;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use wg_2024::packet::*;
 use wg_2024::network::*;
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Sender, Receiver};
 use crate::repackager::Repackager;
 
 pub struct Client2 {
@@ -19,10 +18,12 @@ pub struct Client2 {
     server: Option<NodeId>,
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
     repackager: Repackager,
+    receiver_channel: Receiver<Packet>,
+    received_floods: HashSet<u64>,
 }
 
 impl Client2 {
-    pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
         Self {
             node_id,
             discovered_drones: Arc::new(Mutex::new(HashMap::new())),
@@ -31,6 +32,8 @@ impl Client2 {
             server: None,
             sent_packets: HashMap::new(), // Initialize the sent packets map
             repackager: Repackager::new(),
+            receiver_channel,
+            received_floods: HashSet::new(),
         }
     }
     // Discover network through drones
@@ -50,6 +53,38 @@ impl Client2 {
                 session_id: self.generate_session_id(),
             }).unwrap();
         }
+    }
+
+    pub fn create_flood_response(&self, session_id: u64, flood_request: FloodRequest) -> Packet {
+        let mut hops = vec![];
+        for (node_id, node_type) in flood_request.path_trace.clone() {
+            hops.push((node_id));
+        }
+
+        let response = FloodResponse {
+            flood_id: flood_request.flood_id,
+            path_trace: flood_request.path_trace,
+        };
+        let srh = SourceRoutingHeader::with_first_hop(hops);
+
+        Packet::new_flood_response(srh, session_id, response)
+    }
+
+    pub fn handle_flood_request(&mut self, flood_request: FloodRequest, session_id: u64) {
+        println!("Client {} received FloodRequest: {:?}", self.node_id, flood_request);
+
+        // Check if this flood request has already been processed
+        if self.received_floods.contains(&flood_request.flood_id) {
+            println!("Client {} already processed FloodRequest with ID {}", self.node_id, flood_request.flood_id);
+            return;  // Skip processing if already handled
+        }
+
+        // Mark this flood request as processed
+        self.received_floods.insert(flood_request.flood_id);
+
+        // Create and send the flood response back
+        let response_packet = self.create_flood_response(session_id, flood_request);
+        self.forward_packet(response_packet);
     }
 
     // Handle a received FloodResponse and build the network graph
@@ -89,7 +124,7 @@ impl Client2 {
         for fragment in fragments {
             let packet = Packet {
                 pack_type: PacketType::MsgFragment(fragment),
-                routing_header: self.create_source_routing_header(server_id),
+                routing_header: self.create_source_routing_header(self.server.unwrap()),
                 session_id,
             };
 
@@ -134,9 +169,8 @@ impl Client2 {
     // Handle received packet (Ack, Nack, etc.)
     pub fn handle_packet(&mut self, packet: Packet) {
         match packet.pack_type {
-            PacketType::MsgFragment(fragment) => {
-                self.handle_msg_fragment(fragment, packet.session_id)
-            }
+            PacketType::MsgFragment(ref fragment) => self.handle_msg_fragment(fragment.clone(), packet.clone()),
+            PacketType::FloodRequest(request) => self.handle_flood_request(request, packet.session_id),
             PacketType::FloodResponse(response) => self.handle_flood_response(response),
             PacketType::Ack(ack) => {
                 println!("CLIENT2: Client {} received Ack: {:?}", self.node_id, ack);
@@ -161,7 +195,7 @@ impl Client2 {
         }
     }
 
-    pub fn handle_msg_fragment(&mut self, fragment: Fragment, message_id: u64) {
+    pub fn handle_msg_fragment(&mut self, fragment: Fragment, packet: Packet) {
         // Call process_fragment to handle the incoming fragment
         let session_id = self.generate_session_id(); // Assuming you have access to session_id
         let src_id = self.node_id as u64; // Assuming src_id is the node_id of the client
@@ -173,7 +207,7 @@ impl Client2 {
                 println!("CLIENT2: Converted fragments into message: {:?}", msg);
             }
             Ok(None) => {
-                println!("CLIENT2: Not all fragments received yet for message ID {}", message_id);
+                println!("CLIENT2: Not all fragments received yet for message ID {}", packet.session_id);
             }
             Err(error_code) => {
                 println!("CLIENT2: Error processing fragment: {}", error_code);
