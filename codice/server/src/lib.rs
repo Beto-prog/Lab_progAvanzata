@@ -1,6 +1,8 @@
 #![allow(warnings)]
 
 
+
+
 mod message;
 
 use crossbeam_channel::{select_biased, Receiver, Sender};
@@ -22,14 +24,14 @@ pub use message::file_system;
 pub struct  Server  
 {
     id: NodeId,
-    packet_recv: Receiver<Packet>,
-    packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour.  
-    server_type: Box<dyn ServerTrait>,
+    packet_recv: Receiver<Packet>,                  //packet receiver
+    packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour (drone  for send the packet)  
+    server_type: Box<dyn ServerTrait>,              //Server type 
   
     // extra field
-    graph: HashMap<NodeId, Vec<NodeId>>,            //I nees this for bfs
-    package_handler: Repackager,
-    paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,
+    graph: HashMap<NodeId, Vec<NodeId>>,            //I need this for bfs
+    package_handler: Repackager,                    // Fragment and reassemble file
+    paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,        // Keep track of the ack 
 }
 
 
@@ -63,9 +65,7 @@ impl Server{
     }    
     
     /*
-Start the flood protocol to fill up the hashmap and create the tree of the graph.
-Small remainder the hash map is composed in this way HashMap<NodeId, Vec<NodeId>> , The NodeId 
-and the list of it's neighbour 
+Start by sending a flood request to all the neighbour to fill up the graph
  */
 
  
@@ -74,7 +74,7 @@ and the list of it's neighbour
     pub fn run(&mut self) {
         self.sendflod_request();
         loop {
-            select_biased! {        
+            select_biased! {        //copied from the drone        
                 recv(self.packet_recv) -> packet => {
                     match packet {
                         Ok(packet) => {
@@ -93,32 +93,8 @@ and the list of it's neighbour
     
     
     /*
-    struct SourceRoutingHeader {
-	// must be set to 1 initially by the sender
-	hop_index: usize,
-	// Vector of nodes with initiator and nodes to which the packet will be forwarded to.
-	hops: Vec<NodeId>
-}
 
-    Packet 
-    {
-        routing_header 
-                hop_index: usize,
-                hops: Vec<NodeId>,
-        pack_type
-        session_id
-    }
-    
-    */
-     
-    /*
-    Rule :
-        1 - Each time you receive a packet you send an Ack
-        2 - Nack : you have to send again the packet
-        -----Problema da risolvere con limit case 
-        
-        3 - Ogni pacchetto e frammentato 
-        
+
     
      */
     
@@ -126,11 +102,10 @@ and the list of it's neighbour
     
     fn handle_packet(&mut self, mut packet: Packet) {
 
-        //first thing you do is calculatre the right path to deliver the packet
-        let source = packet.routing_header.hop_index;
-        let mut source_id :NodeId = 0; 
-            match packet.routing_header.hops.get(0){
-                None => {
+        //first I take the source id (it's used for processing ack, send the packet.....)
+        let mut source_id :NodeId = 0; //don't worry I am just initializing it
+            match packet.routing_header.hops.get(0){    //trying to get the source id 
+                None => {       
                         match &packet.pack_type
                     {
                         PacketType::FloodRequest(_) => {println!("SERVER :  Received FloodRequest")}
@@ -138,7 +113,7 @@ and the list of it's neighbour
                         _ => {println!("SERVER :  I received an packet without headers");}
                     }
                 }
-                Some(x) => {source_id =*x}
+                Some(x) => {source_id =*x}      //FOUND
             }
         
         let mut response = packet.clone();  //The response will be modified later . For now, it's just a copy
@@ -156,32 +131,31 @@ and the list of it's neighbour
                         let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
                         
                         
-                        //If we are able to reassemble the data we proceed
+                        
                         match result { 
-                            Ok(Some(data)) => {
+                            Ok(Some(data)) => {//If we are able to reassemble the data we proceed
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
                                 
-                                /*Here there is an exception if the message start with messageFor?(...)
-                                
+                                /*
+                                Here there is an exception if the message start with messageFor?(...)
                                 It means that is a message for another user, so I have to change the source id
                                 */
                                 let msg_work = message.clone().unwrap();
                                 if let Some(content) = msg_work.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
                                     let parts: Vec<&str> = content.splitn(2, ',').collect();
                                     if parts.len() == 2 {
-                                        source_id = parts[0].parse::<NodeId>().unwrap();
-                                       // let message = parts[1];  copyed from message
+                                        source_id = parts[0].parse::<NodeId>().unwrap();    
                                     }
                                 }
 
                                     //Process the request
-                                let result =self.server_type.process_request(message.unwrap(),source as u32);
+                                let result =self.server_type.process_request(message.unwrap(),source_id as u32);
                                 match result {
                                     Ok(value) => {
                                         
-                                        //It's the structure used to control the that the packet send to the client are received correctly
+                                        //It's the structure used to control the that the packet send to the client are received correctly 
                                         self.paket_ack_manger.insert((source_id, packet.session_id), value.clone());
 
                                         //It starts sending the first fragment to the client.
@@ -206,6 +180,7 @@ and the list of it's neighbour
                     
                     PacketType::Nack(msg) => {
                         
+                        //try to find the packet in the packet ack manager
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
                         match result {
                             None => {println!("Received an NAck but I can't trace buck the number to any packet {:?}", msg)}
@@ -231,6 +206,13 @@ and the list of it's neighbour
                         match result {
                             None => {println!("Received an Ack but I can't trace buck the number to any packet {:?}", msg)}
                             Some(ack_value) => {
+                                
+                                /*
+                                The ack manager is a structure that use for a ky the source_id and the session id
+                                it has a vector containing all the packet that need to be sends
+                                 */
+                                
+                                
                                 if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index+1) {
                                     if pos + 1 < ack_value.len(){
                                         
@@ -339,12 +321,12 @@ and the list of it's neighbour
 
     fn send_packet(& self, dest_id: NodeId, mut packet: Packet) {
         
-        let sender = self.packet_send.get(&dest_id);
+       // let sender = self.packet_send.get(&dest_id);
         
-        match NewWork::bfs_shortest_path(&self.graph, self.id, dest_id) {
+        match NewWork::bfs_shortest_path(&self.graph, self.id, dest_id) {       
             Some(path) => { 
                 packet.routing_header = path;
-                let c =self.packet_send.get(&packet.routing_header.hops[1]);
+                let c =self.packet_send.get(&packet.routing_header.hops[1]);    //take the first node to which you need to send the messages
                 match c {
                     None => {}
                     Some(x) => {x.send(packet);}
