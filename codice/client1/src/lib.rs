@@ -31,6 +31,8 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
@@ -46,7 +48,9 @@ pub struct Client1 {
     received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
-    server: (NodeId,String) // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
+    server: (NodeId,String), // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
+    reader: BufReader<TcpStream>,
+    writer: TcpStream
 }
 
 impl Client1 {
@@ -55,6 +59,7 @@ impl Client1 {
                sender_channels:HashMap<NodeId,Sender<Packet>>,
                receiver_channel: Receiver<Packet>
     ) -> Self {
+        let (reader,writer) = Self::setup_window();
         Self {
             node_id,
             sender_channels,
@@ -65,7 +70,10 @@ impl Client1 {
             received_files: vec![],
             other_client_ids: vec![],
             files_names: vec![],
-            server: (255,String::new()) // Initialized to a dummy value
+            server: (255,String::new()), // Initialized to a dummy value
+            reader,
+            writer
+
         }
     }
     // Network discovery
@@ -78,7 +86,7 @@ impl Client1 {
         let neighbors: Vec<_> = self.sender_channels.keys().cloned().collect();
         let session_id = Self::generate_session_id();
         for neighbor in neighbors{
-            println!("CLIENT1: Sending flood request to Drone {}",neighbor);
+            writeln!(self.writer,"CLIENT1: Sending flood request to Drone {}",neighbor);
             match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)){
                 Ok(_) => (),
                 Err(_) =>{self.sender_channels.remove(&neighbor); self.discover_network() }
@@ -160,13 +168,13 @@ impl Client1 {
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
-        //println!("CLIENT1: arrived FloodResponse");
+        //writeln!(self.writer,"CLIENT1: arrived FloodResponse");
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
                         self.server.0 = node.0;
-                        println!("CLIENT1: found server with id: {}",self.server.0);
+                        writeln!(self.writer,"CLIENT1: found server with id: {}",self.server.0).unwrap();
                     }
                 }
                 self.update_graph(response);
@@ -213,7 +221,7 @@ impl Client1 {
                                 self.handle_msg(msg,packet.session_id,new_first_hop);
                             },
                             // FragmentReassembler encountered an error
-                            Err(e) => println!("{e}")
+                            Err(e) => writeln!(self.writer,"{e}").unwrap()
                         }
                     }
                     None => ()
@@ -233,7 +241,7 @@ impl Client1 {
     // Update the knowledge of the network based on flood responses
     pub fn update_graph(&mut self, response: FloodResponse){
         let path = &response.path_trace;
-        //println!("CLIENT1:{:?}",path);
+        //writeln!(self.writer,"CLIENT1:{:?}",path);
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
@@ -254,7 +262,7 @@ impl Client1 {
                 }
             }
         }
-        //println!("Network: {:?}",self.network);
+        //writeln!(self.writer,"Network: {:?}",self.network);
     }
     // Calculates shortest path between two nodes
     pub fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
@@ -295,7 +303,7 @@ impl Client1 {
                 self.handle_flood_request(packet);
             }
             PacketType::FloodResponse(_) =>{
-                //println!("{:?}",packet);
+                //writeln!(self.writer,"{:?}",packet);
                 self.handle_flood_response(packet);
             }
             PacketType::MsgFragment(_) =>{
@@ -303,6 +311,28 @@ impl Client1 {
             }
             _ => ()
         }
+    }
+    fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Launch terminal with persistent shell
+        std::process::Command::new("xterm")
+            .args(&[
+                "-e",
+                &format!(
+                    "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
+                    port
+                ),
+            ])
+            .spawn()
+            .unwrap_or_else(|_| panic!("Failed to open terminal window"));
+
+        let (stream, _) = listener.accept().unwrap();
+        let reader = BufReader::new(stream.try_clone().unwrap());
+        let writer = stream;
+
+        return (reader, writer);
     }
     pub fn run(&mut self) {
         //Initialize the network field
@@ -314,29 +344,30 @@ impl Client1 {
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
                         Ok(packet) => {
-                            //println!("CLIENT1: received packet");
+                            //writeln!(self.writer,"CLIENT1: received packet");
                             self.handle_packet(packet)},
 
-                        Err(e) => println!("CLIENT1: Error: {e}")
+                        Err(e) => writeln!(self.writer,"CLIENT1: Error: {e}").unwrap()
                     }
                 }
             }
 
-            //println!("CLIENT1: server id : {}",self.server.0);
+            //writeln!(self.writer,"CLIENT1: server id : {}",self.server.0);
             match self.server.0{
                 255 => { ()
-                    //println!("CLIENT1: Not linked to a server");
-                    //println!("Network: {:?}",self.network);
+                    //writeln!(self.writer,"CLIENT1: Not linked to a server");
+                    //writeln!(self.writer,"Network: {:?}",self.network);
                 }
                 _=>{
                     //Simple implementation of user input
                     input_buffer.clear();
-                    io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
+                    self.reader.read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
                     // Simple way to shut down client in case of some issue (hope it works)
                     if input_buffer.eq("OFF"){
                         break;
                     }
-                    println!("{}",self.handle_command(&input_buffer.trim().clone(),self.server.0));
+                    let res = self.handle_command(&input_buffer.trim().clone(),self.server.0);
+                    writeln!(self.writer,"{}",res).unwrap();
                 }
             }
         }
