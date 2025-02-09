@@ -272,7 +272,7 @@ and the list of it's neighbour
                                     .map(|(id, _)| id)
                                     .rev()
                                     .collect();
-
+                                //println!("New hops: {:?}",new_hops);
                                 let srh = SourceRoutingHeader::with_first_hop(new_hops);
                                 let flood_resp = FloodResponse{
                                     flood_id: flood_packet.flood_id,
@@ -282,9 +282,9 @@ and the list of it's neighbour
                                 //println!("SERVER: {:?}",response);
                                 NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
-                                for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
-                                    sendr.send(response.clone()).expect("Server: Error while sending FloodResponse");
-                                }
+                                //for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
+                                    self.packet_send.get(&previous_neighbour).expect("Error while getting neighbor").send(response.clone()).expect("Server: Error while sending FloodResponse"); //TODO do match case
+                                //}
                             } else {
                                 panic!("Can not find neighbour who send this packet {} ", flood_packet);
                             }
