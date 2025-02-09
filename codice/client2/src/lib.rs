@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use wg_2024::packet::*;
 use wg_2024::network::*;
-use crossbeam_channel::{Sender, Receiver};
+use crossbeam_channel::{Sender, Receiver, select_biased};
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
 use crate::repackager::Repackager;
@@ -25,13 +25,13 @@ pub struct Client2 {
     receiver_channel: Receiver<Packet>,
     received_floods: HashSet<u64>,
     saved_files: HashSet<String>,
-    reader: BufReader<TcpStream>,
-    writer: TcpStream,
+    //reader: BufReader<TcpStream>,
+    //writer: TcpStream,
 }
 
 impl Client2 {
     pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
-        let (reader, writer) = setup_window();
+        //let (reader, writer) = setup_window();
         Self {
             node_id,
             discovered_drones: Arc::new(Mutex::new(HashMap::new())),
@@ -44,8 +44,8 @@ impl Client2 {
             receiver_channel,
             received_floods: HashSet::new(),
             saved_files: HashSet::new(),
-            reader,
-            writer,
+            //reader,
+            //writer,
         }
     }
     // Discover network through drones
@@ -58,7 +58,7 @@ impl Client2 {
         };
 
         for (drone_id, sender) in &self.neighbor_senders {
-            println!("CLIENT2: Sending FloodRequest to Drone {}", drone_id);
+            println!("CLIENT2: CLIENT{}: Sending FloodRequest to Drone {}", self.node_id, drone_id);
             sender.send(Packet {
                 pack_type: PacketType::FloodRequest(request.clone()),
                 routing_header: self.create_source_routing_header(*drone_id),
@@ -69,8 +69,8 @@ impl Client2 {
 
     pub fn create_flood_response(&self, session_id: u64, flood_request: FloodRequest) -> Packet {
         let mut hops = vec![];
-        for (node_id, node_type) in flood_request.path_trace.clone() {
-            hops.push((node_id));
+        for (node_id, node_type) in flood_request.path_trace.iter().rev() {
+            hops.push(*node_id);
         }
 
         let response = FloodResponse {
@@ -78,17 +78,19 @@ impl Client2 {
             path_trace: flood_request.path_trace,
         };
         let srh = SourceRoutingHeader::with_first_hop(hops);
-
         Packet::new_flood_response(srh, session_id, response)
     }
 
     pub fn handle_flood_request(&mut self, flood_request: FloodRequest, session_id: u64) {
-        println!("Client {} received FloodRequest: {:?}", self.node_id, flood_request);
+        println!("CLIENT2: CLIENT{}: received FloodRequest: {:?}", self.node_id, flood_request);
 
         // Check if this flood request has already been processed
         if self.received_floods.contains(&flood_request.flood_id) {
-            println!("Client {} already processed FloodRequest with ID {}", self.node_id, flood_request.flood_id);
+            println!("CLIENT2: CLIENT{}: already processed FloodRequest with ID {}", self.node_id, flood_request.flood_id);
             return;  // Skip processing if already handled
+        } else if flood_request.initiator_id == self.node_id {
+            println!("CLIENT2: CLIENT{}: recieved his own flood request with id {}", self.node_id, flood_request.flood_id);
+            return;  // Skip because its the same to create the flood request
         }
 
         // Mark this flood request as processed
@@ -101,7 +103,7 @@ impl Client2 {
 
     // Handle a received FloodResponse and build the network graph
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
-        println!("CLIENT2: Client {} received FloodResponse: {:?}", self.node_id, response);
+        println!("CLIENT2: CLIENT{}: received FloodResponse: {:?}", self.node_id, response);
         let mut discovered_drones = self.discovered_drones.lock().unwrap();
         let mut network_graph = self.network_graph.lock().unwrap();
 
@@ -112,9 +114,9 @@ impl Client2 {
             }
             if node_type == &NodeType::Server {
                 self.server = *node_id;
+                println!("CLIENT2: CLIENT{}: found server {}", self.node_id, self.server);
             }
         }
-
         // Update the network graph (adjacency list)
         for i in 0..response.path_trace.len() - 1 {
             let (node_a_id, _) = &response.path_trace[i];
@@ -124,12 +126,13 @@ impl Client2 {
             network_graph.entry(*node_a_id).or_insert_with(HashSet::new).insert(*node_b_id);
             network_graph.entry(*node_b_id).or_insert_with(HashSet::new).insert(*node_a_id);
         }
+        println!("CLIENT2: CLIENT{}: DISCOVERED NETWORK: {:?}", self.node_id, self.network_graph.lock().unwrap());
     }
 
     // Send a message to a server through drones
     pub fn send_message(&mut self, server_id: NodeId, message: &str, file_path: Option<&str>) {
         // Create fragments using the Repackager
-        let fragments = Repackager::create_fragments(message, file_path).expect("Failed to create fragments");
+        let fragments = Repackager::create_fragments(message, file_path).expect("CLIENT2: Failed to create fragments");
 
         let session_id = self.generate_session_id();
         let path = Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, server_id);
@@ -189,15 +192,15 @@ impl Client2 {
 
     // Forward packet to the first drone in the routing path
     fn forward_packet(&self, packet: Packet) {
-        if let Some(first_hop) = packet.routing_header.hops.get(1) {
+        if let Some(first_hop) = packet.routing_header.hops.get(0) {
             if let Some(sender) = self.neighbor_senders.get(first_hop) {
-                println!("CLIENT2: Client {} forwarding packet to Drone {}", self.node_id, first_hop);
+                println!("CLIENT2: CLIENT{}: forwarding packet ({}) to Drone {}", self.node_id, packet.pack_type, first_hop);
                 sender.send(packet).unwrap();
             } else {
-                println!("CLIENT2: Drone {} not found in neighbors", first_hop);
+                println!("CLIENT2: CLIENT{}: not found in neighbors for packet {}", first_hop, packet);
             }
         } else {
-            println!("CLIENT2: No valid routing path found for packet");
+            println!("CLIENT2: CLIENT{}: No valid routing path found for packet", self.node_id);
         }
     }
 
@@ -274,26 +277,28 @@ impl Client2 {
                 self.forward_packet(Packet::new_ack(SourceRoutingHeader::with_first_hop(Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, self.server).unwrap()), packet.session_id, 0))
             },
             PacketType::FloodRequest(request) => self.handle_flood_request(request, packet.session_id),
-            PacketType::FloodResponse(response) => self.handle_flood_response(response),
+            PacketType::FloodResponse(response) =>{
+                self.handle_flood_response(response);
+            },
             PacketType::Ack(ack) => {
-                println!("CLIENT2: Client {} received Ack: {:?}", self.node_id, ack);
+                println!("CLIENT2: CLIENT{}: received Ack: {:?}", self.node_id, ack);
             }
             PacketType::Nack(nack) => {
                 //Check again all nodes and connections
                 self.discovered_drones = Arc::new(Mutex::new(HashMap::new()));
                 self.network_graph = Arc::new(Mutex::new(HashMap::new()));
                 self.discover_network();
-                println!("CLIENT2: Client {} received Nack: {:?}", self.node_id, nack);
+                println!("CLIENT2: CLIENT{}: received Nack: {:?}", self.node_id, nack);
                 // Resend the original packet
                 if let Some(original_packet) = self.sent_packets.get(&packet.session_id) {
-                    println!("CLIENT2: Resending packet for session ID {}", packet.session_id);
+                    println!("CLIENT2: CLIENT{}: Resending packet for session ID {}", self.node_id, packet.session_id);
                     self.forward_packet(original_packet.clone());
                 } else {
-                    println!("CLIENT2: No original packet found for session ID {}", packet.session_id);
+                    println!("CLIENT2: CLIENT{}: No original packet found for session ID {}", self.node_id, packet.session_id);
                 }
             }
             _ => {
-                println!("CLIENT2: Client {} received unknown packet type", self.node_id);
+                println!("CLIENT2: CLIENT{}: received unknown packet type", self.node_id);
             }
         }
     }
@@ -307,13 +312,13 @@ impl Client2 {
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
-                println!("CLIENT2: Converted fragments into message: {:?}", msg);
+                println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
             }
             Ok(None) => {
-                println!("CLIENT2: Not all fragments received yet for message ID {}", packet.session_id);
+                println!("CLIENT2: CLIENT{}: Not all fragments received yet for message ID {}", self.node_id, packet.session_id);
             }
             Err(error_code) => {
-                println!("CLIENT2: Error processing fragment: {}", error_code);
+                println!("CLIENT2: CLIENT{}: Error processing fragment: {}", self.node_id, error_code);
             }
         }
     }
@@ -378,6 +383,21 @@ impl Client2 {
 
     pub fn run(&mut self) {
         self.discover_network();
+        loop {
+            select_biased!{
+                recv(self.receiver_channel) -> packet => {
+                    match packet {
+                        Ok(packet) => {
+                            println!("RECIEVED PACKET: TYPE: {}  , {:?}", packet.clone().pack_type , packet.clone().routing_header);
+                            self.handle_packet(packet);
+                        },
+                        Err(e) => {
+                            eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -421,3 +441,17 @@ fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
 //
 //     thread1.join().unwrap();
 // }
+
+use crossbeam_channel::unbounded;
+#[test]
+fn test_discovery(){
+    let (snd, rcv) = unbounded::<Packet>();
+    let mut cl = Client2::new(1, HashMap::new(), rcv);
+    cl.neighbor_senders.insert(10, snd);
+    cl.network_graph.lock().unwrap().insert(1, HashSet::from_iter(vec![2, 3]));
+    cl.network_graph.lock().unwrap().insert(2, HashSet::from_iter(vec![3]));
+    cl.network_graph.lock().unwrap().insert(3, HashSet::from_iter(vec![2]));
+    cl.network_graph.lock().unwrap().insert(4, HashSet::from_iter(vec![2, 3]));
+    cl.discover_network();
+    println!("The graph is {:?}", cl.network_graph.lock().unwrap());
+}
