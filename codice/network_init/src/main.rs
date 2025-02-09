@@ -312,6 +312,7 @@ impl NetworkInitializer {
                 let mut client = Client2::new(
                     client_config.id,
                     neighbor_senders.clone(),
+                    client_receiver,
                 );
                 std::thread::spawn(move || client.run());
             }

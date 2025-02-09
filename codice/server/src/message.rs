@@ -3,16 +3,12 @@
 /*
 This module gives the essential function that allow the server and the client to interact with the network
 The principal function are :
+NETWOR:    
     bfs_shortest_path (Tree graph , start_ID , goal_ID)-> gives back the shortest path from start to goal
-    remove_neighbor (Tree graph , node_ID, neighbour_ID ) -> remove a neighbour from a node
+    remove_neighbor (Tree graph , node_ID, neighbour_ID ) -> remove a neighbour from a node. It's never used
+    recive_flood_response  this add to the graph the the id of the flood response
 
 
-
-
-Guide for implementing the servers and the clients
-
-    First of all you have to create the network graph so you send a FloodRequest to each node DIRECTLY  conneted to the server/client
-    here is an example on how the function should be
 
 
 */
@@ -99,7 +95,15 @@ pub mod net_work {
 
             // Skip the first iteration (no previous node exists)
             if numb != 0 {
-                /* Add prec as a neighbor of i because the neighbours have a mirror relationship */
+                /* Add prec as a neighbor of i because the neighbours have a mirror relationship
+                 exaple :    1  2  3 
+                 
+                 neighbourh of 1 : 2 
+                 neighbourh of 2 : 1 3   I have to add 1 that is the previus of 2 so during the loop I have to look back 
+                 neighbourh of 1 : 2 
+                 
+                 
+                 */
                 if let Some(neighbors) = graph.get_mut(&i) {
                     if !neighbors.contains(&prec) {
                         neighbors.push(prec);
@@ -229,7 +233,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
 */
         
         
-        
+        //this function is complicated but it works ignore the test with mediafile because it involve memory permission 
         pub fn process_fragment(&mut self, session_id: u64, src_id: u64, fragment: Fragment) -> Result<Option<Vec<u8>>, u8> {
             let key = (session_id, src_id);
 
@@ -239,7 +243,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             });
 
             // Ensure buffer is large enough, I am pretty sure it useless but online is but a great enfasis on this to prevent error . Id
-            // Controllo della dimensione del buffer
+            // Check the bufffer dim    
             if buffer.len() < (fragment.total_n_fragments * 128) as usize {
                 println!(
                     "Resizing buffer: current = {}, required = {}",
@@ -276,6 +280,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             }
         }
 
+        //Break down a string into fragment if file_path is none than only the fragment if it is Some then it breaks down the file
         pub fn create_fragments(initial_string: &str, file_path: Option<&str>) -> Result<Vec<Fragment>, String> {
             // Convert the initial string to bytes
             let mut message_data = initial_string.as_bytes().to_vec();
@@ -293,7 +298,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             let total_n_fragments = ((total_size + 127) / 128) as u64; // Calculate the total number of fragments
             let mut fragments = Vec::new();
 
-            for i in 0..total_n_fragments {
+            for i in 0..total_n_fragments {         //take data of the file piece by piece
                 let start = (i as usize) * 128;
                 let end = ((i as usize) + 1) * 128;
                 let slice = &message_data[start..std::cmp::min(end, total_size)];
@@ -313,7 +318,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
         }
 
 
-
+        //from fragment -> to string
         pub fn assemble_string (data: Vec<u8>) -> Result<String, String> {      //use this when you know there are no file --- ONLY FOR THE SERVER 
             // Convert the vector of bytes to a string
             match String::from_utf8(data) {
@@ -327,6 +332,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
         }
 
 
+        //usless for the server this is for the Client . Used for testing and to have a more   complete module
         pub fn assemble_string_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
             // Remove null charachter
             let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();
@@ -344,7 +350,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
                 // Extract file content 
                 let file_data = &clean_data[pos + 1..];
 
-                // Se il file ha dati, salvalo nella path specificata
+                // If the file has some data save it to the file system
                 if !file_data.is_empty() {
                     let file_path = Path::new(output_path);
                     if let Err(e) = fs::write(file_path, file_data) {
@@ -374,6 +380,12 @@ mod test_packaging
     use super::*;
     use crate::message::packaging::Repackager;
 
+    
+    /*
+    BE CAREFULL 
+    before testing create the file and the dir!!!!
+    
+     */
 
 
     #[test]
@@ -439,6 +451,20 @@ pub mod file_system
     use wg_2024::packet::{Fragment, Packet};
     use crate::message::packaging::Repackager;
 
+    /*
+     The module file system contains all the server implementation. 
+     I defined the ServerTrait to be able to initialize the server with only one function new the 
+     es :  Server:new(.... ContentServer(..))  
+            Server:new(.... ChatServer(..)) 
+     
+     
+     The ContentServer is the one that send file or media . This 2 type (fileServer / MediaServer) do the same thing so I used the same implementation
+     The ChatServer is the server that handle chat between server  !When I was reading the protocol I thought that the  ChatServer was a server that keeps 
+     the messages inside hime and delivers the messages to the clients when is asked. So I created a lot of function that are usless now
+     */
+    
+    
+    
     pub trait ServerTrait: Send + Sync {
     
          fn process_request (&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String> ;
@@ -511,7 +537,7 @@ pub mod file_system
         {
             // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
             match command {
-                cmd if cmd.starts_with("server_type?") => {         //it's
+                cmd if cmd.starts_with("server_type?") => {         //Ask for server type
                     Repackager::create_fragments(&*self.serv.to_string(), None)
                 }
                 cmd if cmd.starts_with("client_list?") => {
@@ -577,7 +603,7 @@ pub mod file_system
   */
     pub struct ContentServer {
         path: String, // Path to the directory where files are stored
-        serv: ServerType,
+        serv: ServerType,       // MediaServer or ChatServer just to print a different value when asked servertype?
     }
 
     impl ContentServer {
@@ -668,7 +694,7 @@ pub mod file_system
         }
 
         // Function to return the list of all unique client IDs
-        pub fn get_client_ids(&mut self, source_id: u32) -> String {
+        pub fn get_client_ids(&mut self, source_id: u32) -> String {        
             self.add_client(source_id);
             let mut ids = self.list_of_client.clone();
             ids.sort();         // it's easier when we debug 
