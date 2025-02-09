@@ -154,9 +154,9 @@ impl SimulationController {
                         {
                             self.drone_stats
                                 .lock()
-                                .unwrap()
+                                .expect("Should be able to unlock")
                                 .get_mut(&node_id)
-                                .unwrap()
+                                .expect("Previous hops should always exist")
                                 .acks_forwarded += 1;
                         }
                     }
@@ -173,9 +173,9 @@ impl SimulationController {
                         {
                             self.drone_stats
                                 .lock()
-                                .unwrap()
+                                .expect("Should be able to unlock")
                                 .get_mut(&node_id)
-                                .unwrap()
+                                .expect("Previous hops should always exist")
                                 .nacks_forwarded += 1;
                         }
                     }
@@ -260,7 +260,9 @@ impl SimulationController {
     fn send_packet_directly(&self, packet: Packet) {
         if let Some(destination) = packet.routing_header.destination() {
             if let Some(sender) = self.node_packet_senders.get(&destination) {
-                sender.send(packet).unwrap();
+                sender
+                    .send(packet)
+                    .expect("Clients should always be able to reeive packets");
             }
         }
     }
@@ -269,8 +271,9 @@ impl SimulationController {
     fn send_command(&self, drone_id: NodeId, command: DroneCommand) -> bool {
         if self.is_command_allowed(drone_id, &command) {
             if let Some(sender) = self.node_command_senders.get(&drone_id) {
-                sender.send(command).unwrap();
-                return true;
+                if let Ok(_) = sender.send(command) {
+                    return true;
+                }
             }
         }
         false
@@ -354,9 +357,9 @@ impl SimulationController {
         self.send_command(drone_id, DroneCommand::SetPacketDropRate(pdr));
         self.drone_stats
             .lock()
-            .unwrap()
+            .expect("Should be able to unlock")
             .get_mut(&drone_id)
-            .unwrap()
+            .expect("Should always be able to change pdr")
             .pdr = pdr;
     }
 
@@ -366,9 +369,9 @@ impl SimulationController {
             self.remove_drone(drone_id);
             self.drone_stats
                 .lock()
-                .unwrap()
+                .expect("Should be able to unlock")
                 .get_mut(&drone_id)
-                .unwrap()
+                .expect("Should always be able to change crashed")
                 .crashed = true;
         }
     }
@@ -395,7 +398,7 @@ impl SimulationController {
                     node2,
                     self.node_packet_senders[&node2].clone(),
                 ))
-                .unwrap();
+                .expect("Neighbor sender should be valid");
         }
         if let Some(sender2) = self.node_command_senders.get(&node2) {
             sender2
@@ -403,7 +406,7 @@ impl SimulationController {
                     node1,
                     self.node_packet_senders[&node1].clone(),
                 ))
-                .unwrap();
+                .expect("Neighbor sender should be valid");
         }
     }
 
@@ -468,7 +471,10 @@ impl SimulationController {
 
         let mut topology = self.network_topology.clone();
 
-        let neighbors = topology.get(&node_id).unwrap().clone();
+        let neighbors = topology
+            .get(&node_id)
+            .expect("Node id should be present in topology")
+            .clone();
         for neighbor in neighbors {
             if let Some(neighbors) = topology.get_mut(&neighbor) {
                 neighbors.remove(&node_id);
@@ -558,7 +564,10 @@ impl SimulationController {
             return true;
         }
         let mut visited = HashSet::new();
-        let start_node = *topology.keys().next().unwrap();
+        let start_node = *topology
+            .keys()
+            .next()
+            .expect("There should always be at least a node");
         Self::dfs(start_node, topology, &mut visited);
         visited.len() == topology.len()
     }
@@ -673,13 +682,28 @@ fn _initialize_mock_network() -> SimulationController {
     // Create mock drones
     for i in 1..=4 {
         let mut neighbor_senders = HashMap::new();
-        for neighbor in network_topology.get(&i).unwrap() {
-            neighbor_senders.insert(*neighbor, node_senders.get(neighbor).unwrap().clone());
+        for neighbor in network_topology
+            .get(&i)
+            .expect("Should always be able to get neighbors")
+        {
+            neighbor_senders.insert(
+                *neighbor,
+                node_senders
+                    .get(neighbor)
+                    .expect("Should always be able to get neighbors senders")
+                    .clone(),
+            );
         }
 
         drone_stats.insert(
             i,
-            DroneStats::new(network_topology.get(&i).unwrap().clone(), 0.1),
+            DroneStats::new(
+                network_topology
+                    .get(&i)
+                    .expect("Should always be able to get drone")
+                    .clone(),
+                0.1,
+            ),
         );
 
         // Create the drone using the `get_drone_impl` function
@@ -687,8 +711,14 @@ fn _initialize_mock_network() -> SimulationController {
             i, // Implementation index
             i, // Drone ID
             event_sender.clone(),
-            drone_command_recievers.get(&i).unwrap().clone(),
-            node_recievers.get(&i).unwrap().clone(),
+            drone_command_recievers
+                .get(&i)
+                .expect("Should always be able to get command receiver")
+                .clone(),
+            node_recievers
+                .get(&i)
+                .expect("Should always be able to get node receiver")
+                .clone(),
             neighbor_senders.clone(), // Neighbor senders (empty for now)
             0.1,                      // PDR
         );

@@ -59,20 +59,24 @@ impl SimulationControllerUI {
         ui.label(&format!("PDR: {}", drone_stats.pdr));
 
         if ui.button("Crash").clicked() {
-            self.ui_command_sender
-                .send(UICommand::CrashDrone(drone_id))
-                .unwrap();
+            if !drone_stats.crashed {
+                self.ui_command_sender
+                    .send(UICommand::CrashDrone(drone_id))
+                    .unwrap();
+            }
         }
 
         ui.add(egui::Slider::new(self.new_pdr.get_mut(&drone_id).unwrap(), 0.0..=1.0).text("PDR"));
 
         if ui.button("Set PDR").clicked() {
-            self.ui_command_sender
-                .send(UICommand::SetPDR(
-                    drone_id,
-                    self.new_pdr.get(&drone_id).unwrap().clone(),
-                ))
-                .unwrap();
+            if !drone_stats.crashed {
+                self.ui_command_sender
+                    .send(UICommand::SetPDR(
+                        drone_id,
+                        self.new_pdr.get(&drone_id).unwrap().clone(),
+                    ))
+                    .unwrap();
+            }
         }
     }
 }
