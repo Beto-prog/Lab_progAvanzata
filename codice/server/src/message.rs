@@ -245,11 +245,11 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             // Ensure buffer is large enough, I am pretty sure it useless but online is but a great enfasis on this to prevent error . Id
             // Check the bufffer dim    
             if buffer.len() < (fragment.total_n_fragments * 128) as usize {
-                println!(
-                    "Resizing buffer: current = {}, required = {}",
-                    buffer.len(),
-                    fragment.total_n_fragments * 128
-                );
+                //println!(
+                    //"Resizing buffer: current = {}, required = {}",
+                    //buffer.len(),
+                    //fragment.total_n_fragments * 128
+                //);
                 buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
             }
 

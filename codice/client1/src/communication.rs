@@ -46,7 +46,7 @@ impl Client1 {
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
                 if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
-                    if self.files_names.contains(&name.parse::<String>().ok().unwrap()){
+                    if self.files_names.contains(&name.parse::<String>().ok().expect("Failed to get files names")){
                         self.send_message(dest_id,cmd);
                         "CLIENT1: OK".to_string()
                     }
@@ -79,6 +79,15 @@ impl Client1 {
             cmd if cmd == "client_list?" =>{
                 self.send_message(dest_id,cmd);
                 "CLIENT1: OK".to_string()
+            }
+            cmd if cmd == "commands" => {
+                format!("commands:\
+                                             server_type?\
+                                             files_list?\
+                                             registration_to_chat\
+                                             file?(file_id)\
+                                             media?(media_id)\
+                                             message_for?(client_id, message)")
             }
             _ =>{"Not a valid command".to_string()}
         }
@@ -123,7 +132,7 @@ impl Client1 {
                                                                    pack_type: PacketType::MsgFragment(fragment.clone()),
                                                                    session_id
                                                                };
-                                                               sender.send(packet.clone()).unwrap();
+                                                               sender.send(packet.clone()).expect("Failed to send packet");
                                                            }
                                                            None =>{println!("Error: no path to the dest_id")}
                                                        }
@@ -139,7 +148,7 @@ impl Client1 {
                            Err(_) =>{ // Case of crashed drone
                                self.sender_channels.remove(&first_hop);
                                self.discover_network();
-                               let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                               let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                                let first_hop = new_path[1];
                                let packet_sent = Packet {
                                    routing_header: SourceRoutingHeader::with_first_hop(new_path),
@@ -185,7 +194,7 @@ impl Client1 {
                 match Client1::get_file_values(msg){
                     Some(res) =>{
                         if !res.is_empty(){
-                            let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).unwrap();
+                            let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).expect("Failed to create path");
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops), session_id, frag_index);
@@ -197,7 +206,7 @@ impl Client1 {
                                     self.sender_channels.remove(&first_hop);
                                     self.discover_network();
 
-                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
                                     let first_hop = new_path[1];
 
                                     let packet_sent = Packet::new_ack(
@@ -218,7 +227,7 @@ impl Client1 {
                 match msg.strip_prefix("media!(").and_then(|s|s.strip_suffix(")")){
                     Some(clean_data) =>{
                         if !clean_data.is_empty(){
-                            let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                            let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops),session_id,0);
@@ -229,7 +238,7 @@ impl Client1 {
                                     self.sender_channels.remove(&first_hop);
                                     self.discover_network();
 
-                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
                                     let first_hop = new_path[1];
 
                                     let packet_sent = Packet::new_ack(
@@ -277,7 +286,7 @@ impl Client1 {
                 match Self::get_values(&msg){
                     Some(values) =>{
                         let src_id = values.0;
-                        let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                        let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
                         let neighbor = hops[1];
                         let new_pack = Packet::new_ack(
                             SourceRoutingHeader::with_first_hop(hops),session_id,0);
@@ -288,7 +297,7 @@ impl Client1 {
                                 self.sender_channels.remove(&neighbor);
                                 self.discover_network();
 
-                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).unwrap();
+                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
                                 let first_hop = new_path[1];
 
                                 let packet_sent = Packet::new_ack(
@@ -311,14 +320,14 @@ impl Client1 {
         if cmd.starts_with("message_for?(") && cmd.ends_with(")"){
             if let Some(raw_data) = cmd.strip_prefix("message_for?(").and_then(|s|s.strip_suffix(")")) {
                 let values = raw_data.split_once(",").expect("Failed to get values");
-                Some((values.0.parse::<NodeId>().unwrap(), values.1))
+                Some((values.0.parse::<NodeId>().expect("Error while retrieving values"), values.1))
             }
             else{ None }
         }
         else if cmd.starts_with("message_from!(") && cmd.ends_with(")"){
             if let Some(raw_data) = cmd.strip_prefix("message_from!(").and_then(|s|s.strip_suffix(")")) {
                 let values = raw_data.split_once(",").expect("Failed to get values");
-                Some((values.0.parse::<NodeId>().unwrap(), values.1))
+                Some((values.0.parse::<NodeId>().expect("Error while retrieving values"), values.1))
             }
             else{ None }
         }

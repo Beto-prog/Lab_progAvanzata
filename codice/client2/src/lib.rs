@@ -81,9 +81,9 @@ impl Client2 {
         Packet::new_flood_response(srh, session_id, response)
     }
 
-    pub fn handle_flood_request(&mut self, flood_request: FloodRequest, session_id: u64) {
+    pub fn handle_flood_request(&mut self, mut flood_request: FloodRequest, session_id: u64) {
         println!("CLIENT2: CLIENT{}: received FloodRequest: {:?}", self.node_id, flood_request);
-
+        flood_request.path_trace.push((self.node_id,NodeType::Client)); // TODO fixed here.  I think Client didn't add itself to path_trace before processing
         // Check if this flood request has already been processed
         if self.received_floods.contains(&flood_request.flood_id) {
             println!("CLIENT2: CLIENT{}: already processed FloodRequest with ID {}", self.node_id, flood_request.flood_id);
@@ -110,7 +110,7 @@ impl Client2 {
         // Update the discovered drones list
         for (node_id, node_type) in &response.path_trace {
             if node_type == &NodeType::Drone {
-                discovered_drones.insert(*node_id, node_type.clone());
+                discovered_drones.entry(*node_id).or_insert(*node_type);
             }
             if node_type == &NodeType::Server {
                 self.server = *node_id;

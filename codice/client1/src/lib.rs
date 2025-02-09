@@ -1,4 +1,4 @@
-/* // TODO match on the .send() and in case it fails remove neighbor
+/*
 INFO
 
 This is the implementation of a Client made by Lorenzo Cortese for the AP project of academic year 2024/2025 held by professor Marco Patrignani.
@@ -85,24 +85,6 @@ impl Client1 {
             }
         }
     }
-    // Forward FloodRequest to the neighbors
-    /*
-    pub fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
-        //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
-        if self.neighbors.iter().count() == 1{
-            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("CLIENT1: Error while sending message");
-        }
-        // More than one neighbor
-        else{
-            for &neighbor in &self.neighbors {
-                if neighbor != previous{
-                    self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(packet.clone()).expect("CLIENT1: Error while sending message");
-                }
-            }
-        }
-    }
-
-     */
     // Creation of Packet with packet.type = FloodResponse
     pub fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
@@ -144,7 +126,6 @@ impl Client1 {
                         else {
                             request.path_trace.push((self.node_id.clone(), NodeType::Client));
                             self.flood_ids.push((request.flood_id, request.initiator_id));
-                            //self.forward_flood_request(packet_clone,previous,request);
                             let resp = self.create_flood_response(packet.session_id, request);
                             match self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp){
                                 Ok(_) => (),
@@ -200,7 +181,7 @@ impl Client1 {
                                         self.sender_channels.remove(&new_first_hop);
                                         self.discover_network();
 
-                                        let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                                        let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                                         let first_hop = new_path[1];
 
                                         let packet_sent = Packet::new_ack(
@@ -232,7 +213,7 @@ impl Client1 {
                                 self.sender_channels.remove(&new_first_hop);
                                 self.discover_network();
 
-                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                                 let first_hop = new_path[1];
 
                                 let packet_sent = Packet::new_ack(
