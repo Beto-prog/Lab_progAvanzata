@@ -212,19 +212,25 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 it has a vector containing all the packet that need to be sends
                                  */
                                 
-                                
-                                if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index+1) {
-                                    if pos + 1 < ack_value.len(){
-                                        
-                                        //Send the next packet 
-                                        response.pack_type = MsgFragment(ack_value[pos].clone());
-                                        self.send_valid_packet(source_id, response);
+                                println!("{:?}",ack_value);
+                                if ack_value.len() != 1 { // TODO fixed here
+                                    if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index + 1) {
+                                        if pos + 1 < ack_value.len() {
+
+                                            //Send the next packet
+                                            response.pack_type = MsgFragment(ack_value[pos].clone());
+                                            self.send_valid_packet(source_id, response);
+                                        } else {
+                                            println!("All fragment sent correctly");
+                                            self.paket_ack_manger.remove(&(source_id, packet.session_id));
+                                        }
                                     } else {
-                                        println!("All fragment sent correctly");
-                                        self.paket_ack_manger.remove(&(source_id, packet.session_id));
+                                        println!("Index of ack not found.");
                                     }
-                                } else {
-                                    println!("Index of ack not found.");
+                                }
+                                else{
+                                    response.pack_type = MsgFragment(ack_value[0].clone());
+                                    self.send_valid_packet(source_id, response);
                                 }
                             }
                         }

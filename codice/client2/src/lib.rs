@@ -25,13 +25,13 @@ pub struct Client2 {
     receiver_channel: Receiver<Packet>,
     received_floods: HashSet<u64>,
     saved_files: HashSet<String>,
-    reader: BufReader<TcpStream>,
-    writer: TcpStream,
+    //reader: BufReader<TcpStream>,
+    //writer: TcpStream,
 }
 
 impl Client2 {
     pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
-        let (reader, writer) = setup_window();
+        //let (reader, writer) = setup_window();
         Self {
             node_id,
             discovered_drones: Arc::new(Mutex::new(HashMap::new())),
@@ -44,8 +44,8 @@ impl Client2 {
             receiver_channel,
             received_floods: HashSet::new(),
             saved_files: HashSet::new(),
-            reader,
-            writer,
+            //reader,
+            //writer,
         }
     }
     // Discover network through drones
@@ -151,7 +151,7 @@ impl Client2 {
     //Handle of commands
     pub fn handle_command(&mut self, command: &str) {
         match command {
-            cmd if cmd == "server_type?" || cmd == "files_list?" || cmd == "registration_to_chat" || cmd == "client_list?" => {
+            cmd if cmd == "server_type?2" || cmd == "files_list?" || cmd == "registration_to_chat" || cmd == "client_list?" => {
                 //server_type?
                 //files_list?
                 //registration_to_chat
@@ -380,6 +380,7 @@ impl Client2 {
         self.discover_network();
     }
 }
+/*
 
 fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -403,6 +404,8 @@ fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
 
     return (reader, writer);
 }
+
+ */
 
 // //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
 // fn main() {

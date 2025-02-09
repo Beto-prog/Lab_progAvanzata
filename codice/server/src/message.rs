@@ -43,7 +43,7 @@ pub mod net_work {
                 }
                 path.reverse();
                 return Some(SourceRoutingHeader {
-                    hop_index: 0,
+                    hop_index: 1,
                     hops: path,
                 });
             }

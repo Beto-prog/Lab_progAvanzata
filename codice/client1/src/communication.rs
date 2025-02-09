@@ -90,15 +90,17 @@ impl Client1 {
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
         match path{
             Some(p) =>{
-                let first_hop = p[1];
-                let path_rc = Rc::new(RefCell::new(p));
+                let first_hop = p[1].clone();
+                //let path_rc = Rc::new(RefCell::new(p));
                 for fragment in fragments {
                     if let Some(sender) = self.sender_channels.get(&first_hop) {
                         let packet_sent = Packet {
-                            routing_header: SourceRoutingHeader::with_first_hop(path_rc.borrow().clone()),
+                            routing_header: SourceRoutingHeader::with_first_hop(p.clone()),
                             pack_type: PacketType::MsgFragment(fragment.clone()),
                             session_id
                         };
+                        //println!("srh: {:?}",packet_sent.routing_header);
+                        //println!("packet: {:?}",packet_sent);
                        match sender.send(packet_sent){
                            // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
                            Ok(_) =>{
@@ -106,14 +108,14 @@ impl Client1 {
                                    match self.receiver_channel.recv(){
                                        Ok(packet) =>{
                                            match packet.pack_type{
-                                               PacketType::Ack(_) =>{
-                                                   // In case I receive an Ack with same session_id message arrived correctly: restored normal course of the program
-                                                   if packet.session_id == session_id{break 'internal}
+                                               PacketType::Ack(ack) =>{
+                                                   // In case I receive an Ack with same session_id and fragment_index message arrived correctly: restored normal course of the program
+                                                   if packet.session_id == session_id && fragment.fragment_index == ack.fragment_index {break 'internal}
                                                },
-                                               PacketType::Nack(_) =>{
-                                                   if packet.session_id == session_id{
+                                               PacketType::Nack(nack) =>{
+                                                   if packet.session_id == session_id && nack.fragment_index == fragment.fragment_index{
                                                        // In case I receive a Nack with same session_id I need to send again the message.
-                                                       //self.discover_network(); // I hope it works with the new route
+                                                       //self.discover_network();
                                                        match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
                                                            Some(path) =>{
                                                                let packet = Packet {
@@ -156,7 +158,7 @@ impl Client1 {
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
-    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId) -> String{
+    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
         match received_msg{
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
                 self.server.0 = src_id;
@@ -186,7 +188,7 @@ impl Client1 {
                             let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).unwrap();
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
-                                SourceRoutingHeader::with_first_hop(hops), session_id, 0);
+                                SourceRoutingHeader::with_first_hop(hops), session_id, frag_index);
                             self.received_files.push(res.clone());
                             match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
                                 Ok(_) => (),
@@ -199,7 +201,7 @@ impl Client1 {
                                     let first_hop = new_path[1];
 
                                     let packet_sent = Packet::new_ack(
-                                        SourceRoutingHeader::with_first_hop(new_path),session_id,0);
+                                        SourceRoutingHeader::with_first_hop(new_path),session_id,frag_index);
                                     if let Some(sender) = self.sender_channels.get(&first_hop){
                                         sender.send(packet_sent).expect("CLIENT1: failed to send message");
                                     }
@@ -231,7 +233,7 @@ impl Client1 {
                                     let first_hop = new_path[1];
 
                                     let packet_sent = Packet::new_ack(
-                                        SourceRoutingHeader::with_first_hop(new_path),session_id,0);
+                                        SourceRoutingHeader::with_first_hop(new_path),session_id,frag_index);
                                     if let Some(sender) = self.sender_channels.get(&first_hop){
                                         sender.send(packet_sent).expect("CLIENT1: failed to send message");
                                     }
@@ -385,43 +387,43 @@ mod test{
         // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg1,3,2),"CLIENT1: OK");
-        assert_eq!(cl.handle_msg(test_msg2,3,2),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"CLIENT1: OK");
 
         let file_txt = fs::read("src/test/file1").unwrap();
         let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
         let mut msg= String::from("file!(6,");
         msg.push_str(&file_txt2);
         msg.push_str(")");
-        assert_eq!(cl.handle_msg(msg,3,2),file_txt2);
+        assert_eq!(cl.handle_msg(msg,3,2,0),file_txt2);
 
         let file_media = fs::read("src/test/testMedia.mp3").unwrap();
         let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
         let mut msg= String::from("media!(");
         msg.push_str(&file_media2);
         msg.push_str(")");
-        assert_eq!(cl.handle_msg(msg,3,2),file_media2);
+        assert_eq!(cl.handle_msg(msg,3,2,0),file_media2);
 
         let test_msg1 = "client_list!([1,2,3,4])".to_string();
-        assert_eq!(cl.handle_msg(test_msg1,3,2),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"CLIENT1: OK");
 
         let test_msg2 = "message_from!(2,file.txt)".to_string();
-        assert_eq!(cl.handle_msg(test_msg2,3,2),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"CLIENT1: OK");
 
         let test_msg4 = "error_requested_not_found!(File not found)".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg4.clone(),3,2),test_msg4);
+        assert_eq!(cl.handle_msg(test_msg4.clone(),3,2,0),test_msg4);
 
         let test_msg5 = "error_requested_not_found!(Problem opening the file)".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg5.clone(),3,2),test_msg5);
+        assert_eq!(cl.handle_msg(test_msg5.clone(),3,2,0),test_msg5);
 
         let test_msg6 = "error_requested_not_found!".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg6.clone(),3,2),test_msg6);
+        assert_eq!(cl.handle_msg(test_msg6.clone(),3,2,0),test_msg6);
 
         let test_msg7 = "error_unsupported_request!".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg7.clone(),3,2),test_msg7);
+        assert_eq!(cl.handle_msg(test_msg7.clone(),3,2,0),test_msg7);
 
         let test_msg8 = "test_error".to_string();
-        assert_eq!(cl.handle_msg(test_msg8,3,2),"Error");
+        assert_eq!(cl.handle_msg(test_msg8,3,2,0),"Error");
     }
 }
 
