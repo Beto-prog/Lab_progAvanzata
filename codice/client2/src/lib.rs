@@ -15,11 +15,13 @@ pub struct Client2 {
     discovered_drones: Arc<Mutex<HashMap<NodeId, NodeType>>>,
     neighbor_senders: HashMap<NodeId, Sender<Packet>>,
     network_graph: Arc<Mutex<HashMap<NodeId, HashSet<NodeId>>>>,
-    server: Option<NodeId>,
+    server: NodeId,
+    server_type: String,
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
     repackager: Repackager,
     receiver_channel: Receiver<Packet>,
     received_floods: HashSet<u64>,
+    saved_files: HashSet<String>,
 }
 
 impl Client2 {
@@ -29,11 +31,13 @@ impl Client2 {
             discovered_drones: Arc::new(Mutex::new(HashMap::new())),
             neighbor_senders,
             network_graph: Arc::new(Mutex::new(HashMap::new())),
-            server: None,
+            server: 255,
+            server_type: "".to_string(),
             sent_packets: HashMap::new(), // Initialize the sent packets map
             repackager: Repackager::new(),
             receiver_channel,
             received_floods: HashSet::new(),
+            saved_files: HashSet::new(),
         }
     }
     // Discover network through drones
@@ -99,7 +103,7 @@ impl Client2 {
                 discovered_drones.insert(*node_id, node_type.clone());
             }
             if node_type == &NodeType::Server {
-                self.server = Some(*node_id);
+                self.server = *node_id;
             }
         }
 
@@ -120,11 +124,12 @@ impl Client2 {
         let fragments = Repackager::create_fragments(message, file_path).expect("Failed to create fragments");
 
         let session_id = self.generate_session_id();
+        let path = Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, server_id);
 
         for fragment in fragments {
             let packet = Packet {
                 pack_type: PacketType::MsgFragment(fragment),
-                routing_header: self.create_source_routing_header(self.server.unwrap()),
+                routing_header: SourceRoutingHeader::with_first_hop(path.clone().unwrap()),
                 session_id,
             };
 
@@ -132,6 +137,45 @@ impl Client2 {
             self.sent_packets.insert(session_id, packet.clone());
 
             self.forward_packet(packet);
+        }
+    }
+
+    //Handle of commands
+    pub fn handle_command(&mut self, command: &str) {
+        match command {
+            cmd if cmd == "server_type?" || cmd == "files_list?" || cmd == "registration_to_chat" || cmd == "client_list?" => {
+                //server_type?
+                //files_list?
+                //registration_to_chat
+                //client_list?
+                self.send_message(self.server, cmd, None);
+            }
+            cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
+                //file?(file_id)
+                let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                self.send_message(self.server, cmd, None);
+            }
+            cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
+                //media?(media_id)
+                let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                self.send_message(self.server, cmd, None);
+            }
+            cmd if cmd.starts_with("message_for?(") && cmd.ends_with(")") => {
+                //message_for?(client_id, message)
+                let text = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")"));
+                let mut val = text.unwrap().split_once(", ");
+                self.send_message(self.server, cmd, None);
+            }
+            cmd if cmd == "commands" => {
+                "commands:\
+                                             server_type?\
+                                             files_list?\
+                                             registration_to_chat\
+                                             file?(file_id)\
+                                             media?(media_id)\
+                                             message_for?(client_id, message)";
+            }
+            _ => { "Wrong command, type 'commands' to see the full list of the commands."; }
         }
     }
 
@@ -146,6 +190,54 @@ impl Client2 {
             }
         } else {
             println!("CLIENT2: No valid routing path found for packet");
+        }
+    }
+
+    //Function that handles messages from the server
+    pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId) {
+        match message {
+            msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
+                //server_type!(type)
+                let txt = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
+                self.server_type = txt.unwrap().to_string();
+            }
+            msg if msg.starts_with("files_list!(") && msg.ends_with(")") => {
+                //files_list!(list_of_file_ids)
+                let files = msg.strip_prefix("files_list!(").and_then(|s| s.strip_suffix(")"));
+                let ff = files.unwrap().split(",").map(|s| s.to_string()).collect::<Vec<String>>();
+                //TODO SHOW FILES
+            }
+            msg if msg.starts_with("file!(") && msg.ends_with(")") => {
+                //file!(file_size, file)
+                let txt = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.unwrap().split_once(", ");
+                self.saved_files.insert(values.unwrap().1.to_string());
+            }
+            msg if msg.starts_with("media!(") && msg.ends_with(")") => {
+                //media!(media)
+                // TODO
+                let txt = msg.strip_prefix("media!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.unwrap().split_once(", ");
+            }
+            msg if msg == "error_requested_not_found!" || msg == "error_unsupported_request!" || msg == "error_wrong_client_id!" => {
+                //error_requested_not_found!
+                //error_unsupported_request!
+                //error_wrong_client_id!
+                //TODO send to view
+            }
+            msg if msg.starts_with("client_list!(") && msg.ends_with(")") => {
+                //client_list!(list_of_client_ids)
+                let txt = msg.strip_prefix("client_list!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.unwrap().split(", ").map(|s| s.to_string()).collect::<Vec<String>>();
+            }
+            msg if msg.starts_with("message_from!(") && msg.ends_with(")") => {
+                //message_from!(client_id, message)
+                let txt = msg.strip_prefix("media!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.unwrap().split_once(", ");
+                //TODO show message
+            }
+
+            _ => {} //TODO VIEW ERROR
         }
     }
 
@@ -169,7 +261,10 @@ impl Client2 {
     // Handle received packet (Ack, Nack, etc.)
     pub fn handle_packet(&mut self, packet: Packet) {
         match packet.pack_type {
-            PacketType::MsgFragment(ref fragment) => self.handle_msg_fragment(fragment.clone(), packet.clone()),
+            PacketType::MsgFragment(ref fragment) => {
+                self.handle_msg_fragment(fragment.clone(), packet.clone());
+                self.forward_packet(Packet::new_ack(SourceRoutingHeader::with_first_hop(Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, self.server).unwrap()), packet.session_id, 0))
+            },
             PacketType::FloodRequest(request) => self.handle_flood_request(request, packet.session_id),
             PacketType::FloodResponse(response) => self.handle_flood_response(response),
             PacketType::Ack(ack) => {
@@ -225,7 +320,7 @@ impl Client2 {
     /// # Returns:
     /// * `Some(Vec<NodeId>)`: The shortest path as a vector of nodes if a path exists.
     /// * `None`: If no path exists.
-    fn bfs_shortest_path(graph: &HashMap<NodeId, HashSet<NodeId>>,
+    fn bfs_shortest_path(graph: Arc<Mutex<HashMap<NodeId, HashSet<NodeId>>>>,
                          start: NodeId,
                          goal: NodeId) -> Option<Vec<NodeId>> {
         let mut visited: HashSet<NodeId> = HashSet::new();  // Keep track of visited nodes
@@ -243,21 +338,25 @@ impl Client2 {
                 return Some(path);
             }
 
-            // Explore neighbors
-            if let Some(neighbors) = graph.get(&node) {
-                for &neighbor in neighbors {
-                    if !visited.contains(&neighbor) {
-                        let mut new_path = path.clone();
-                        new_path.push(neighbor);
-                        queue.push_back(new_path);
-                        visited.insert(neighbor);
+            // Lock the graph to access neighbors
+            if let Ok(graph) = graph.lock() {
+                if let Some(neighbors) = graph.get(&node) {
+                    for &neighbor in neighbors {
+                        if !visited.contains(&neighbor) {
+                            let mut new_path = path.clone();
+                            new_path.push(neighbor);
+                            queue.push_back(new_path);
+                            visited.insert(neighbor);
+                        }
                     }
                 }
+            } else {
+                println!("Failed to lock the graph");
+                return None;
             }
         }
 
-        // If we exhaust the queue without finding the goal
-        None
+        None  // No path found
     }
 
     // Helpers
@@ -273,3 +372,48 @@ impl Client2 {
         self.discover_network();
     }
 }
+
+//use std::io::{BufRead, BufReader, Write};
+// use std::net::{TcpListener, TcpStream};
+// use std::thread;
+//
+// fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
+//     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+//     let port = listener.local_addr().unwrap().port();
+//
+//     // Launch terminal with persistent shell
+//     std::process::Command::new("xterm")
+//         .args(&[
+//             "-e",
+//             &format!(
+//                 "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
+//                 port
+//             ),
+//         ])
+//         .spawn()
+//         .unwrap_or_else(|_| panic!("Failed to open terminal window"));
+//
+//     let (stream, _) = listener.accept().unwrap();
+//     let reader = BufReader::new(stream.try_clone().unwrap());
+//     let writer = stream;
+//
+//     return (reader, writer);
+// }
+//
+// //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
+// fn main() {
+//     let thread1 = thread::spawn(|| {
+//         let (mut reader, mut writer) = setup_window();
+//         let mut buffer = String::new();
+//         loop {
+//             //Read values
+//             reader.read_line(&mut buffer).unwrap();
+//             //print values
+//             writeln!(writer, "{}", buffer).unwrap();
+//             //in questo caso si chiama clear perchè riutilizziamo sempre lo stesso buffer, ma in genere non è necessario
+//             buffer.clear();
+//         }
+//     });
+//
+//     thread1.join().unwrap();
+// }
