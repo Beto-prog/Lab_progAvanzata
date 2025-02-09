@@ -1,5 +1,4 @@
 #![allow(warnings)]
-
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -12,85 +11,92 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client1 {
+    //TODO finish to check and modify prints in order to print the result of the arrived msg
     // Handle user input received and send command to a dest_id (e.g. a server)
-    pub fn handle_command(&mut self, command: &str, dest_id: NodeId) -> String{
-        // Check for serverType in order to send only the correct set of messages TODO
-        match command{
-            cmd if cmd == "server_type?" =>{
-                self.send_message(dest_id,cmd);
-                "CLIENT1: OK".to_string()
-            }
-            cmd if cmd == "client_list?" =>{
-                self.send_message(dest_id,cmd);
-                "CLIENT1: OK".to_string()
-            }
-            cmd if cmd.starts_with("message_for?(") =>{
-                match Self::get_values(cmd){
-                    Some(values) =>{
-                        if self.other_client_ids.contains(&values.0){
-                            self.send_message(values.0,values.1);
+    pub fn handle_command(&mut self, command: &str) -> String{
+
+        let (cmd,dest) = command.split_once("->").expect("Failed to extract command");
+        let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
+        if let value = self.servers.get(&dest_id).unwrap() as &str{
+            match value{
+                "ContentServer" =>{
+                    match cmd{
+                        cmd if cmd == "files_list?" =>{
+                            self.send_message(dest_id,cmd);
                             "CLIENT1: OK".to_string()
                         }
-                        else{
-                            "Error: invalid dest_id".to_string()
+                        cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
+                            if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
+                                if self.files_names.contains(&name.parse::<String>().ok().expect("Failed to get files names")){
+                                    self.send_message(dest_id,cmd);
+                                    "CLIENT1: OK".to_string()
+                                }
+                                else{
+                                    "Error: invalid file_id".to_string()
+                                }
+                            }
+                            else{
+                                "Error: command not formatted correctly".to_string()
+                            }
                         }
-                    }
-                    None =>{
-                        "Error: command not formatted correctly".to_string()
-                    }
-                }
-            }
-            cmd if cmd == "files_list?" =>{
-                self.send_message(dest_id,cmd);
-                "CLIENT1: OK".to_string()
-            }
-            cmd if cmd.starts_with("file?(") && cmd.ends_with(")")  =>{
-                if let Some(name) = cmd.strip_prefix("file?(").and_then(|s|s.strip_suffix(")")){
-                    if self.files_names.contains(&name.parse::<String>().ok().expect("Failed to get files names")){
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
-                    }
-                    else{
-                        "Error: invalid file_id".to_string()
+                        cmd if cmd.starts_with("media?(") && cmd.ends_with(")") =>{
+                            if let Some(id) = cmd.strip_prefix("media?(").and_then(|s|s.strip_suffix(")")){
+                                if id.is_empty(){
+                                    "Error: invalid media_id".to_string()
+                                }
+                                else{
+                                    self.send_message(dest_id,cmd);
+                                    "CLIENT1: OK".to_string()
+                                }
+                            }
+                            else{
+                                "Error: command not formatted correctly".to_string()
+                            }
+                        }
+                        _=>{"Not a valid ContentServer command".to_string()}
                     }
                 }
-                else{
-                    "Error: command not formatted correctly".to_string()
-                }
-            }
-            cmd if cmd.starts_with("media?(") && cmd.ends_with(")") =>{
-                if let Some(id) = cmd.strip_prefix("media?(").and_then(|s|s.strip_suffix(")")){
-                    if id.is_empty(){
-                        "Error: invalid media_id".to_string()
+                "CommunicationServer" =>{
+                    match cmd{
+                        cmd if cmd == "client_list?" =>{
+                            self.send_message(dest_id,cmd);
+                            "CLIENT1: OK".to_string()
+                        }
+                        cmd if cmd.starts_with("message_for?(") =>{
+                            match Self::get_values(cmd){
+                                Some(values) =>{
+                                    if self.other_client_ids.contains(&values.0){
+                                        self.send_message(values.0,values.1);
+                                        "CLIENT1: OK".to_string()
+                                    }
+                                    else{
+                                        "Error: invalid dest_id".to_string()
+                                    }
+                                }
+                                None =>{
+                                    "Error: command not formatted correctly".to_string()
+                                }
+                            }
+                        }
+                        _=>{"Not a valid ChatServer command".to_string()}
                     }
-                    else{
-                        self.send_message(dest_id,cmd);
-                        "CLIENT1: OK".to_string()
+                }
+                "" => {
+                    match cmd{
+                        cmd if cmd == "server_type?" =>{
+                            self.send_message(dest_id,cmd);
+                            "CLIENT1t: OK".to_string()
+                        }
+                        _=>{"Not a valid command".to_string()}
                     }
                 }
-                else{
-                    "Error: command not formatted correctly".to_string()
-                }
+                _ => "Not valid ServerType".to_string()
             }
-            cmd if cmd == "registration_to_chat" =>{
-                self.send_message(dest_id,cmd);
-                "CLIENT1: OK".to_string()
-            }
-            cmd if cmd == "client_list?" =>{
-                self.send_message(dest_id,cmd);
-                "CLIENT1: OK".to_string()
-            }
-            cmd if cmd == "commands" => {
-                format!("commands:\
-                                             server_type?\
-                                             files_list?\
-                                             registration_to_chat\
-                                             file?(file_id)\
-                                             media?(media_id)\
-                                             message_for?(client_id, message)")
-            }
-            _ =>{"Not a valid command".to_string()}
         }
+        else{
+            "Destination server not present".to_string()
+        }
+
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
@@ -166,15 +172,19 @@ impl Client1 {
             None => {println!("Error: no path to dest_id")}
         }
     }
-    // Handle a received message (e.g. from a server) with eventual parameters
+    // Handle a received message (e.g. from a server) with eventual parameters TODO check for Alberto format message(His is wrong i think)!!!!!!
     pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
+        let original_msg = received_msg.clone();
         match received_msg{
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
-                self.server.0 = src_id;
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
-                        self.server.1 = serverType.to_string();
-                        "CLIENT1: OK".to_string()
+                        for mut serv in &self.servers{
+                            if *serv.0 == src_id && serv.1.is_empty(){
+                                serv.1 = &serverType.to_string();
+                            }
+                        }
+                        original_msg
                     }
                     None =>{"Not valid server type".to_string()}
                 }
@@ -312,7 +322,7 @@ impl Client1 {
                     None => "Failed to get message content".to_string()
                 }
             }
-            _=> "Error".to_string()
+            _=> original_msg
         }
     }
     // Helper functions
