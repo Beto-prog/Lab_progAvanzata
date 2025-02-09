@@ -8,7 +8,10 @@ use std::sync::{Arc, Mutex};
 use wg_2024::packet::*;
 use wg_2024::network::*;
 use crossbeam_channel::{Sender, Receiver};
+use std::io::{BufRead, BufReader};
+use std::net::{TcpListener, TcpStream};
 use crate::repackager::Repackager;
+
 
 pub struct Client2 {
     node_id: NodeId,
@@ -22,10 +25,13 @@ pub struct Client2 {
     receiver_channel: Receiver<Packet>,
     received_floods: HashSet<u64>,
     saved_files: HashSet<String>,
+    reader: BufReader<TcpStream>,
+    writer: TcpStream,
 }
 
 impl Client2 {
     pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
+        let (reader, writer) = setup_window();
         Self {
             node_id,
             discovered_drones: Arc::new(Mutex::new(HashMap::new())),
@@ -38,6 +44,8 @@ impl Client2 {
             receiver_channel,
             received_floods: HashSet::new(),
             saved_files: HashSet::new(),
+            reader,
+            writer,
         }
     }
     // Discover network through drones
@@ -373,33 +381,29 @@ impl Client2 {
     }
 }
 
-//use std::io::{BufRead, BufReader, Write};
-// use std::net::{TcpListener, TcpStream};
-// use std::thread;
-//
-// fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
-//     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-//     let port = listener.local_addr().unwrap().port();
-//
-//     // Launch terminal with persistent shell
-//     std::process::Command::new("xterm")
-//         .args(&[
-//             "-e",
-//             &format!(
-//                 "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
-//                 port
-//             ),
-//         ])
-//         .spawn()
-//         .unwrap_or_else(|_| panic!("Failed to open terminal window"));
-//
-//     let (stream, _) = listener.accept().unwrap();
-//     let reader = BufReader::new(stream.try_clone().unwrap());
-//     let writer = stream;
-//
-//     return (reader, writer);
-// }
-//
+fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // Launch terminal with persistent shell
+    std::process::Command::new("xterm")
+        .args(&[
+            "-e",
+            &format!(
+                "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
+                port
+            ),
+        ])
+        .spawn()
+        .unwrap_or_else(|_| panic!("Failed to open terminal window"));
+
+    let (stream, _) = listener.accept().unwrap();
+    let reader = BufReader::new(stream.try_clone().unwrap());
+    let writer = stream;
+
+    return (reader, writer);
+}
+
 // //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
 // fn main() {
 //     let thread1 = thread::spawn(|| {
