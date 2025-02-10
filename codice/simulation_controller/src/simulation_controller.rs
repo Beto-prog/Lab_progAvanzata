@@ -63,7 +63,6 @@ impl SimulationController {
 
         ui_command_receiver: Receiver<UICommand>,
         ui_response_sender: Sender<UIResponse>,
-        //ui_context: Context,
     ) -> Self {
         let mut node_types = HashMap::new();
 
@@ -112,6 +111,7 @@ impl SimulationController {
         }
     }
 
+    /// Handles a UI command.
     fn handle_ui_command(&mut self, ui_command: UICommand) {
         match ui_command {
             UICommand::SetPDR(node_id, pdr) => {
