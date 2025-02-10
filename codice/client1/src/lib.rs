@@ -319,7 +319,7 @@ impl Client1 {
     pub fn run(&mut self) {
         //Initialize the network field
         self.discover_network();
-        let mut input_buffer = String::new();;
+        let mut input_buffer = String::new();
 
         loop {
             // Handle packets in the meantime
@@ -354,7 +354,7 @@ impl Client1 {
                         ");
                     }
                     else{
-                        self.handle_command(input_buffer.trim());
+                        println!("{}",self.handle_command(input_buffer.trim()));
                         input_buffer.clear();
                     }
                 }
