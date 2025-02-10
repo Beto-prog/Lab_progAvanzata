@@ -5,6 +5,7 @@
 
 mod message;
 
+use colored::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
@@ -108,9 +109,9 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 None => {       
                         match &packet.pack_type
                     {
-                        PacketType::FloodRequest(_) => {println!("SERVER :  Received FloodRequest")}
-                        PacketType::FloodResponse(_) => {println!("SERVER :  Received FloodResponse")}
-                        _ => {println!("SERVER :  I received an packet without headers");}
+                        PacketType::FloodRequest(_) => {println!("{}","SERVER :  Received FloodRequest".yellow().on_blue())}
+                        PacketType::FloodResponse(_) => {println!("{}","SERVER :  Received FloodResponse".yellow().on_blue())}
+                        _ => {println!("{}","SERVER :  I received an packet without headers".yellow().on_blue());}
                     }
                 }
                 Some(x) => {source_id =*x}      //FOUND
@@ -118,9 +119,11 @@ Start by sending a flood request to all the neighbour to fill up the graph
         
         let mut response = packet.clone();  //The response will be modified later . For now, it's just a copy
         
-                match packet.pack_type {                    //Process different packet type
+                match packet.pack_type { //Process different packet type
                     PacketType::MsgFragment(msg) => {
 
+                        
+                        println!("{}","SERVER ---> Message - Received MsgFragment".yellow().on_blue());
                         //Send back an ack 
                         response.pack_type = AckType(Ack {          
                             fragment_index: msg.fragment_index,
@@ -129,7 +132,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         
                         //Start transforming the fragment in a vector with all the data in it 
                         let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
-                        
+
+                        println!("{} {:?}","SERVER ---> Response :".yellow().on_blue()  ,result);
                         
                         
                         match result { 
