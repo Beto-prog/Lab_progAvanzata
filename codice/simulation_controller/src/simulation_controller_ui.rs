@@ -4,7 +4,6 @@ use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 use eframe::egui;
 use egui::Id;
-use egui::Margin;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wg_2024::network::NodeId;

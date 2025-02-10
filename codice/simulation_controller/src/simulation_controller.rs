@@ -487,20 +487,29 @@ impl SimulationController {
         self.send_command(node1, DroneCommand::RemoveSender(node2));
         self.send_command(node2, DroneCommand::RemoveSender(node1));
 
-        self.drone_stats
-            .lock()
-            .expect("Should be able to unlock")
-            .get_mut(&node1)
-            .expect("The node Id should be valid")
-            .neigbours
-            .remove(&node2);
-        self.drone_stats
-            .lock()
-            .expect("Should be able to unlock")
-            .get_mut(&node2)
-            .expect("The node Id should be valid")
-            .neigbours
-            .remove(&node1);
+        if let Some(kind) = self.node_types.get_mut(&node1) {
+            if let NodeType::Drone = kind {
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&node1)
+                    .expect("The node Id should be valid")
+                    .neigbours
+                    .remove(&node2);
+            }
+        }
+        if let Some(kind) = self.node_types.get_mut(&node2) {
+            if let NodeType::Drone = kind {
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&node2)
+                    .expect("The node Id should be valid")
+                    .neigbours
+                    .remove(&node1);
+            }
+        }
+
         self.ui_response_sender
             .send(UIResponse::Success(
                 "Connection succesfully removed".to_string(),
@@ -536,9 +545,13 @@ impl SimulationController {
 
         if let Some(neighbors) = topology.get_mut(&destination) {
             neighbors.remove(&node_id);
+        } else {
+            return false;
         }
         if let Some(neighbors) = topology.get_mut(&node_id) {
             neighbors.remove(&destination);
+        } else {
+            return false;
         }
 
         // Check if the network is still connected
@@ -808,22 +821,22 @@ fn _initialize_mock_network() -> SimulationController {
         thread::spawn(move || drone.run());
 
         struct MockUi {
-            receiver: Receiver<UIResponse>,
-            sender: Sender<UICommand>,
+            _receiver: Receiver<UIResponse>,
+            _sender: Sender<UICommand>,
         }
 
         impl MockUi {
-            fn run(&self) {
+            fn _run(&self) {
                 loop {}
             }
         }
 
         let mock_ui = MockUi {
-            receiver: ui_response_receiver.clone(),
-            sender: ui_command_sender.clone(),
+            _receiver: ui_response_receiver.clone(),
+            _sender: ui_command_sender.clone(),
         };
 
-        thread::spawn(move || mock_ui.run());
+        thread::spawn(move || mock_ui._run());
     }
 
     SimulationController::new(
