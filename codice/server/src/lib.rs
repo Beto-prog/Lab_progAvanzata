@@ -137,7 +137,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
-                                //println!("{}",message.clone().unwrap());
+                                println!("{}",message.clone().unwrap());
                                 /*
                                 Here there is an exception if the message start with messageFor?(...)
                                 It means that is a message for another user, so I have to change the source id

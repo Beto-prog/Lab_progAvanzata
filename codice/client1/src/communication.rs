@@ -182,7 +182,7 @@ impl Client1 {
         match received_msg{
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
                 let original_msg = msg.clone();
-                //println!("{}",original_msg);
+                //println!(" sos {}",original_msg);
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
                         self.servers.entry(src_id).or_insert_with(|| serverType.to_string());
