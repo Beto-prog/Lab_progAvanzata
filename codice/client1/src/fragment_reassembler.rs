@@ -29,7 +29,7 @@ impl FragmentReassembler {
             self.buffer.insert(key, Vec::with_capacity((fragment.total_n_fragments * 128) as usize));
         }
         // Get the buffer for this (session_id, source_id)
-        let buffer = self.buffer.get_mut(&key).unwrap();
+        let buffer = self.buffer.get_mut(&key).expect("Failed to get buffer");
         if buffer.len() < (fragment.total_n_fragments * 128) as usize{
             buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
         }

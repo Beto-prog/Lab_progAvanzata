@@ -212,7 +212,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 it has a vector containing all the packet that need to be sends
                                  */
                                 
-                                println!("{:?}",ack_value);
+                                //println!("{:?}",ack_value);
                                 if ack_value.len() != 1 { // TODO fixed here
                                     if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index + 1) {
                                         if pos + 1 < ack_value.len() {

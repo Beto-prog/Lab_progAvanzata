@@ -1,4 +1,4 @@
-/* // TODO match on the .send() and in case it fails remove neighbor
+/*
 INFO
 
 This is the implementation of a Client made by Lorenzo Cortese for the AP project of academic year 2024/2025 held by professor Marco Patrignani.
@@ -46,7 +46,7 @@ pub struct Client1 {
     received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
-    server: (NodeId,String) // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
+    servers: HashMap<NodeId,String> // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
 }
 
 impl Client1 {
@@ -65,7 +65,7 @@ impl Client1 {
             received_files: vec![],
             other_client_ids: vec![],
             files_names: vec![],
-            server: (255,String::new()) // Initialized to a dummy value
+            servers: HashMap::new()
         }
     }
     // Network discovery
@@ -85,24 +85,6 @@ impl Client1 {
             }
         }
     }
-    // Forward FloodRequest to the neighbors
-    /*
-    pub fn forward_flood_request(&self, packet: Packet, previous: NodeId, request: FloodRequest) {
-        //only one neighbor : the one which sent the FloodRequest. Then created FloodResponse and sent back
-        if self.neighbors.iter().count() == 1{
-            self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_response(packet.session_id, request)).expect("CLIENT1: Error while sending message");
-        }
-        // More than one neighbor
-        else{
-            for &neighbor in &self.neighbors {
-                if neighbor != previous{
-                    self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(packet.clone()).expect("CLIENT1: Error while sending message");
-                }
-            }
-        }
-    }
-
-     */
     // Creation of Packet with packet.type = FloodResponse
     pub fn create_flood_response(&self,session_id: u64, request: FloodRequest) -> Packet{
         let mut hops: Vec<NodeId> = vec![];
@@ -144,7 +126,6 @@ impl Client1 {
                         else {
                             request.path_trace.push((self.node_id.clone(), NodeType::Client));
                             self.flood_ids.push((request.flood_id, request.initiator_id));
-                            //self.forward_flood_request(packet_clone,previous,request);
                             let resp = self.create_flood_response(packet.session_id, request);
                             match self.sender_channels.get(&previous).expect("CLIENT1: Didn't find neighbor").send(resp){
                                 Ok(_) => (),
@@ -165,8 +146,8 @@ impl Client1 {
             PacketType::FloodResponse(response) =>{
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
-                        self.server.0 = node.0;
-                        println!("CLIENT1: found server with id: {}",self.server.0);
+                        self.servers.entry(node.0).or_insert("".to_string());
+                        println!("CLIENT1: found server with id: {}",node.0);
                     }
                 }
                 self.update_graph(response);
@@ -200,7 +181,7 @@ impl Client1 {
                                         self.sender_channels.remove(&new_first_hop);
                                         self.discover_network();
 
-                                        let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                                        let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                                         let first_hop = new_path[1];
 
                                         let packet_sent = Packet::new_ack(
@@ -210,8 +191,8 @@ impl Client1 {
                                         }
                                     }
                                 }
-                                //Handle the command in the reconstructed message
-                                self.handle_msg(msg,packet.session_id,new_first_hop,frag_index);
+                                //Handle the reconstructed message
+                                println!("{}",self.handle_msg(msg,packet.session_id,new_first_hop,frag_index));
                             },
                             // FragmentReassembler encountered an error
                             Err(e) => println!("{e}")
@@ -232,7 +213,7 @@ impl Client1 {
                                 self.sender_channels.remove(&new_first_hop);
                                 self.discover_network();
 
-                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).unwrap();
+                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                                 let first_hop = new_path[1];
 
                                 let packet_sent = Packet::new_ack(
@@ -349,12 +330,12 @@ impl Client1 {
             }
 
             //println!("CLIENT1: server id : {}",self.server.0);
-            match self.server.0{
-                255 => { ()
+            match self.servers.is_empty(){
+                true => { ()
                     //println!("CLIENT1: Not linked to a server");
                     //println!("Network: {:?}",self.network);
                 }
-                _=>{
+                false =>{
                     //Simple implementation of user input
                     input_buffer.clear();
                     io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
@@ -362,7 +343,19 @@ impl Client1 {
                     if input_buffer.eq("OFF"){
                         break;
                     }
-                    println!("{}",self.handle_command(&input_buffer.trim().clone(),self.server.0));
+                    else if input_buffer.trim().eq("Commands"){
+                        println!("
+                            server_type?->NodeId #(to a server in general)\n
+                            files_list?->NodeId #(to a ContentServer)\n
+                            file?(file_id)->NodeId #(to a ContentServer)\n
+                            media?(media_id)->NodeId #(to a ContentServer)\n
+                            message_for?(client_id, message)->NodeId #(to a ChatServer)\n
+                            client_list?->NodeID #(to a ChatServer)\n
+                        ");
+                    }
+                    else{
+                        println!("{}",self.handle_command(&input_buffer.trim().clone()));
+                    }
                 }
             }
         }
