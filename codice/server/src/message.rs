@@ -475,7 +475,7 @@ pub mod file_system
          {
             match command {
                 cmd if cmd.starts_with("server_type?") => {
-                    Repackager::create_fragments(&*self.serv.to_string(), None)
+                    Repackager::create_fragments(&format!("server_type!({})",self.serv.to_string()), None)
                 }
                 cmd if cmd.starts_with("files_list?") => {
                     Repackager::create_fragments(&*self.files_list(), None)
@@ -538,7 +538,7 @@ pub mod file_system
             // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
             match command {
                 cmd if cmd.starts_with("server_type?") => {         //Ask for server type
-                    Repackager::create_fragments(&*self.serv.to_string(), None)
+                    Repackager::create_fragments(&format!("server_type!({})",self.serv.to_string()), None)
                 }
                 cmd if cmd.starts_with("client_list?") => {
                     
@@ -763,7 +763,7 @@ mod tests_chat_server {
             let mut server = ChatServer::new();
             let value = server.process_request("server_type?".to_string(), 1);
             
-            assert_eq!(convert_back(value), "CommunicationServer");
+            assert_eq!(convert_back(value), "server_type!(CommunicationServer)");
         }
 
         #[test]
