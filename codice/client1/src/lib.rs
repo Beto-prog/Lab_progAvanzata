@@ -1,5 +1,5 @@
 /*
-INFO
+INFORMATION
 
 This is the implementation of a Client made by Lorenzo Cortese for the AP project of academic year 2024/2025 held by professor Marco Patrignani.
 
@@ -9,16 +9,16 @@ There are three files and a folder in total in the /src folder : 'lib', 'communi
 
 Their contents are:
 
-* 'lib' : Client struct with the necessary methods and functions
- to handle the user input and the incoming packets and also some helpers functions.
- In order to check what commands can be executed by the user, digit 'Commands' in the cmd line.
+    * 'lib' : Client struct with the necessary methods and functions
+    to handle the user input and the incoming packets and also some helpers functions.
+    In order to check what commands can be executed by the user, digit 'Commands' in the cmd line.
 
-* 'communication.rs' : methods and functions related to the aforementioned file used to handle both user commands and messages received at a lower level
-and, in fact, do the effective communication part.
+    * 'communication.rs' : methods and functions related to the aforementioned file used to handle both user commands and messages received at a lower level
+    and, in fact, do the effective communication part.
 
-* 'fragment_reassembler.rs' : FragmentReassembler struct with related methods used to store,reconstruct and assemble the MsgFragment packet types.
+    * 'fragment_reassembler.rs' : FragmentReassembler struct with related methods used to store,reconstruct and assemble the MsgFragment packet types.
 
-* 'tests' folder: couple of files used to test the FragmentReassembler functionalities.
+    * 'tests' folder: couple of files used to test the FragmentReassembler functionalities.
 
 All the aforementioned files have some tests within to ensure their most important functions behave correctly.
 */
@@ -32,6 +32,8 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
+use std::io::{BufRead, BufReader, BufWriter, Write, WriterPanicked};
+use std::net::{TcpListener, TcpStream};
 
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
@@ -47,7 +49,9 @@ pub struct Client1 {
     received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
-    servers: HashMap<NodeId,String> // NodeID of the  linked server and server type (group related). Can be a Vec to handle more servers
+    servers: HashMap<NodeId,String>, // map of servers ID and relative type
+    reader: BufReader<TcpStream>,
+    writer: TcpStream
 }
 
 impl Client1 {
@@ -56,7 +60,9 @@ impl Client1 {
                sender_channels:HashMap<NodeId,Sender<Packet>>,
                receiver_channel: Receiver<Packet>
     ) -> Self {
+        let (reader,writer) = setup_window();
         Self {
+
             node_id,
             sender_channels,
             receiver_channel,
@@ -66,7 +72,10 @@ impl Client1 {
             received_files: vec![],
             other_client_ids: vec![],
             files_names: vec![],
-            servers: HashMap::new()
+            servers: HashMap::new(),
+            reader,
+            writer
+
         }
     }
     // Network discovery
@@ -306,11 +315,9 @@ impl Client1 {
                 self.handle_flood_request(packet);
             }
             PacketType::FloodResponse(_) =>{
-                //println!("{:?}",packet);
                 self.handle_flood_response(packet);
             }
             PacketType::MsgFragment(_) =>{
-                //println!("pack {:?}",packet);
                 self.handle_msg_fragment(packet);
             }
             _ => ()
@@ -320,6 +327,7 @@ impl Client1 {
         //Initialize the network field
         self.discover_network();
         let mut input_buffer = String::new();
+        let (mut reader, mut writer) = setup_window();
 
         loop {
             // Handle packets in the meantime
@@ -327,9 +335,8 @@ impl Client1 {
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
                         Ok(packet) => {
-                            //println!("CLIENT1: received packet");
-                            //println!("pack {:?}",packet);
-                            self.handle_packet(packet);
+                            println!("Received packet");
+                            self.handle_packet(packet)
                         },
 
                         Err(e) => println!("CLIENT1: Error: {e}")
@@ -340,7 +347,7 @@ impl Client1 {
                 true => (),
                 false =>{
                     input_buffer.clear();
-                    io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
+                    reader.read_line(&mut input_buffer).expect("Failed to read line");
                     if input_buffer.eq("OFF"){
                         break;
                     }
@@ -362,6 +369,28 @@ impl Client1 {
             }
         }
     }
+}
+pub fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // Launch terminal with persistent shell
+    std::process::Command::new("xterm")
+        .args(&[
+            "-e",
+            &format!(
+                "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
+                port
+            ),
+        ])
+        .spawn()
+        .unwrap_or_else(|_| panic!("Failed to open terminal window"));
+
+    let (stream, _) = listener.accept().unwrap();
+    let reader = BufReader::new(stream.try_clone().unwrap());
+    let writer = stream;
+
+    (reader, writer)
 }
 // Tests for bfs and network update based on FloodResponses
 #[cfg(test)]
