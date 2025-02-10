@@ -316,12 +316,9 @@ impl NetworkInitializer {
                     Client1::new(client_config.id, neighbor_senders.clone(), client_receiver);
                 std::thread::spawn(move || client.run());
             } else {
-                /* let mut client = Client2::new(
-                    client_config.id,
-                    neighbor_senders.clone(),
-                    client_receiver,
-                );
-                std::thread::spawn(move || client.run());*/
+                let mut client =
+                    Client2::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                std::thread::spawn(move || client.run());
             }
         }
 
@@ -411,11 +408,10 @@ impl NetworkInitializer {
             viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 768.0]),
             ..Default::default()
         };
-        _ = eframe::run_native(
+        if let Err(error) = eframe::run_native(
             "Simulation Controller",
             native_options,
             Box::new(|cc| {
-                //context = Some(cc.egui_ctx.clone());
                 let simulation_controller_ui = Box::new(SimulationControllerUI::new(
                     cc,
                     drone_stats_arc.clone(),
@@ -424,7 +420,9 @@ impl NetworkInitializer {
                 ));
                 Ok(simulation_controller_ui)
             }),
-        );
+        ) {
+            println!("Error: {}", error);
+        }
     }
 
     pub fn run(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -436,7 +434,7 @@ impl NetworkInitializer {
 }
 
 fn main() {
-    if let Err(e) = NetworkInitializer::run("src/network_config.toml") {
+    if let Err(e) = NetworkInitializer::run("network_config.toml") {
         eprintln!("Error initializing network: {e}");
     }
 }
