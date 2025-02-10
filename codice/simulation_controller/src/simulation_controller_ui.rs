@@ -31,6 +31,8 @@ impl SimulationControllerUI {
         ui_response_receiver: Receiver<UIResponse>,
     ) -> Self {
         env_logger::init();
+
+        //get the first drone ID
         let selected_tab = *drone_stats
             .lock()
             .expect("Should be able to unlock")
@@ -38,6 +40,8 @@ impl SimulationControllerUI {
             .next()
             .expect("There should always be at least one drone")
             as usize;
+
+        //get the initial PDR values
         let mut new_pdr = HashMap::new();
         for (drone_id, drone) in drone_stats.lock().expect("Should be able to unlock").iter() {
             new_pdr.insert(*drone_id, drone.pdr);
@@ -66,6 +70,7 @@ impl SimulationControllerUI {
         }
     }
 
+    //UI for a single drone
     fn drone_stats_ui(&mut self, ui: &mut egui::Ui, drone_id: NodeId, now: f64) {
         let general_drone_stats = self.drone_stats.lock().expect("Should be able to unlock");
         let drone_stats = general_drone_stats
@@ -74,6 +79,7 @@ impl SimulationControllerUI {
 
         ui.separator();
 
+        //show drone stats
         ui.label(format!("Drone ID: {drone_id}",));
         ui.label(format!("Neighbours: {:?}", drone_stats.neigbours));
         ui.label(format!(
@@ -95,6 +101,7 @@ impl SimulationControllerUI {
         ui.label(format!("PDR: {}", drone_stats.pdr));
         ui.separator();
 
+        //crash button
         if ui.button("Crash").clicked() {
             if drone_stats.crashed {
                 self.snackbar = Some((
@@ -109,6 +116,7 @@ impl SimulationControllerUI {
         }
         ui.separator();
 
+        //PDR slider
         ui.horizontal(|ui| {
             ui.add(
                 egui::Slider::new(
@@ -134,6 +142,7 @@ impl SimulationControllerUI {
 
         ui.separator();
 
+        //add neighbour combobox
         ui.horizontal(|ui| {
             let selected = self
                 .selected_add_neighbour
@@ -158,6 +167,7 @@ impl SimulationControllerUI {
             }
         });
 
+        //remove neighbour combobox
         ui.horizontal(|ui| {
             let selected = self
                 .selected_remove_neighbour
@@ -191,6 +201,8 @@ impl eframe::App for SimulationControllerUI {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Simulation Controller");
             ui.separator();
+
+            //Drone selector
             ui.horizontal(|ui| {
                 for drone in self
                     .drone_stats
@@ -206,12 +218,14 @@ impl eframe::App for SimulationControllerUI {
 
             let now = ctx.input(|i| i.time);
 
+            //show the UI for the selected drone
             self.drone_stats_ui(
                 ui,
                 NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
                 now,
             );
 
+            //Snackbar to notify the user of success or failure
             if let Some((ref message, expires)) = self.snackbar {
                 if now < expires {
                     // Draw the snackbar at the bottom center of the window.
@@ -232,6 +246,7 @@ impl eframe::App for SimulationControllerUI {
                 }
             }
 
+            //handle responses from simulation controller
             if let Ok(response) = self.ui_response_receiver.try_recv() {
                 match response {
                     UIResponse::Success(message) | UIResponse::Falure(message) => {

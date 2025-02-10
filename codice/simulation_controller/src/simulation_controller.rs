@@ -445,6 +445,7 @@ impl SimulationController {
                 .expect("Neighbor sender should be valid");
         }
 
+        //update the stats
         self.drone_stats
             .lock()
             .expect("Should be able to unlock")
@@ -460,6 +461,7 @@ impl SimulationController {
             .neigbours
             .insert(node1);
 
+        //send response to the UI
         self.ui_response_sender
             .send(UIResponse::Success(
                 "Connection succesfully added".to_string(),
@@ -490,6 +492,7 @@ impl SimulationController {
         self.send_command(node1, &DroneCommand::RemoveSender(node2));
         self.send_command(node2, &DroneCommand::RemoveSender(node1));
 
+        //update drone stats
         if let Some(NodeType::Drone) = self.node_types.get_mut(&node1) {
             self.drone_stats
                 .lock()
@@ -727,8 +730,6 @@ mod tests {
         use std::collections::{HashMap, HashSet};
         use std::thread;
 
-        // Create channels for the simulation controller
-
         let mut node_senders = HashMap::new();
         let mut node_recievers = HashMap::new();
         let mut drone_command_senders = HashMap::new();
@@ -751,6 +752,7 @@ mod tests {
         network_topology.insert(6, HashSet::from([1, 2]));
         network_topology.insert(7, HashSet::from([3, 2]));
 
+        //create mock drones
         for i in 1..=4 {
             let (drone_send, drone_recv) = unbounded();
             let (command_send, command_recv) = unbounded();
