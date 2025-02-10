@@ -1,9 +1,10 @@
 #![allow(warnings)]
 
-use std::fs;
-use std::path::Path;
-use wg_2024::packet::*;
 use std::collections::{HashMap};
+use std::fs;
+use std::io::Read;
+use std::path::Path;
+use wg_2024::packet::{Fragment};
 
 pub struct Repackager {
     buffers: HashMap<(u64, u64), Vec<u8>>, // Maps (session_id, src_id) to a buffer
@@ -18,14 +19,21 @@ impl Repackager {
         }
     }
 
-/*
+
+    /*
+
 To reassemble fragments into a single packet, a client or server uses the fragment header as follows:
 
 1. The client or server receives a fragment.
 2. It first checks the (session_id, src_id) tuple in the header.
-3. If it has not received a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
+3. If it has not recived a fragment with the same (session_id, src_id) tuple, then it creates a vector (Vec<u8> with capacity of total_n_fragments * 128) where to copy the data of the fragments.
 4. It would then copy length elements of the data array at the correct offset in the vector.
+
+
 */
+
+
+    //this function is complicated but it works ignore the test with mediafile because it involve memory permission
     pub fn process_fragment(&mut self, session_id: u64, src_id: u64, fragment: Fragment) -> Result<Option<Vec<u8>>, u8> {
         let key = (session_id, src_id);
 
@@ -35,19 +43,20 @@ To reassemble fragments into a single packet, a client or server uses the fragme
         });
 
         // Ensure buffer is large enough, I am pretty sure it useless but online is but a great enfasis on this to prevent error . Id
-        // Controllo della dimensione del buffer
+        // Check the bufffer dim
         if buffer.len() < (fragment.total_n_fragments * 128) as usize {
-            println!(
-                "Resizing buffer: current = {}, required = {}",
-                buffer.len(),
-                fragment.total_n_fragments * 128
-            );
+            //println!(
+            //"Resizing buffer: current = {}, required = {}",
+            //buffer.len(),
+            //fragment.total_n_fragments * 128
+            //);
             buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
         }
 
         // Copy fragment data into the buffer at the correct offset. Each fragment is of size 128 except the last one
         let start = (fragment.fragment_index * 128) as usize;
         let end = start + fragment.length as usize;
+
 
         // pretty useless this one too . But you never know
         if end > buffer.len() {
@@ -67,10 +76,11 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             self.processed_packet.remove(&key);
             Ok(Some(complete_data)) // Message reassembled successfully
         } else {
-            Ok(None) // Not all fragments received yet
+            Ok(None) // Not all fragments recived yet
         }
     }
 
+    //Break down a string into fragment if file_path is none than only the fragment if it is Some then it breaks down the file
     pub fn create_fragments(initial_string: &str, file_path: Option<&str>) -> Result<Vec<Fragment>, String> {
         // Convert the initial string to bytes
         let mut message_data = initial_string.as_bytes().to_vec();
@@ -83,11 +93,12 @@ To reassemble fragments into a single packet, a client or server uses the fragme
 
         }
 
+
         let total_size = message_data.len();
         let total_n_fragments = ((total_size + 127) / 128) as u64; // Calculate the total number of fragments
         let mut fragments = Vec::new();
 
-        for i in 0..total_n_fragments {
+        for i in 0..total_n_fragments {         //take data of the file piece by piece
             let start = (i as usize) * 128;
             let end = ((i as usize) + 1) * 128;
             let slice = &message_data[start..std::cmp::min(end, total_size)];
@@ -102,9 +113,12 @@ To reassemble fragments into a single packet, a client or server uses the fragme
                 data,
             });
         }
+
         Ok(fragments)
     }
 
+
+    //from fragment -> to string
     pub fn assemble_string (data: Vec<u8>) -> Result<String, String> {      //use this when you know there are no file --- ONLY FOR THE SERVER
         // Convert the vector of bytes to a string
         match String::from_utf8(data) {
@@ -118,6 +132,7 @@ To reassemble fragments into a single packet, a client or server uses the fragme
     }
 
 
+    //usless for the server this is for the Client . Used for testing and to have a more   complete module
     pub fn assemble_string_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
         // Remove null charachter
         let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();
@@ -135,13 +150,14 @@ To reassemble fragments into a single packet, a client or server uses the fragme
             // Extract file content
             let file_data = &clean_data[pos + 1..];
 
-            // Se il file ha dati, salvalo nella path specificata
+            // If the file has some data save it to the file system
             if !file_data.is_empty() {
                 let file_path = Path::new(output_path);
                 if let Err(e) = fs::write(file_path, file_data) {
                     return Err(format!("Errore nella scrittura del file: {}", e));
                 }
             }
+
             // Return the value
             Ok(initial_string)
         } else {
