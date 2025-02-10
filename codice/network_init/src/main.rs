@@ -1,8 +1,6 @@
-#![allow(warnings)]
-
+#![allow(clippy::too_many_lines)]
 use crossbeam_channel::unbounded;
 use serde::Deserialize;
-use server::Server;
 use simulation_controller::node_stats::DroneStats;
 use simulation_controller::SimulationController;
 use simulation_controller::SimulationControllerUI;
@@ -138,7 +136,7 @@ impl NetworkInitializer {
             if !node_ids.insert(client.id) {
                 return Err(format!("Duplicate node ID: {}", client.id));
             }
-            if client.connected_drone_ids.len() < 1 || client.connected_drone_ids.len() > 2 {
+            if client.connected_drone_ids.is_empty() || client.connected_drone_ids.len() > 2 {
                 return Err(format!(
                     "Client {} must be connected to 1 or 2 drones",
                     client.id
@@ -178,7 +176,7 @@ impl NetworkInitializer {
         }
 
         if !NetworkInitializer::is_graph_connected(config) {
-            return Err(format!("Network is not bidirectionally connected"));
+            return Err("Network is not bidirectionally connected".to_string());
         }
 
         Ok(())
@@ -217,7 +215,7 @@ impl NetworkInitializer {
         topology
     }
 
-    fn initialize_network(config: NetworkConfig) {
+    fn initialize_network(config: &NetworkConfig) {
         let (event_sender, event_receiver) = unbounded();
         let mut node_senders = HashMap::new();
         let mut node_recievers = HashMap::new();
@@ -258,8 +256,11 @@ impl NetworkInitializer {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &drone_config.connected_node_ids {
                 neighbor_senders.insert(
-                    neighbor_id.clone(),
-                    node_senders.get(&neighbor_id).unwrap().clone(),
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("If network config is valid it should never fail")
+                        .clone(),
                 );
             }
 
@@ -272,14 +273,17 @@ impl NetworkInitializer {
             );
 
             let mut drone = simulation_controller::get_drone_impl::get_drone_impl(
-                index as u8,
+                u8::try_from(index).expect("Should always be able to convert"),
                 drone_config.id,
                 event_sender.clone(),
                 drone_command_receivers
                     .get(&drone_config.id)
-                    .unwrap()
+                    .expect("If network config is valid it should never fail")
                     .clone(),
-                node_recievers.get(&drone_config.id).unwrap().clone(),
+                node_recievers
+                    .get(&drone_config.id)
+                    .expect("If network config is valid it should never fail")
+                    .clone(),
                 neighbor_senders.clone(),
                 drone_config.pdr,
             );
@@ -293,13 +297,19 @@ impl NetworkInitializer {
             // Find drones that are connected to this client
             for neighbor_id in &client_config.connected_drone_ids {
                 neighbor_senders.insert(
-                    neighbor_id.clone(),
-                    node_senders.get(&neighbor_id).unwrap().clone(),
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("If network config is valid it should never fail")
+                        .clone(),
                 );
             }
 
             // Clone the specific receiver for this client before moving into the thread
-            let client_receiver = node_recievers.get(&client_config.id).unwrap().clone();
+            let client_receiver = node_recievers
+                .get(&client_config.id)
+                .expect("If network config is valid it should never fail")
+                .clone();
             // Initialize the client with neighbor_senders
             if index % 2 == 0 {
                 let mut client =
@@ -320,16 +330,21 @@ impl NetworkInitializer {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &server_config.connected_drone_ids {
                 neighbor_senders.insert(
-                    neighbor_id.clone(),
-                    node_senders.get(&neighbor_id).unwrap().clone(),
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("If network config is valid it should never fail")
+                        .clone(),
                 );
             }
 
-            let packet_reciver = node_recievers.get(&server_config.id).unwrap();
+            let packet_reciver = node_recievers
+                .get(&server_config.id)
+                .expect("If network config is valid it should never fail");
 
             let mut server;
 
-            if (index % 3 == 0)
+            if index % 3 == 0
             //Chat server
             {
                 server = server::Server::new(
@@ -339,7 +354,7 @@ impl NetworkInitializer {
                     Box::new(server::file_system::ChatServer::new()), // Allocazione su heap
                 );
             } else if index % 3 == 1 {
-                std::fs::create_dir("/tmp/ServerTxt");
+                _ = std::fs::create_dir("/tmp/ServerTxt");
                 server = server::Server::new(
                     server_config.id,
                     packet_reciver.clone(),
@@ -348,9 +363,9 @@ impl NetworkInitializer {
                         "/tmp/ServerTxt",
                         server::file_system::ServerType::TextServer,
                     )),
-                )
+                );
             } else {
-                std::fs::create_dir("/tmp/ServerMedia");
+                _ = std::fs::create_dir("/tmp/ServerMedia");
                 server = server::Server::new(
                     server_config.id,
                     packet_reciver.clone(),
@@ -359,7 +374,7 @@ impl NetworkInitializer {
                         "/tmp/ServerMedia",
                         server::file_system::ServerType::MediaServer,
                     )),
-                )
+                );
             }
 
             std::thread::spawn(move || server.run());
@@ -367,7 +382,7 @@ impl NetworkInitializer {
 
         let next_drone_impl_index = config.drone.len() % 10;
 
-        let network_topology = Self::get_network_topology(&config);
+        let network_topology = Self::get_network_topology(config);
 
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
 
@@ -384,7 +399,7 @@ impl NetworkInitializer {
             config.drone.iter().map(|c| c.id).collect(),
             config.client.iter().map(|c| c.id).collect(),
             config.server.iter().map(|c| c.id).collect(),
-            next_drone_impl_index as u8,
+            u8::try_from(next_drone_impl_index).expect("Should always be able to convert"),
             drone_stats_arc.clone(),
             ui_command_receiver,
             ui_response_sender,
@@ -415,13 +430,13 @@ impl NetworkInitializer {
     pub fn run(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let config = Self::read_config(file_path)?;
         Self::validate_config(&config)?;
-        Self::initialize_network(config);
+        Self::initialize_network(&config);
         Ok(())
     }
 }
 
 fn main() {
     if let Err(e) = NetworkInitializer::run("src/network_config.toml") {
-        eprintln!("Error initializing network: {}", e);
+        eprintln!("Error initializing network: {e}");
     }
 }
