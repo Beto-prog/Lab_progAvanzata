@@ -1,36 +1,31 @@
-#![allow(warnings)]
-
 mod repackager;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io;
-use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
+use std::io::{Write};
 use wg_2024::packet::*;
 use wg_2024::network::*;
-use crossbeam_channel::{Sender, Receiver, select_biased, unbounded};
+use crossbeam_channel::{Sender, Receiver, select_biased};
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
 use crate::repackager::Repackager;
 
-
 pub struct Client2 {
     node_id: NodeId,
-    discovered_drones: HashMap<NodeId, NodeType>,
-    neighbor_senders: HashMap<NodeId, Sender<Packet>>,
+    discovered_drones: HashMap<NodeId, NodeType>,   //Drones that have been found
+    neighbor_senders: HashMap<NodeId, Sender<Packet>>,  //Direct drones connected to the client
     network_graph: HashMap<NodeId, HashSet<NodeId>>,
-    servers: HashMap<NodeId, String>,
+    servers: HashMap<NodeId, String>,   //List of the servers
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
-    repackager: Repackager,
+    repackager: Repackager,     //This is where the fragmentation is done
     receiver_channel: Receiver<Packet>,
-    saved_files: HashSet<String>,
-    //reader: BufReader<TcpStream>,
-    //writer: TcpStream,
+    saved_files: HashSet<String>,   //Path of saved files
+    reader: BufReader<TcpStream>,
+    writer: TcpStream,
 }
 
 impl Client2 {
     pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
-        //let (reader, writer) = setup_window();
+        let (reader, writer) = setup_window();
         Self {
             node_id,
             discovered_drones: HashMap::new(),
@@ -41,8 +36,8 @@ impl Client2 {
             repackager: Repackager::new(),
             receiver_channel,
             saved_files: HashSet::new(),
-            //reader,
-            //writer,
+            reader,
+            writer,
         }
     }
     // Discover network through drones
@@ -54,29 +49,34 @@ impl Client2 {
             path_trace: vec![(self.node_id, NodeType::Client)],
         };
 
+        // Cycle neighbors and send the flood request
         for (drone_id, sender) in &self.neighbor_senders {
             sender.send(Packet {
                 pack_type: PacketType::FloodRequest(request.clone()),
                 routing_header: self.create_source_routing_header(*drone_id),
                 session_id: self.generate_session_id(),
-            }).unwrap();
+            }).expect("Sending FloodRequest failed");
         }
     }
 
+    // Function that creates the flood response
     pub fn create_flood_response(&self, session_id: u64, flood_request: FloodRequest) -> Packet {
         let mut hops = vec![];
-        for (node_id, node_type) in flood_request.path_trace.iter().rev() {
-            hops.push(*node_id);
+        for &e in flood_request.path_trace.iter().rev() {
+            hops.push(e.0);
         }
         hops.reverse();
+
         let response = FloodResponse {
             flood_id: flood_request.flood_id,
             path_trace: flood_request.path_trace,
         };
+
         let srh = SourceRoutingHeader::with_first_hop(hops);
         Packet::new_flood_response(srh, session_id, response)
     }
 
+    // Handles the floods requests
     pub fn handle_flood_request(&mut self, mut flood_request: FloodRequest, session_id: u64) {
         flood_request.path_trace.push((self.node_id, NodeType::Client));
         // Check if this flood request has already been processed
@@ -91,8 +91,8 @@ impl Client2 {
 
     // Handle a received FloodResponse and build the network graph
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
-        let mut discovered_drones = &mut self.discovered_drones;
-        let mut network_graph = &mut self.network_graph;
+        let discovered_drones = &mut self.discovered_drones;
+        let network_graph = &mut self.network_graph;
 
         // Update the discovered drones list
         for (node_id, node_type) in &response.path_trace {
@@ -100,6 +100,7 @@ impl Client2 {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
             }
             if node_type == &NodeType::Server {
+                // Unknown is default value before asking the server with server_type?
                 self.servers.insert(self.node_id, "Unknown".to_string());
             }
         }
@@ -116,17 +117,17 @@ impl Client2 {
 
     // Send a message to a server through drones
     pub fn send_message(&mut self, server_id: NodeId, message: &str, file_path: Option<&str>) {
-        println!("sending message {}", message);
         // Create fragments using the Repackager
-        let fragments = Repackager::create_fragments(message, file_path).expect("CLIENT2: Failed to create fragments");
+        let fragments = Repackager::create_fragments(message, file_path).expect("Failed to create fragments");
 
         let session_id = self.generate_session_id();
         let path = Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, server_id);
 
+        // Create each packet with the fragments
         for fragment in fragments {
             let packet = Packet {
                 pack_type: PacketType::MsgFragment(fragment),
-                routing_header: SourceRoutingHeader::with_first_hop(path.clone().unwrap()),
+                routing_header: SourceRoutingHeader::with_first_hop(path.clone().expect("Failed to get first hop")),
                 session_id,
             };
 
@@ -136,25 +137,28 @@ impl Client2 {
         }
     }
 
-    //Handle of commands
+    // Function that verifies each command and sends it to the server
     pub fn handle_command(&mut self, command: &str) {
         if command == "commands" {
-            println!("server_type?->NodeId
+            writeln!(&mut self.writer, "
+server_type?->NodeId
 server_list
+client_list?->NodeId
 files_list?->NodeId
 registration_to_chat->NodeId
 file?(file_id)->NodeId
 media?(media_id)->NodeId
-message_for?(client_id, message)->NodeId");
+message_for?(client_id, message)->NodeId"
+            ).expect("Error writing to writer");
             return;
         } else if command == "server_list" {
-            for(server_id, server_type) in &self.servers {
-                println!("{}, {}", server_id, server_type);
+            for (server_id, server_type) in &self.servers {
+                writeln!(&mut self.writer, "{}, {}", server_id, server_type).expect("Error writing to writer");
             }
             return;
         }
         let (comm, dest) = command.split_once("->").expect("Command was formated wrong.");
-        let server_id = dest.parse().unwrap();
+        let server_id = dest.parse().expect("Command did not parse as a server.");
         match comm {
             cmd if cmd == "server_type?" || cmd == "files_list?" || cmd == "registration_to_chat" || cmd == "client_list?" => {
                 //server_type?
@@ -165,18 +169,18 @@ message_for?(client_id, message)->NodeId");
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                 //file?(file_id)
-                let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                //let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
             }
             cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
                 //media?(media_id)
-                let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                //let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
             }
             cmd if cmd.starts_with("message_for?(") && cmd.ends_with(")") => {
                 //message_for?(client_id, message)
-                let text = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")"));
-                let mut val = text.unwrap().split_once(", ");
+                //let text = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")"));
+                //let mut val = text.expect("Error in getting the value").split_once(", ");
                 self.send_message(server_id, cmd, None);
             }
             _ => { "Wrong command, type 'commands' to see the full list of the commands."; }
@@ -184,65 +188,63 @@ message_for?(client_id, message)->NodeId");
     }
 
     // Forward packet to the first drone in the routing path
-    fn forward_packet(&self, packet: Packet) {
+    fn forward_packet(&mut self, packet: Packet) {
         if let Some(first_hop) = packet.routing_header.hops.get(1) {
             if let Some(sender) = self.neighbor_senders.get(first_hop) {
-                //println!("CLIENT2: CLIENT{}: forwarding to Drone {}, packet: {:?}", self.node_id, first_hop, packet);
-                sender.send(packet).unwrap();
+                sender.send(packet).expect("Forwarding packet failed");
             } else {
-                println!("CLIENT2: CLIENT{}: not found in neighbors for packet {}", first_hop, packet);
+                writeln!(&mut self.writer, "Not found in neighbors for packet {}", packet).expect("Error writing to writer");
             }
         } else {
-            println!("CLIENT2: CLIENT{}: No valid routing path found for packet", self.node_id);
+            writeln!(&mut self.writer, "No valid routing path found for packet").expect("Error writing to writer");
         }
     }
 
     //Function that handles messages from the server
-    pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId) {
+    pub fn handle_messages(&mut self, message: String, sender: NodeId) {
         match message {
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
                 let svtype = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
-                self.servers.entry(sender).or_insert_with(|| svtype.unwrap().to_string());
-                println!("SERVERS: {:?}", self.servers);
+                self.servers.entry(sender).or_insert_with(|| svtype.expect("Server type must be provided").to_string());
+                writeln!(&mut self.writer, "{:?}", self.servers).expect("Error writing to writer");
             }
             msg if msg.starts_with("files_list!(") && msg.ends_with(")") => {
                 //files_list!(list_of_file_ids)
                 let files = msg.strip_prefix("files_list!(").and_then(|s| s.strip_suffix(")"));
-                let ff = files.unwrap().split(",").map(|s| s.to_string()).collect::<Vec<String>>();
-                //TODO SHOW FILES
+                let ff = files.expect("No file inserted").split(",").map(|s| s.to_string()).collect::<Vec<String>>();
+                writeln!(&mut self.writer, "{:?}", ff).expect("Error writing to writer");
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") => {
                 //file!(file_size, file)
                 let txt = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
-                self.saved_files.insert(values.unwrap().1.to_string());
+                let values = txt.expect("Couldn't parse the string").split_once(", ");
+                self.saved_files.insert(values.expect("Couldn't insert the values").1.to_string());
             }
             msg if msg.starts_with("media!(") && msg.ends_with(")") => {
                 //media!(media)
-                // TODO
                 let txt = msg.strip_prefix("media!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
+                let values = txt.expect("Couldn't get file path").split_once(", ");
             }
             msg if msg == "error_requested_not_found!" || msg == "error_unsupported_request!" || msg == "error_wrong_client_id!" => {
                 //error_requested_not_found!
                 //error_unsupported_request!
                 //error_wrong_client_id!
-                //TODO send to view
+                writeln!(&mut self.writer, "Error: {}", msg).expect("Error writing to writer");
             }
             msg if msg.starts_with("client_list!(") && msg.ends_with(")") => {
                 //client_list!(list_of_client_ids)
                 let txt = msg.strip_prefix("client_list!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split(", ").map(|s| s.to_string()).collect::<Vec<String>>();
+                let values = txt.expect("Couldn't get the client list").split(", ").map(|s| s.to_string()).collect::<Vec<String>>();
+                writeln!(&mut self.writer, "Clients: {:?}", values).expect("Error writing to writer");
             }
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") => {
                 //message_from!(client_id, message)
-                let txt = msg.strip_prefix("media!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
-                //TODO show message
+                let txt = msg.strip_prefix("message_from!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.expect("Couldn't get the client and message").split_once(", ");
+                writeln!(&mut self.writer, "Client {} sent {}", values.expect("Couldn't get the message").0, values.expect("Couldn't get the other client id").1).expect("Error writing to writer");
             }
-
-            _ => {} //TODO VIEW ERROR
+            _ => { writeln!(&mut self.writer, "Wrong message received from the server").expect("Error writing to writer"); }
         }
     }
 
@@ -268,14 +270,15 @@ message_for?(client_id, message)->NodeId");
         match packet.pack_type {
             PacketType::MsgFragment(ref fragment) => {
                 self.handle_msg_fragment(fragment.clone(), packet.clone());
-                self.forward_packet(Packet::new_ack(SourceRoutingHeader::with_first_hop(Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, packet.routing_header.source().unwrap()).unwrap()), packet.session_id, fragment.fragment_index))
+                self.forward_packet(Packet::new_ack(SourceRoutingHeader::with_first_hop(Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, packet.routing_header.source().expect("Error in finding source of routing header")).expect("Error in getting the node id.")), packet.session_id, fragment.fragment_index))
             }
             PacketType::FloodRequest(request) => self.handle_flood_request(request, packet.session_id),
             PacketType::FloodResponse(response) => {
                 self.handle_flood_response(response);
             }
-            PacketType::Ack(ack) => {println!("I RECEIVED ACK: {:?}", ack);}
+            PacketType::Ack(ack) => { writeln!(self.writer, "Ack received {:?}", ack).expect("Error writing to writer"); }
             PacketType::Nack(nack) => {
+                writeln!(self.writer, "Nack received {:?}", nack).expect("Error writing to writer");
                 //Check again all nodes, servers and connections
                 self.servers = HashMap::new();
                 self.discovered_drones = HashMap::new();
@@ -283,14 +286,11 @@ message_for?(client_id, message)->NodeId");
                 self.discover_network();
                 // Resend the original packet
                 if let Some(original_packet) = self.sent_packets.get(&packet.session_id) {
-                    println!("CLIENT2: CLIENT{}: Resending packet for session ID {}", self.node_id, packet.session_id);
+                    writeln!(self.writer, "Resending packet for session ID {}", packet.session_id).expect("Error writing to writer");
                     self.forward_packet(original_packet.clone());
                 } else {
-                    println!("CLIENT2: CLIENT{}: No original packet found for session ID {}", self.node_id, packet.session_id);
+                    writeln!(self.writer, "No original packet found for session ID {}", packet.session_id).expect("Error writing to writer");
                 }
-            }
-            _ => {
-                println!("CLIENT2: CLIENT{}: received unknown packet type", self.node_id);
             }
         }
     }
@@ -304,13 +304,13 @@ message_for?(client_id, message)->NodeId");
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
-                println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
+                writeln!(self.writer, "The message is {:?}", msg).expect("Error writing to writer");
             }
             Ok(None) => {
-                println!("CLIENT2: CLIENT{}: Not all fragments received yet for message ID {}", self.node_id, packet.session_id);
+                writeln!(self.writer, "Not all fragments received yet for message ID {}", packet.session_id).expect("Error writing to writer");
             }
             Err(error_code) => {
-                println!("CLIENT2: CLIENT{}: Error processing fragment: {}", self.node_id, error_code);
+                writeln!(self.writer, "Error processing fragment: {}", error_code).expect("Error writing to writer");
             }
         }
     }
@@ -324,7 +324,7 @@ message_for?(client_id, message)->NodeId");
         visited.insert(start);
 
         while let Some(path) = queue.pop_front() {
-            let node = *path.last().unwrap();  // Get the last node in the current path
+            let node = *path.last().expect("Couldn't get the last form the path");  // Get the last node in the current path
 
             if node == goal {
                 return Some(path);  // Goal found, return the path
@@ -355,43 +355,36 @@ message_for?(client_id, message)->NodeId");
     }
 
     pub fn run(&mut self) {
+        let (mut reader, mut writer) = setup_window();
+        let mut buffer = String::new();
+        writeln!(writer, "Client2 is running. Type your commands:").expect("Error writing output");
         self.discover_network();
-        let mut input = "files_list?->6";
-        let mut executed = false;
         loop {
             select_biased! {
                 recv(self.receiver_channel) -> packet => {
                     match packet {
                         Ok(packet) => {
-                            //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
                             self.handle_packet(packet);
                         },
                         Err(e) => {
-                            eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
+                            writeln!(writer, "Server {} error processing received packet: {}", self.node_id, e).expect("Error writing output");
                         }
                     }
                 }
 
             }
             if !self.servers.is_empty() {
-                if(!executed) {
-                    //self.handle_command("server_type?->6");
-                    //self.handle_command("files_list?->6");
-                    //self.handle_command("registration_to_chat->6");
-                    // self.handle_command("client_list->6");
-                    //self.handle_command("message_for?(10, hahaha)->6");
-                    self.handle_command("server_list");
-                    executed = true;
-                }
+                reader.read_line(&mut buffer).expect("Error reading input");
+                self.handle_command(buffer.clone().as_str());
             }
         }
     }
 }
-/*
+
 
 fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Error setting up listener");
+    let port = listener.local_addr().expect("Error getting socket address").port();
 
     // Launch terminal with persistent shell
     std::process::Command::new("xterm")
@@ -403,44 +396,11 @@ fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
             ),
         ])
         .spawn()
-        .unwrap_or_else(|_| panic!("Failed to open terminal window"));
+        .expect("Error spawning xterm");
 
-    let (stream, _) = listener.accept().unwrap();
-    let reader = BufReader::new(stream.try_clone().unwrap());
+    let (stream, _) = listener.accept().expect("Error accepting connection");
+    let reader = BufReader::new(stream.try_clone().expect("Error cloning stream"));
     let writer = stream;
 
     return (reader, writer);
 }
-
- */
-
-// //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
-// fn main() {
-//     let thread1 = thread::spawn(|| {
-//         let (mut reader, mut writer) = setup_window();
-//         let mut buffer = String::new();
-//         loop {
-//             //Read values
-//             reader.read_line(&mut buffer).unwrap();
-//             //print values
-//             writeln!(writer, "{}", buffer).unwrap();
-//             //in questo caso si chiama clear perchè riutilizziamo sempre lo stesso buffer, ma in genere non è necessario
-//             buffer.clear();
-//         }
-//     });
-//
-//     thread1.join().unwrap();
-// }
-
-/*#[test]
-fn test_discovery(){
-    let (snd, rcv) = unbounded::<Packet>();
-    let mut cl = Client2::new(1, HashMap::new(), rcv);
-    cl.neighbor_senders.insert(10, snd);
-    cl.network_graph.lock().unwrap().insert(1, HashSet::from_iter(vec![2, 3]));
-    cl.network_graph.lock().unwrap().insert(2, HashSet::from_iter(vec![3]));
-    cl.network_graph.lock().unwrap().insert(3, HashSet::from_iter(vec![2]));
-    cl.network_graph.lock().unwrap().insert(4, HashSet::from_iter(vec![2, 3]));
-    cl.discover_network();
-    println!("The graph is {:?}", cl.network_graph.lock().unwrap());
-}*/
