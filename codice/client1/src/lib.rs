@@ -32,8 +32,7 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
-use std::io::{BufRead, BufReader, BufWriter, Write, WriterPanicked};
-use std::net::{TcpListener, TcpStream};
+
 
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
@@ -50,8 +49,6 @@ pub struct Client1 {
     other_client_ids: Vec<NodeId>, // Storage other client IDs
     files_names: Vec<String>,   // Storage of file names
     servers: HashMap<NodeId,String>, // map of servers ID and relative type
-    reader: BufReader<TcpStream>,
-    writer: TcpStream
 }
 
 impl Client1 {
@@ -60,7 +57,6 @@ impl Client1 {
                sender_channels:HashMap<NodeId,Sender<Packet>>,
                receiver_channel: Receiver<Packet>
     ) -> Self {
-        let (reader,writer) = setup_window();
         Self {
 
             node_id,
@@ -73,9 +69,6 @@ impl Client1 {
             other_client_ids: vec![],
             files_names: vec![],
             servers: HashMap::new(),
-            reader,
-            writer
-
         }
     }
     // Network discovery
@@ -88,7 +81,7 @@ impl Client1 {
         let neighbors: Vec<_> = self.sender_channels.keys().cloned().collect();
         let session_id = Self::generate_session_id();
         for neighbor in neighbors{
-            println!("CLIENT1: Sending flood request to Drone {}",neighbor);
+            //println!("CLIENT1: Sending flood request to Drone {}",neighbor);
             match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(self.create_flood_request(request.clone(), neighbor,session_id)){
                 Ok(_) => (),
                 Err(_) =>{self.sender_channels.remove(&neighbor); self.discover_network() }
@@ -326,8 +319,7 @@ impl Client1 {
     pub fn run(&mut self) {
         //Initialize the network field
         self.discover_network();
-        let mut input_buffer = String::new();
-        let (mut reader, mut writer) = setup_window();
+        let mut input_buffer = String::new();;
 
         loop {
             // Handle packets in the meantime
@@ -335,8 +327,8 @@ impl Client1 {
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
                         Ok(packet) => {
-                            println!("Received packet");
-                            self.handle_packet(packet)
+                            //println!("CLIENT1: Received packet");
+                            self.handle_packet(packet);
                         },
 
                         Err(e) => println!("CLIENT1: Error: {e}")
@@ -347,12 +339,12 @@ impl Client1 {
                 true => (),
                 false =>{
                     input_buffer.clear();
-                    reader.read_line(&mut input_buffer).expect("Failed to read line");
+                    io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
                     if input_buffer.eq("OFF"){
                         break;
                     }
                     else if input_buffer.trim().eq("Commands") {
-                        println!("
+                        println!("CLIENT1:\n
                             server_type?->NodeId #(to a server in general)\n
                             files_list?->NodeId #(to a ContentServer)\n
                             file?(file_id)->NodeId #(to a ContentServer)\n
@@ -362,36 +354,15 @@ impl Client1 {
                         ");
                     }
                     else{
-                            self.handle_command(input_buffer.trim());
-                            input_buffer.clear();
+                        self.handle_command(input_buffer.trim());
+                        input_buffer.clear();
                     }
                 }
             }
         }
     }
 }
-pub fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
 
-    // Launch terminal with persistent shell
-    std::process::Command::new("xterm")
-        .args(&[
-            "-e",
-            &format!(
-                "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
-                port
-            ),
-        ])
-        .spawn()
-        .unwrap_or_else(|_| panic!("Failed to open terminal window"));
-
-    let (stream, _) = listener.accept().unwrap();
-    let reader = BufReader::new(stream.try_clone().unwrap());
-    let writer = stream;
-
-    (reader, writer)
-}
 // Tests for bfs and network update based on FloodResponses
 #[cfg(test)]
 mod test{
@@ -462,4 +433,3 @@ mod test{
         assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
     }
 }
-

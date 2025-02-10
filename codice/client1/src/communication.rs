@@ -1,5 +1,5 @@
 #![allow(warnings)]
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::unbounded;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
@@ -18,6 +18,10 @@ impl Client1 {
             match value{
                 "ContentServer" =>{
                     match cmd{
+                        cmd if cmd == "server_type?" =>{
+                            self.send_message(dest_id,cmd);
+                            "CLIENT1: OK".to_string()
+                        }
                         cmd if cmd == "files_list?" =>{
                             self.send_message(dest_id,cmd);
                             "CLIENT1: OK".to_string()
@@ -55,6 +59,10 @@ impl Client1 {
                 }
                 "CommunicationServer" =>{
                     match cmd{
+                        cmd if cmd == "server_type?" =>{
+                            self.send_message(dest_id,cmd);
+                            "CLIENT1: OK".to_string()
+                        }
                         cmd if cmd == "client_list?" =>{
                             //println!("Entered");
                             self.send_message(dest_id,cmd);
@@ -113,56 +121,56 @@ impl Client1 {
                         pack_type: PacketType::MsgFragment(fragment.clone()),
                         session_id
                     };
-                       match sender.send(packet_sent){
-                           // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
-                           Ok(_) =>{
-                               'internal: loop {
-                                   match self.receiver_channel.recv(){
-                                       Ok(packet) =>{
-                                           match packet.pack_type{
-                                               PacketType::Ack(ack) =>{
-                                                   // In case I receive an Ack with same session_id and fragment_index message arrived correctly: restored normal course of the program
-                                                   if packet.session_id == session_id && fragment.fragment_index == ack.fragment_index {break 'internal}
-                                               },
-                                               PacketType::Nack(nack) =>{
-                                                   if packet.session_id == session_id && nack.fragment_index == fragment.fragment_index{
-                                                       // In case I receive a Nack with same session_id I need to send again the message.
-                                                       //self.discover_network();
-                                                       match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
-                                                           Some(path) =>{
-                                                               let packet = Packet {
-                                                                   routing_header: SourceRoutingHeader::with_first_hop(path),
-                                                                   pack_type: PacketType::MsgFragment(fragment.clone()),
-                                                                   session_id
-                                                               };
-                                                               sender.send(packet.clone()).expect("Failed to send packet");
-                                                           }
-                                                           None =>{println!("Error: no path to the dest_id")}
-                                                       }
-                                                   }
-                                               }
-                                               _=> ()
-                                           }
-                                       }
-                                       Err(e) => println!("{e}")
-                                   }
-                               }
-                           }
-                           Err(_) =>{ // Case of crashed drone
-                               self.sender_channels.remove(&first_hop);
-                               self.discover_network();
-                               let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
-                               let first_hop = new_path[1];
-                               let packet_sent = Packet {
-                                   routing_header: SourceRoutingHeader::with_first_hop(new_path),
-                                   pack_type: PacketType::MsgFragment(fragment.clone()),
-                                   session_id
-                               };
-                               if let Some(sender) = self.sender_channels.get(&first_hop){
-                                   sender.send(packet_sent).expect("CLIENT1: failed to send message");
-                               }
-                           }
-                       }
+                    match sender.send(packet_sent){
+                        // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
+                        Ok(_) =>{
+                            'internal: loop {
+                                match self.receiver_channel.recv(){
+                                    Ok(packet) =>{
+                                        match packet.pack_type{
+                                            PacketType::Ack(ack) =>{
+                                                // In case I receive an Ack with same session_id and fragment_index message arrived correctly: restored normal course of the program
+                                                if packet.session_id == session_id && fragment.fragment_index == ack.fragment_index {break 'internal}
+                                            },
+                                            PacketType::Nack(nack) =>{
+                                                if packet.session_id == session_id && nack.fragment_index == fragment.fragment_index{
+                                                    // In case I receive a Nack with same session_id I need to send again the message.
+                                                    //self.discover_network();
+                                                    match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
+                                                        Some(path) =>{
+                                                            let packet = Packet {
+                                                                routing_header: SourceRoutingHeader::with_first_hop(path),
+                                                                pack_type: PacketType::MsgFragment(fragment.clone()),
+                                                                session_id
+                                                            };
+                                                            sender.send(packet.clone()).expect("Failed to send packet");
+                                                        }
+                                                        None =>{println!("Error: no path to the dest_id")}
+                                                    }
+                                                }
+                                            }
+                                            _=> ()
+                                        }
+                                    }
+                                    Err(e) => println!("{e}")
+                                }
+                            }
+                        }
+                        Err(_) =>{ // Case of crashed drone
+                            self.sender_channels.remove(&first_hop);
+                            self.discover_network();
+                            let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
+                            let first_hop = new_path[1];
+                            let packet_sent = Packet {
+                                routing_header: SourceRoutingHeader::with_first_hop(new_path),
+                                pack_type: PacketType::MsgFragment(fragment.clone()),
+                                session_id
+                            };
+                            if let Some(sender) = self.sender_channels.get(&first_hop){
+                                sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                            }
+                        }
+                    }
                 }
             }
             None => {println!("Error: no path to dest_id")}
@@ -446,5 +454,3 @@ mod test{
         assert_eq!(cl.handle_msg(test_msg8,3,2,0),"Error");
     }
 }
-
-
