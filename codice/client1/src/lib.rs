@@ -354,7 +354,7 @@ impl Client1 {
                         ");
                     }
                     else{
-                        self.handle_command(input_buffer.trim());
+                        println!("{}",self.handle_command(input_buffer.trim()));
                         input_buffer.clear();
                     }
                 }
