@@ -1,5 +1,6 @@
 use wg_2024::network::NodeId;
 
+#[derive(Clone, Copy)]
 pub enum UICommand {
     CrashDrone(NodeId),
     SetPDR(NodeId, f32),

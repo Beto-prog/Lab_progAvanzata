@@ -1,3 +1,4 @@
+#![allow(clippy::implicit_hasher)]
 use bagel_bomber::BagelBomber;
 use crossbeam_channel::{Receiver, Sender};
 use getdroned::GetDroned;
@@ -17,6 +18,8 @@ use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 
+#[must_use]
+/// # Panics
 pub fn get_drone_impl(
     index: u8,
     id: NodeId,

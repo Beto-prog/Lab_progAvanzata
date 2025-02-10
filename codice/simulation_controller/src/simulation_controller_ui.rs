@@ -21,6 +21,7 @@ pub struct SimulationControllerUI {
 }
 
 impl SimulationControllerUI {
+    /// # Panics
     pub fn new(
         _cc: &eframe::CreationContext<'_>,
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
@@ -28,7 +29,13 @@ impl SimulationControllerUI {
         ui_response_receiver: Receiver<UIResponse>,
     ) -> Self {
         env_logger::init();
-        let selected_tab = drone_stats.lock().unwrap().keys().next().unwrap().clone() as usize;
+        let selected_tab = *drone_stats
+            .lock()
+            .unwrap()
+            .keys()
+            .next()
+            .expect("There should always be at least one drone")
+            as usize;
         let mut new_pdr = HashMap::new();
         for (drone_id, drone) in drone_stats.lock().unwrap().iter() {
             new_pdr.insert(*drone_id, drone.pdr);
@@ -45,7 +52,7 @@ impl SimulationControllerUI {
         }
 
         Self {
-            selected_tab: selected_tab as usize,
+            selected_tab,
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
@@ -63,37 +70,37 @@ impl SimulationControllerUI {
 
         ui.separator();
 
-        ui.label(&format!("Drone ID: {}", drone_id));
-        ui.label(&format!("Neighbours: {:?}", drone_stats.neigbours));
-        ui.label(&format!(
+        ui.label(format!("Drone ID: {drone_id}",));
+        ui.label(format!("Neighbours: {:?}", drone_stats.neigbours));
+        ui.label(format!(
             "Packets forwarded: {}",
             drone_stats.packets_forwarded
         ));
-        ui.label(&format!("Packets dropped: {}", drone_stats.packets_dropped));
-        ui.label(&format!(
+        ui.label(format!("Packets dropped: {}", drone_stats.packets_dropped));
+        ui.label(format!(
             "Flood requests forwarded: {}",
             drone_stats.flood_requests_forwarded
         ));
-        ui.label(&format!(
+        ui.label(format!(
             "Flood responses forwarded: {}",
             drone_stats.flood_responses_forwarded
         ));
-        ui.label(&format!("ACKs forwarded: {}", drone_stats.acks_forwarded));
-        ui.label(&format!("NACKs forwarded: {}", drone_stats.nacks_forwarded));
-        ui.label(&format!("Crashed: {}", drone_stats.crashed));
-        ui.label(&format!("PDR: {}", drone_stats.pdr));
+        ui.label(format!("ACKs forwarded: {}", drone_stats.acks_forwarded));
+        ui.label(format!("NACKs forwarded: {}", drone_stats.nacks_forwarded));
+        ui.label(format!("Crashed: {}", drone_stats.crashed));
+        ui.label(format!("PDR: {}", drone_stats.pdr));
         ui.separator();
 
         if ui.button("Crash").clicked() {
-            if !drone_stats.crashed {
-                self.ui_command_sender
-                    .send(UICommand::CrashDrone(drone_id))
-                    .unwrap();
-            } else {
+            if drone_stats.crashed {
                 self.snackbar = Some((
                     "Drone already crashed".to_string(),
                     self.snackbar_duration + now,
                 ));
+            } else {
+                self.ui_command_sender
+                    .send(UICommand::CrashDrone(drone_id))
+                    .unwrap();
             }
         }
         ui.separator();
@@ -102,15 +109,13 @@ impl SimulationControllerUI {
             ui.add(
                 egui::Slider::new(self.new_pdr.get_mut(&drone_id).unwrap(), 0.0..=1.0).text("PDR"),
             );
-            if ui.button("Set PDR").clicked() {
-                if !drone_stats.crashed {
-                    self.ui_command_sender
-                        .send(UICommand::SetPDR(
-                            drone_id,
-                            self.new_pdr.get(&drone_id).unwrap().clone(),
-                        ))
-                        .unwrap();
-                }
+            if ui.button("Set PDR").clicked() && !drone_stats.crashed {
+                self.ui_command_sender
+                    .send(UICommand::SetPDR(
+                        drone_id,
+                        *self.new_pdr.get(&drone_id).unwrap(),
+                    ))
+                    .unwrap();
             }
         });
 
@@ -121,21 +126,19 @@ impl SimulationControllerUI {
             ui.label("Add neighbor: ");
 
             egui::ComboBox::new(0, "")
-                .selected_text(format!("{:?}", selected))
+                .selected_text(format!("{selected}"))
                 .show_ui(ui, |ui| {
                     let mut drones = general_drone_stats.keys().collect::<Vec<_>>();
-                    drones.retain(|&e| !drone_stats.neigbours.contains(&e) && !e.eq(&drone_id));
+                    drones.retain(|&e| !drone_stats.neigbours.contains(e) && !e.eq(&drone_id));
                     for drone in drones {
                         ui.selectable_value(selected, *drone, drone.to_string());
                     }
                 });
-            if ui.button("Add").clicked() {
-                if *selected != 0 && !drone_stats.crashed {
-                    self.ui_command_sender
-                        .send(UICommand::AddConnection(drone_id, *selected))
-                        .unwrap();
-                    *selected = 0;
-                }
+            if ui.button("Add").clicked() && *selected != 0 && !drone_stats.crashed {
+                self.ui_command_sender
+                    .send(UICommand::AddConnection(drone_id, *selected))
+                    .unwrap();
+                *selected = 0;
             }
         });
 
@@ -144,7 +147,7 @@ impl SimulationControllerUI {
             ui.label("Remove neighbor: ");
 
             egui::ComboBox::new(1, "")
-                .selected_text(format!("{:?}", selected))
+                .selected_text(format!("{selected}"))
                 .show_ui(ui, |ui| {
                     let drone_ids = general_drone_stats.keys().collect::<Vec<_>>();
                     let mut drones = drone_stats.neigbours.iter().collect::<Vec<_>>();
@@ -154,13 +157,11 @@ impl SimulationControllerUI {
                         ui.selectable_value(selected, *drone, drone.to_string());
                     }
                 });
-            if ui.button("Remove").clicked() {
-                if *selected != 0 && !drone_stats.crashed {
-                    self.ui_command_sender
-                        .send(UICommand::RemoveConnection(drone_id, *selected))
-                        .unwrap();
-                    *selected = 0;
-                }
+            if ui.button("Remove").clicked() && *selected != 0 && !drone_stats.crashed {
+                self.ui_command_sender
+                    .send(UICommand::RemoveConnection(drone_id, *selected))
+                    .unwrap();
+                *selected = 0;
             }
         });
     }
@@ -173,7 +174,7 @@ impl eframe::App for SimulationControllerUI {
             ui.separator();
             ui.horizontal(|ui| {
                 for drone in self.drone_stats.lock().unwrap().keys() {
-                    if ui.button(&format!("Drone {}", drone)).clicked() {
+                    if ui.button(format!("Drone {drone}")).clicked() {
                         self.selected_tab = *drone as usize;
                     }
                 }
@@ -181,7 +182,11 @@ impl eframe::App for SimulationControllerUI {
 
             let now = ctx.input(|i| i.time);
 
-            self.drone_stats_ui(ui, self.selected_tab as NodeId, now);
+            self.drone_stats_ui(
+                ui,
+                NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
+                now,
+            );
 
             if let Some((ref message, expires)) = self.snackbar {
                 if now < expires {
@@ -205,10 +210,7 @@ impl eframe::App for SimulationControllerUI {
 
             if let Ok(response) = self.ui_response_receiver.try_recv() {
                 match response {
-                    UIResponse::Success(message) => {
-                        self.snackbar = Some((message, self.snackbar_duration + now));
-                    }
-                    UIResponse::Falure(message) => {
+                    UIResponse::Success(message) | UIResponse::Falure(message) => {
                         self.snackbar = Some((message, self.snackbar_duration + now));
                     }
                 }
