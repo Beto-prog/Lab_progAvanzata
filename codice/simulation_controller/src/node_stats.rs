@@ -16,6 +16,7 @@ pub struct DroneStats {
 }
 
 impl DroneStats {
+    #[must_use]
     pub fn new(neigbours: HashSet<NodeId>, pdr: f32) -> Self {
         Self {
             neigbours,
