@@ -1,7 +1,7 @@
 use crate::get_drone_impl;
 
 use crate::node_stats::DroneStats;
-use crate::ui_commands::UICommand;
+use crate::ui_commands::{UICommand, UIResponse};
 
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
@@ -39,6 +39,8 @@ pub struct SimulationController {
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
 
     ui_command_receiver: Receiver<UICommand>,
+
+    ui_response_sender: Sender<UIResponse>,
 }
 
 impl SimulationController {
@@ -56,6 +58,7 @@ impl SimulationController {
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
 
         ui_command_receiver: Receiver<UICommand>,
+        ui_response_sender: Sender<UIResponse>,
         //ui_context: Context,
     ) -> Self {
         let mut node_types = HashMap::new();
@@ -82,6 +85,7 @@ impl SimulationController {
             next_drone_impl_index,
             drone_stats,
             ui_command_receiver,
+            ui_response_sender,
         }
     }
 
@@ -111,6 +115,12 @@ impl SimulationController {
             }
             UICommand::CrashDrone(node_id) => {
                 self.crash_drone(node_id);
+            }
+            UICommand::AddConnection(node1, node2) => {
+                self.add_connection(node1, node2);
+            }
+            UICommand::RemoveConnection(node1, node2) => {
+                self.remove_connection(node1, node2);
             }
         }
     }
@@ -355,12 +365,19 @@ impl SimulationController {
     /// Updates the Packet Drop Rate (PDR) of a drone
     fn set_packet_drop_rate(&self, drone_id: NodeId, pdr: f32) {
         self.send_command(drone_id, DroneCommand::SetPacketDropRate(pdr));
+
         self.drone_stats
             .lock()
             .expect("Should be able to unlock")
             .get_mut(&drone_id)
             .expect("Should always be able to change pdr")
             .pdr = pdr;
+
+        self.ui_response_sender
+            .send(UIResponse::Success(
+                "Packet drop rate succesfully updated".to_string(),
+            ))
+            .expect("Should be able to send");
     }
 
     /// Crashes a drone
@@ -373,12 +390,28 @@ impl SimulationController {
                 .get_mut(&drone_id)
                 .expect("Should always be able to change crashed")
                 .crashed = true;
+            self.ui_response_sender
+                .send(UIResponse::Success("Drone succesfully crashed".to_string()))
+                .expect("Should be able to send");
+        } else {
+            self.ui_response_sender
+                .send(UIResponse::Falure(
+                    "Could not crash drone because it would violate topology requirements"
+                        .to_string(),
+                ))
+                .expect("Should be able to send");
         }
     }
 
     /// Adds a connection between two nodes
     fn add_connection(&mut self, node1: NodeId, node2: NodeId) {
         if !self.is_adding_connection_valid(node1, node2) {
+            self.ui_response_sender
+                .send(UIResponse::Falure(
+                    "Could not add connection because it would violate topology reqiurements"
+                        .to_string(),
+                ))
+                .expect("Should be able to send");
             return;
         }
 
@@ -408,11 +441,38 @@ impl SimulationController {
                 ))
                 .expect("Neighbor sender should be valid");
         }
+
+        self.drone_stats
+            .lock()
+            .expect("Should be able to unlock")
+            .get_mut(&node1)
+            .expect("The node Id should be valid")
+            .neigbours
+            .insert(node2);
+        self.drone_stats
+            .lock()
+            .expect("Should be able to unlock")
+            .get_mut(&node2)
+            .expect("The node Id should be valid")
+            .neigbours
+            .insert(node1);
+
+        self.ui_response_sender
+            .send(UIResponse::Success(
+                "Connection succesfully added".to_string(),
+            ))
+            .expect("Should be able to send");
     }
 
     /// Removes a connection between two nodes
     fn remove_connection(&mut self, node1: NodeId, node2: NodeId) {
         if !self.is_connection_removal_valid(node1, node2) {
+            self.ui_response_sender
+                .send(UIResponse::Falure(
+                    "Could not remove connection because it would violate topology reqiurements"
+                        .to_string(),
+                ))
+                .expect("Should be able to send");
             return;
         }
 
@@ -426,6 +486,26 @@ impl SimulationController {
         // Notify both nodes to remove the connection
         self.send_command(node1, DroneCommand::RemoveSender(node2));
         self.send_command(node2, DroneCommand::RemoveSender(node1));
+
+        self.drone_stats
+            .lock()
+            .expect("Should be able to unlock")
+            .get_mut(&node1)
+            .expect("The node Id should be valid")
+            .neigbours
+            .remove(&node2);
+        self.drone_stats
+            .lock()
+            .expect("Should be able to unlock")
+            .get_mut(&node2)
+            .expect("The node Id should be valid")
+            .neigbours
+            .remove(&node1);
+        self.ui_response_sender
+            .send(UIResponse::Success(
+                "Connection succesfully removed".to_string(),
+            ))
+            .expect("Should be able to send");
     }
 
     /// Checks if executing a command is allowed based on network requirements
@@ -642,7 +722,8 @@ fn _initialize_mock_network() -> SimulationController {
 
     let (event_sender, event_receiver) = unbounded();
 
-    let (_ui_command_sender, ui_command_receiver) = unbounded();
+    let (ui_command_sender, ui_command_receiver) = unbounded();
+    let (ui_response_sender, ui_response_receiver) = unbounded();
 
     let mut network_topology = HashMap::new();
 
@@ -725,6 +806,24 @@ fn _initialize_mock_network() -> SimulationController {
 
         // Spawn the drone thread
         thread::spawn(move || drone.run());
+
+        struct MockUi {
+            receiver: Receiver<UIResponse>,
+            sender: Sender<UICommand>,
+        }
+
+        impl MockUi {
+            fn run(&self) {
+                loop {}
+            }
+        }
+
+        let mock_ui = MockUi {
+            receiver: ui_response_receiver.clone(),
+            sender: ui_command_sender.clone(),
+        };
+
+        thread::spawn(move || mock_ui.run());
     }
 
     SimulationController::new(
@@ -739,6 +838,7 @@ fn _initialize_mock_network() -> SimulationController {
         0,
         Arc::new(Mutex::new(drone_stats)),
         ui_command_receiver,
+        ui_response_sender,
     )
 }
 

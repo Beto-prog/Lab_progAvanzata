@@ -302,19 +302,16 @@ impl NetworkInitializer {
             let client_receiver = node_recievers.get(&client_config.id).unwrap().clone();
             // Initialize the client with neighbor_senders
             if index % 2 == 0 {
-                let mut client = Client1::new(
-                    client_config.id,
-                    neighbor_senders.clone(),
-                    client_receiver,
-                );
+                let mut client =
+                    Client1::new(client_config.id, neighbor_senders.clone(), client_receiver);
                 std::thread::spawn(move || client.run());
             } else {
-                let mut client = Client2::new(
+                /* let mut client = Client2::new(
                     client_config.id,
                     neighbor_senders.clone(),
                     client_receiver,
                 );
-                std::thread::spawn(move || client.run());
+                std::thread::spawn(move || client.run());*/
             }
         }
 
@@ -375,6 +372,7 @@ impl NetworkInitializer {
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
 
         let (ui_command_sender, ui_command_receiver) = unbounded();
+        let (ui_response_sender, ui_response_receiver) = unbounded();
 
         // Spawn simulation controller thread
         let mut simulation_controller = SimulationController::new(
@@ -389,6 +387,7 @@ impl NetworkInitializer {
             next_drone_impl_index as u8,
             drone_stats_arc.clone(),
             ui_command_receiver,
+            ui_response_sender,
         );
 
         thread::spawn(move || simulation_controller.run());
@@ -406,6 +405,7 @@ impl NetworkInitializer {
                     cc,
                     drone_stats_arc.clone(),
                     ui_command_sender,
+                    ui_response_receiver,
                 ));
                 Ok(simulation_controller_ui)
             }),
