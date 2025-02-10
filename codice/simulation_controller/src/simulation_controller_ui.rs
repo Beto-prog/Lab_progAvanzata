@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_lines)]
+
 use crate::node_stats::DroneStats;
 use crate::ui_commands::{UICommand, UIResponse};
 use crossbeam_channel::Receiver;
@@ -31,23 +33,23 @@ impl SimulationControllerUI {
         env_logger::init();
         let selected_tab = *drone_stats
             .lock()
-            .unwrap()
+            .expect("Should be able to unlock")
             .keys()
             .next()
             .expect("There should always be at least one drone")
             as usize;
         let mut new_pdr = HashMap::new();
-        for (drone_id, drone) in drone_stats.lock().unwrap().iter() {
+        for (drone_id, drone) in drone_stats.lock().expect("Should be able to unlock").iter() {
             new_pdr.insert(*drone_id, drone.pdr);
         }
 
         let mut selected_add_neighbour = HashMap::new();
-        for drone_id in drone_stats.lock().unwrap().keys() {
+        for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
             selected_add_neighbour.insert(*drone_id, 0);
         }
 
         let mut selected_remove_neighbour = HashMap::new();
-        for drone_id in drone_stats.lock().unwrap().keys() {
+        for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
 
@@ -65,8 +67,10 @@ impl SimulationControllerUI {
     }
 
     fn drone_stats_ui(&mut self, ui: &mut egui::Ui, drone_id: NodeId, now: f64) {
-        let general_drone_stats = self.drone_stats.lock().unwrap();
-        let drone_stats = general_drone_stats.get(&drone_id).unwrap();
+        let general_drone_stats = self.drone_stats.lock().expect("Should be able to unlock");
+        let drone_stats = general_drone_stats
+            .get(&drone_id)
+            .expect("Should be able to get the drone");
 
         ui.separator();
 
@@ -100,29 +104,41 @@ impl SimulationControllerUI {
             } else {
                 self.ui_command_sender
                     .send(UICommand::CrashDrone(drone_id))
-                    .unwrap();
+                    .expect("Should be able to send the command");
             }
         }
         ui.separator();
 
         ui.horizontal(|ui| {
             ui.add(
-                egui::Slider::new(self.new_pdr.get_mut(&drone_id).unwrap(), 0.0..=1.0).text("PDR"),
+                egui::Slider::new(
+                    self.new_pdr
+                        .get_mut(&drone_id)
+                        .expect("Should be able to get the PDR"),
+                    0.0..=1.0,
+                )
+                .text("PDR"),
             );
             if ui.button("Set PDR").clicked() && !drone_stats.crashed {
                 self.ui_command_sender
                     .send(UICommand::SetPDR(
                         drone_id,
-                        *self.new_pdr.get(&drone_id).unwrap(),
+                        *self
+                            .new_pdr
+                            .get(&drone_id)
+                            .expect("Should be able to get the PDR"),
                     ))
-                    .unwrap();
+                    .expect("Should be able to send the command");
             }
         });
 
         ui.separator();
 
         ui.horizontal(|ui| {
-            let selected = self.selected_add_neighbour.get_mut(&drone_id).unwrap();
+            let selected = self
+                .selected_add_neighbour
+                .get_mut(&drone_id)
+                .expect("Should be able to get the selected neighbour");
             ui.label("Add neighbor: ");
 
             egui::ComboBox::new(0, "")
@@ -137,13 +153,16 @@ impl SimulationControllerUI {
             if ui.button("Add").clicked() && *selected != 0 && !drone_stats.crashed {
                 self.ui_command_sender
                     .send(UICommand::AddConnection(drone_id, *selected))
-                    .unwrap();
+                    .expect("Should be able to send the command");
                 *selected = 0;
             }
         });
 
         ui.horizontal(|ui| {
-            let selected = self.selected_remove_neighbour.get_mut(&drone_id).unwrap();
+            let selected = self
+                .selected_remove_neighbour
+                .get_mut(&drone_id)
+                .expect("Should be able to get the selected neighbour");
             ui.label("Remove neighbor: ");
 
             egui::ComboBox::new(1, "")
@@ -160,7 +179,7 @@ impl SimulationControllerUI {
             if ui.button("Remove").clicked() && *selected != 0 && !drone_stats.crashed {
                 self.ui_command_sender
                     .send(UICommand::RemoveConnection(drone_id, *selected))
-                    .unwrap();
+                    .expect("Should be able to send the command");
                 *selected = 0;
             }
         });
@@ -173,7 +192,12 @@ impl eframe::App for SimulationControllerUI {
             ui.heading("Simulation Controller");
             ui.separator();
             ui.horizontal(|ui| {
-                for drone in self.drone_stats.lock().unwrap().keys() {
+                for drone in self
+                    .drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .keys()
+                {
                     if ui.button(format!("Drone {drone}")).clicked() {
                         self.selected_tab = *drone as usize;
                     }
