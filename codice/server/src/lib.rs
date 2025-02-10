@@ -202,36 +202,37 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     
                     
                     PacketType::Ack(msg) => {   //Send the next packet 
-                        let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
+                        let result =self.paket_ack_manger.get(&(source_id, packet.session_id)); //Get the correct session
                         match result {
-                            None => {println!("Received an Ack but I can't trace buck the number to any packet {:?}", msg)}
+                            None => {println!("SERVER --> Received an Ack but I can't trace back the number to any packet {:?}", msg)}
                             Some(ack_value) => {
-                                //println!("Server: Received Ack");
                                 /*
                                 The ack manager is a structure that use for a ky the source_id and the session id
                                 it has a vector containing all the packet that need to be sends
                                  */
                                 
                                 //println!("{:?}",ack_value);
-                                if ack_value.len() != 1 { // TODO fixed here
+                                
+                                
+                                    //I try to get the next packet that is needs to be sent 
                                     if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index + 1) {
-                                        if pos + 1 < ack_value.len() {
-
+                                        
                                             //Send the next packet
                                             response.pack_type = MsgFragment(ack_value[pos].clone());
                                             self.send_valid_packet(source_id, response);
-                                        } else {
-                                            println!("All fragment sent correctly");
+                                    } 
+                                    else {  //Check if all the packets are arrived correctly 
+                                        if  msg.fragment_index as usize  == ack_value.len()-1
+                                        {
+                                            println!("SERVER --> All ack received - Removing session- (Source id: {}, Session id: {} ).",source_id, packet.session_id);
                                             self.paket_ack_manger.remove(&(source_id, packet.session_id));
                                         }
-                                    } else {
-                                        println!("Index of ack not found.");
+                                        else {
+                                            println!("SERVER --> Index of ack not found.");
+                                        }
                                     }
-                                }
-                                else{
-                                    response.pack_type = MsgFragment(ack_value[0].clone());
-                                    self.send_valid_packet(source_id, response);
-                                }
+                                
+                    
                             }
                         }
                     }
