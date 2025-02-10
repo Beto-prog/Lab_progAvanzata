@@ -467,11 +467,11 @@ pub mod file_system
     
     pub trait ServerTrait: Send + Sync {
     
-         fn process_request (&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String> ;
+         fn process_request (&mut self, command: String, source_id: u32,  flag  : &mut i32) -> Result<Vec<Fragment>, String> ;
     }
 
     impl ServerTrait for ContentServer {
-         fn process_request(&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String>
+         fn process_request(&mut self, command: String, source_id: u32,  flag  : &mut i32) -> Result<Vec<Fragment>, String>
          {
             match command {
                 cmd if cmd.starts_with("server_type?") => {
@@ -533,7 +533,7 @@ pub mod file_system
     }
 
     impl ServerTrait for ChatServer {
-         fn process_request(&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String>
+         fn process_request(&mut self, command: String, source_id: u32,  flag  : &mut i32) -> Result<Vec<Fragment>, String>
         {
             println!("{command}");
             // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
@@ -558,8 +558,33 @@ pub mod file_system
                             let id = parts[0];
                             let message = parts[1];
 
-                            let response = format!("message_from!({},{})", source_id, message);        
-                            Repackager::create_fragments(&*response.to_string(), None)
+                            
+                                if let Ok(client_id) = message.parse::<u32>() {
+
+                                    if (self.list_of_client.contains(&client_id))
+                                    {
+                                        let response = format!("message_from!({},{})", source_id, message);
+                                        return Repackager::create_fragments(&*response.to_string(), None)
+                                    }
+
+                                    else
+                                    {
+                                        *flag = 1;
+                                        let response = format!("error_wrong_client_id!");
+                                        return Repackager::create_fragments(&*response.to_string(), None)
+
+                                    }
+                                } else {
+                                    println!("Server --> Error in the string conversion from u32");
+                                    Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
+                                }
+                            
+
+
+                          
+
+
+
                         } else {
                             
                             Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
@@ -766,7 +791,8 @@ mod tests_chat_server {
         #[test]
         fn test_server_type() {
             let mut server = ChatServer::new();
-            let value = server.process_request("server_type?".to_string(), 1);
+            let mut c=0; 
+            let value = server.process_request("server_type?".to_string(), 1,&mut c);
             
             assert_eq!(convert_back(value), "server_type!(CommunicationServer)");
         }
@@ -786,21 +812,25 @@ mod tests_chat_server {
             let mut server = ChatServer::new();
             server.add_client(1);
             server.add_client(2);
-            let value = server.process_request("client_list?".to_string(), 3); // Aggiunge anche il client 3
+            let mut c=0;
+
+            let value = server.process_request("client_list?".to_string(), 3,&mut c); // Aggiunge anche il client 3
             assert_eq!(convert_back(value), "client_list![1, 2, 3]");
         }
 
         #[test]
         fn test_message_for_request() {
+            let mut c=0;
             let mut server = ChatServer::new();
-            let value = server.process_request("message_for?(2,Hello)".to_string(), 1);
+            let value = server.process_request("message_for?(2,Hello)".to_string(), 1,&mut c);
             assert_eq!(convert_back(value), "message_from!(1,Hello)");
         }
 
         #[test]
         fn test_unsupported_request() {
+            let mut c=0;
             let mut server = ChatServer::new();
-            let value = server.process_request("unsupported_command?".to_string(), 1);
+            let value = server.process_request("unsupported_command?".to_string(), 1,&mut c);
             assert_eq!(convert_back(value), "error_unsupported_request!");
         }
         /*   
@@ -851,8 +881,9 @@ mod tests_message_media_server {
 
     #[test]
     fn test_server_type() {
+        let mut c=0;
         let mut fs = ContentServer::new("test_dir", ServerType::TextServer);
-        let response = fs.process_request("server_type?".to_string(),1);
+        let response = fs.process_request("server_type?".to_string(),1,&mut c);
         //println!("{:?}",response);
         
         let mut  c = Repackager::new();
@@ -866,8 +897,9 @@ mod tests_message_media_server {
         let test_dir = "/tmp/testServer";
         //setup_test_dir(test_dir);
 
+        let mut c=0;
         let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
-        let processed_request = fs.process_request("files_list?".to_string(),1);
+        let processed_request = fs.process_request("files_list?".to_string(),1,&mut c);
         
         let mut c = Repackager::new();
         let mut  transformation = Ok(Some(vec![]));
@@ -891,8 +923,9 @@ mod tests_message_media_server {
         //setup_test_dir(test_dir);
 
         let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
+        let mut c=0;
 
-        let processed_request = fs.process_request("file?(file1.txt)".to_string(),1);
+        let processed_request = fs.process_request("file?(file1.txt)".to_string(),1,&mut c);
     
         println!("{:?}", processed_request);
         
@@ -917,8 +950,9 @@ mod tests_message_media_server {
         let test_dir = "/tmp/testServer";
         //setup_test_dir(test_dir);
 
+        let mut c=0;
         let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
-        let processed_request = fs.process_request("file?(nonexistent.txt)".to_string(),1);
+        let processed_request = fs.process_request("file?(nonexistent.txt)".to_string(),1,&mut c);
 
         println!("{:?}", processed_request);
 
@@ -941,8 +975,9 @@ mod tests_message_media_server {
     #[test]
     fn test_unsupported_request() {
         let mut fs = ContentServer::new("test_dir", ServerType::TextServer);
+        let mut c=0;
 
-        let processed_request =  fs.process_request("unsupported_command?".to_string(),1);
+        let processed_request =  fs.process_request("unsupported_command?".to_string(),1,&mut c);
 
         println!("{:?}", processed_request);
 

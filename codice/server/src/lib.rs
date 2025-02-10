@@ -142,20 +142,32 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
                                 println!("{}",message.clone().unwrap());
-                                /*
-                                Here there is an exception if the message start with messageFor?(...)
-                                It means that is a message for another user, so I have to change the source id
-                                */
-                                let msg_work = message.clone().unwrap();
-                                if let Some(content) = msg_work.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
-                                    let parts: Vec<&str> = content.splitn(2, ',').collect();
-                                    if parts.len() == 2 {
-                                        source_id = parts[0].parse::<NodeId>().unwrap();    
+                               
+                                let mut  flag:i32 = 0;
+                                //1 = client not found
+
+                                let msg_work = message.clone().unwrap();        //temp value
+                                
+                                
+                                    //Process the request
+                                let result =self.server_type.process_request(message.unwrap(),source_id as u32,&mut flag);
+
+                                if flag==0
+                                {
+                                    /*
+                          Here there is an exception if the message start with messageFor?(...)
+                          It means that is a message for another user, so I have to change the source id
+                          */
+                                    if let Some(content) = msg_work.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
+                                        let parts: Vec<&str> = content.splitn(2, ',').collect();
+                                        if parts.len() == 2 {
+                                            source_id = parts[0].parse::<NodeId>().unwrap();
+                                        }
                                     }
                                 }
-
-                                    //Process the request
-                                let result =self.server_type.process_request(message.unwrap(),source_id as u32);
+                                
+                           
+                 
                                 match result {
                                     Ok(value) => {
                                         
