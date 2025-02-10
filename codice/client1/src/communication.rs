@@ -182,7 +182,7 @@ impl Client1 {
                 //println!(" sos {}",original_msg);
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
-                        self.servers.entry(src_id).or_insert_with(|| serverType.to_string());
+                        self.servers.insert(src_id,serverType.to_string());
                         //println!("{}",self.servers.get(&src_id).unwrap());
                         original_msg
                     }

@@ -150,7 +150,7 @@ impl Client1 {
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
                         self.servers.entry(node.0).or_insert("".to_string());
-                        println!("CLIENT1: found server with id: {}",node.0);
+                        //println!("CLIENT1: found server with id: {}",node.0);
                     }
                 }
                 self.update_graph(response);
@@ -172,12 +172,12 @@ impl Client1 {
                             Ok(msg) => {
                                 //println!("message before: {}",msg);
                                 let mut new_hops = packet.routing_header.hops.clone();
-                                let dest_id = new_hops[0];
+                                let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
 
                                 //Handle the reconstructed message
-                                println!("{}",self.handle_msg(msg,packet.session_id,new_first_hop,frag_index));
+                                println!("{}",self.handle_msg(msg,packet.session_id,dest_id,frag_index));
                                 // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,frag_index);
@@ -339,6 +339,7 @@ impl Client1 {
                 true => (),
                 false =>{
                     input_buffer.clear();
+                    println!("Insert a command: ");
                     io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
                     if input_buffer.eq("OFF"){
                         break;
@@ -352,6 +353,13 @@ impl Client1 {
                             message_for?(client_id, message)->NodeId #(to a ChatServer)\n
                             client_list?->NodeID #(to a ChatServer)\n
                         ");
+                    }
+                    else if input_buffer.trim().eq("Servers"){
+                        let mut res = vec![];
+                        for s in self.servers.iter(){
+                            res.push(s);
+                        }
+                        println!("List of servers: {:?}",res);
                     }
                     else{
                         println!("{}",self.handle_command(input_buffer.trim()));
