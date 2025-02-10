@@ -122,7 +122,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 match packet.pack_type {                    //Process different packet type
                     PacketType::MsgFragment(msg) => {
 
-                        println!("{} {:?}","SERVER --> Recived message".white().bold().on_blue(), msg);
+                        println!("{}", "SERVER --> Recived message".white().bold().on_blue()); //  Print
                         
                         //Send back an ack 
                         response.pack_type = AckType(Ack {          
@@ -132,7 +132,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         
                         //Start transforming the fragment in a vector with all the data in it 
                         let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
-                        println!("{} {:?}","SERVER --> Response".white().bold().on_blue(), result);
+                        println!("{}","SERVER --> Response".white().bold().on_blue());
                         
                         
                         
@@ -220,7 +220,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     PacketType::Ack(msg) => {   //Send the next packet 
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id)); //Get the correct session
                         match result {
-                            None => {println!("{} {:?}","SERVER --> Received an Ack but I can't trace back the number to any packet ".white().bold().on_blue(), msg)}
+                            None => {println!("{}","SERVER --> Received an Ack but I can't trace back the number to any packet ".white().bold().on_blue())}
                             Some(ack_value) => {
                                 /*
                                 The ack manager is a structure that use for a ky the source_id and the session id

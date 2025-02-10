@@ -27,7 +27,8 @@ mod fragment_reassembler;
 mod communication;
 use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
-use std::{io};
+use std::{io, thread};
+use std::io::Write;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
@@ -207,7 +208,7 @@ impl Client1 {
                     // There are still Fragments missing: send back Ack for current fragment in the meantime
                     None => {
                         let mut new_hops = packet.routing_header.hops.clone();
-                        let dest_id = new_hops[0];
+                    let dest_id = new_hops[0].clone();
                         new_hops.reverse();
                         let new_first_hop = new_hops[1];
                         let new_pack = Packet::new_ack(
@@ -319,50 +320,73 @@ impl Client1 {
     pub fn run(&mut self) {
         //Initialize the network field
         self.discover_network();
-        let mut input_buffer = String::new();
+        let (cmd_sender, cmd_receiver) = unbounded::<String>();
+        let (out_sender, out_receiver) = unbounded::<String>();
+        let thread_out_sender = out_sender.clone();
+        thread::spawn(move || {
+            loop {
+                println!("Insert a command: ");
+                io::stdout().flush().unwrap(); // Ensure prompt appears immediately
 
+                let mut input_buffer = String::new();
+                if io::stdin().read_line(&mut input_buffer).is_err() {
+                    thread_out_sender.clone().send("Error reading input.".to_string()).expect("Failed to send");
+                    continue;
+                }
+
+                let trimmed_input = input_buffer.trim().to_string();
+                thread_out_sender.clone().send(format!(">> {}", trimmed_input)).unwrap(); // Echo the command
+                if trimmed_input == "OFF" {
+                    cmd_sender.send("OFF".to_string()).expect("Failed to send");
+                    break;
+                }
+                // Send the command to the main thread
+                cmd_sender.send(trimmed_input).expect("Failed to send");
+            }
+        });
         loop {
-            // Handle packets in the meantime
             select_biased!{
+                // Handle packets in the meantime
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
                         Ok(packet) => {
                             //println!("CLIENT1: Received packet");
                             self.handle_packet(packet);
                         },
-
-                        Err(e) => println!("CLIENT1: Error: {e}")
+                        Err(e) => out_sender.clone().send(format!("CLIENT1: Error: {e}")).expect("Failed to send"),
                     }
                 }
-            }
-            match self.servers.is_empty(){
-                true => (),
-                false =>{
-                    input_buffer.clear();
-                    println!("Insert a command: ");
-                    io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
-                    if input_buffer.eq("OFF"){
-                        break;
+                recv(cmd_receiver) -> cmd => {
+                    match cmd {
+                        Ok(command) => {
+                            if command == "OFF" {
+                                out_sender.clone().send("Shutting down...".to_string()).expect("Failed to send");
+                                break;
+                            } else if command == "Commands" {
+                                out_sender.clone().send("CLIENT1:\n
+                                    server_type?->NodeId #(to a server in general)\n
+                                    files_list?->NodeId #(to a ContentServer)\n
+                                    file?(file_id)->NodeId #(to a ContentServer)\n
+                                    media?(media_id)->NodeId #(to a ContentServer)\n
+                                    message_for?(client_id, message)->NodeId #(to a ChatServer)\n
+                                    client_list?->NodeID #(to a ChatServer)\n
+                                    Servers?
+                                ".to_string()).expect("Failed to send");
+                            } else if command == "Servers" {
+                                let servers: Vec<_> = self.servers.iter().collect();
+                                out_sender.clone().send(format!("List of servers: {:?}", servers)).expect("Failed to send");
+                            } else {
+                                let result = self.handle_command(&command);
+                                out_sender.clone().send(result).expect("Failed to send"); // Send command output
+                            }
+                        },
+                        Err(e) => out_sender.clone().send(format!("Error receiving command: {e}")).expect("Failed to send"),
                     }
-                    else if input_buffer.trim().eq("Commands") {
-                        println!("CLIENT1:\n
-                            server_type?->NodeId #(to a server in general)\n
-                            files_list?->NodeId #(to a ContentServer)\n
-                            file?(file_id)->NodeId #(to a ContentServer)\n
-                            media?(media_id)->NodeId #(to a ContentServer)\n
-                            message_for?(client_id, message)->NodeId #(to a ChatServer)\n
-                            client_list?->NodeID #(to a ChatServer)\n
-                        ");
+                }
+                recv(out_receiver) -> message => {
+                    if let Ok(msg) = message {
+                        println!("{}", msg);
                     }
-                    else if input_buffer.trim().eq("Servers"){
-                        let mut res = vec![];
-                        for s in self.servers.iter(){
-                            res.push(s);
-                        }
-                        println!("List of servers: {:?}",res);
-                    }
-                    println!("{}",self.handle_command(input_buffer.trim()));
-                    input_buffer.clear();
                 }
             }
         }
