@@ -26,8 +26,8 @@ All the aforementioned files have some tests within to ensure their most importa
 mod fragment_reassembler;
 mod communication;
 use fragment_reassembler::*;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::{io, thread};
+use std::collections::{HashMap,VecDeque};
+use std::{io};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
@@ -134,10 +134,10 @@ impl Client1 {
                             }
                         }
                     }
-                    _ => {panic!("CLIENT1: Can't find neighbour who sent this packet {} ", request);}
+                    _ => {println!("CLIENT1: Can't find neighbour who sent this packet {} ", request);}
                 }
             }
-            _=>{panic!("CLIENT1: Wrong packet type received")}
+            _=>{println!("CLIENT1: Wrong packet type received")}
         }
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
@@ -153,7 +153,7 @@ impl Client1 {
                 }
                 self.update_graph(response);
             }
-            _ => {panic!("CLIENT1: Wrong packet type received")}
+            _ => {println!("CLIENT1: Wrong packet type received")}
         }
     }
     // Handle received packets of type MsgFragment. Fragments put together and reassembled
@@ -230,7 +230,7 @@ impl Client1 {
                     }
                 }
             }
-            _ =>{panic!("CLIENT1: Wrong packet type received")}
+            _ =>{println!("CLIENT1: Wrong packet type received")}
         }
     }
     // Helper functions

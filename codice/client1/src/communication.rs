@@ -1,8 +1,6 @@
 #![allow(warnings)]
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::rc::Rc;
 use crossbeam_channel::unbounded;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
@@ -11,8 +9,7 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client1 {
-    //TODO finish to check and modify prints in order to print the result of the arrived msg
-    // Handle user input received and send command to a dest_id (e.g. a server)
+
     pub fn handle_command(&mut self, command: &str) -> String{
         let (cmd,dest) = command.split_once("->").expect("Failed to extract command");
         let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
