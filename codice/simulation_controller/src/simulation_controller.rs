@@ -255,12 +255,14 @@ impl SimulationController {
                     .routing_header
                     .previous_hop()
                     .expect("Previous hop should always be valid");
-                self.drone_stats
+                if let Some(stats) = self
+                    .drone_stats
                     .lock()
                     .expect("Should always be able to unlock")
                     .get_mut(&node_id)
-                    .expect("The node Id should be valid")
-                    .packets_dropped += 1;
+                {
+                    stats.packets_dropped += 1;
+                }
             }
             DroneEvent::ControllerShortcut(packet) => {
                 self.send_packet_directly(packet);
