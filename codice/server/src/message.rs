@@ -535,9 +535,13 @@ pub mod file_system
     impl ServerTrait for ChatServer {
          fn process_request(&mut self, command: String, source_id: u32) -> Result<Vec<Fragment>, String>
         {
+            println!("{command}");
             // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
             match command {
                 cmd if cmd.starts_with("server_type?") => {         //Ask for server type
+                    let serv_type = self.serv.to_string();
+                    //println!("{}",format!("server_type!({})",self.serv.to_string()));
+                    //println!("{:?}",Repackager::create_fragments(&format!("server_type!({})",self.serv.to_string()), None).unwrap());
                     Repackager::create_fragments(&format!("server_type!({})",self.serv.to_string()), None)
                 }
                 cmd if cmd.starts_with("client_list?") => {
@@ -697,8 +701,9 @@ pub mod file_system
         pub fn get_client_ids(&mut self, source_id: u32) -> String {        
             self.add_client(source_id);
             let mut ids = self.list_of_client.clone();
-            ids.sort();         // it's easier when we debug 
-            format!("client_list!{:?}", ids)
+            ids.sort();         // it's easier when we debug
+            println!("Processed req");
+            format!("client_list!({:?})", ids)
         }
 
 

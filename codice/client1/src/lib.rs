@@ -11,6 +11,7 @@ Their contents are:
 
 * 'lib' : Client struct with the necessary methods and functions
  to handle the user input and the incoming packets and also some helpers functions.
+ In order to check what commands can be executed by the user, digit 'Commands' in the cmd line.
 
 * 'communication.rs' : methods and functions related to the aforementioned file used to handle both user commands and messages received at a lower level
 and, in fact, do the effective communication part.
@@ -26,7 +27,7 @@ mod fragment_reassembler;
 mod communication;
 use fragment_reassembler::*;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io;
+use std::{io, thread};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
@@ -159,6 +160,7 @@ impl Client1 {
     pub fn handle_msg_fragment(&mut self, packet: Packet){
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
+                //println!("{:?}",fragment);
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
@@ -166,11 +168,15 @@ impl Client1 {
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-                                // A message is reconstructed: create and send back an Ack
+                                //println!("message before: {}",msg);
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0];
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
+
+                                //Handle the reconstructed message
+                                println!("{}",self.handle_msg(msg,packet.session_id,new_first_hop,frag_index));
+                                // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,frag_index);
 
@@ -191,8 +197,6 @@ impl Client1 {
                                         }
                                     }
                                 }
-                                //Handle the reconstructed message
-                                println!("{}",self.handle_msg(msg,packet.session_id,new_first_hop,frag_index));
                             },
                             // FragmentReassembler encountered an error
                             Err(e) => println!("{e}")
@@ -306,6 +310,7 @@ impl Client1 {
                 self.handle_flood_response(packet);
             }
             PacketType::MsgFragment(_) =>{
+                //println!("pack {:?}",packet);
                 self.handle_msg_fragment(packet);
             }
             _ => ()
@@ -315,35 +320,31 @@ impl Client1 {
         //Initialize the network field
         self.discover_network();
         let mut input_buffer = String::new();
+
         loop {
-            //handled packets in the meantime
+            // Handle packets in the meantime
             select_biased!{
                 recv(self.receiver_channel) -> packet =>{
                     match packet{
                         Ok(packet) => {
                             //println!("CLIENT1: received packet");
-                            self.handle_packet(packet)},
+                            //println!("pack {:?}",packet);
+                            self.handle_packet(packet);
+                        },
 
                         Err(e) => println!("CLIENT1: Error: {e}")
                     }
                 }
             }
-
-            //println!("CLIENT1: server id : {}",self.server.0);
             match self.servers.is_empty(){
-                true => { ()
-                    //println!("CLIENT1: Not linked to a server");
-                    //println!("Network: {:?}",self.network);
-                }
+                true => (),
                 false =>{
-                    //Simple implementation of user input
                     input_buffer.clear();
-                    io::stdin().read_line(&mut input_buffer).expect("CLIENT1: Failed to read line");
-                    // Simple way to shut down client in case of some issue (hope it works)
+                    io::stdin().read_line(&mut input_buffer).expect("Failed to read line");
                     if input_buffer.eq("OFF"){
                         break;
                     }
-                    else if input_buffer.trim().eq("Commands"){
+                    else if input_buffer.trim().eq("Commands") {
                         println!("
                             server_type?->NodeId #(to a server in general)\n
                             files_list?->NodeId #(to a ContentServer)\n
@@ -354,7 +355,8 @@ impl Client1 {
                         ");
                     }
                     else{
-                        println!("{}",self.handle_command(&input_buffer.trim().clone()));
+                            self.handle_command(input_buffer.trim());
+                            input_buffer.clear();
                     }
                 }
             }

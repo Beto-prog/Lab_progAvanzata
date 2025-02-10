@@ -50,6 +50,7 @@ impl FragmentReassembler {
             self.processed_fragments.remove(&key);
 
             // Return reassembled message
+            //println!("{:?}",message);
             Ok(Some(message))
         } else {
             // If not all fragments received, return None
@@ -59,6 +60,7 @@ impl FragmentReassembler {
     // Given a &str create the fragments from it
     pub fn generate_fragments(str: &str) -> Result<Vec<Fragment>, String> {
         // Convert the initial string to bytes
+        //println!("{}",str);
         let mut message_data = str.as_bytes().to_vec();
 
         let total_size = message_data.len();
@@ -86,10 +88,9 @@ impl FragmentReassembler {
     pub fn assemble_string_file(data: Vec<u8>, mut received_files: &mut Vec<String>) -> Result<String, String> {
         // Remove null character
         let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();
-
+        let clean_data_clone = clean_data.clone();
         // Search position of first separator
         let separator_pos = clean_data.iter().position(|&b| b == b'(' );
-
         if let Some(pos) = separator_pos {
             // Take initial string
             let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
@@ -106,12 +107,26 @@ impl FragmentReassembler {
                     received_files.push(initial_string.clone());
                 }
             }
+            if initial_string.eq("server_type!") || initial_string.eq("client_list!") || initial_string.eq("files_list!") {
+                match String::from_utf8(clean_data_clone) {
+                    Ok(mut string) => {
+                        string = string.trim_end_matches('\0').to_string();
+                        Ok(string)
+                    },
+                    Err(e) => Err(format!("Error while converting message to string: {}", e)),
+                }
+            }
+            else{
+                Ok(initial_string)
+            }
             // Return  value
-            Ok(initial_string)
-        } else {
-            // In case of a normal string
-            match String::from_utf8(clean_data) {
-                Ok(s) => Ok(s),
+        }
+        else{
+            match String::from_utf8(clean_data_clone) {
+                Ok(mut string) => {
+                    string = string.trim_end_matches('\0').to_string();
+                    Ok(string)
+                },
                 Err(e) => Err(format!("Error while converting message to string: {}", e)),
             }
         }

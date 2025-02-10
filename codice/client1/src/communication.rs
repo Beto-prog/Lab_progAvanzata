@@ -14,10 +14,10 @@ impl Client1 {
     //TODO finish to check and modify prints in order to print the result of the arrived msg
     // Handle user input received and send command to a dest_id (e.g. a server)
     pub fn handle_command(&mut self, command: &str) -> String{
-
         let (cmd,dest) = command.split_once("->").expect("Failed to extract command");
         let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
-        if let value = self.servers.get(&dest_id).unwrap() as &str{
+        //println!("{}",self.servers.get(&dest_id).unwrap().as_str());
+        if let value = self.servers.get(&dest_id).unwrap().as_str(){
             match value{
                 "ContentServer" =>{
                     match cmd{
@@ -59,6 +59,7 @@ impl Client1 {
                 "CommunicationServer" =>{
                     match cmd{
                         cmd if cmd == "client_list?" =>{
+                            //println!("Entered");
                             self.send_message(dest_id,cmd);
                             "CLIENT1: OK".to_string()
                         }
@@ -85,7 +86,7 @@ impl Client1 {
                     match cmd{
                         cmd if cmd == "server_type?" =>{
                             self.send_message(dest_id,cmd);
-                            "CLIENT1t: OK".to_string()
+                            "CLIENT1: OK".to_string()
                         }
                         _=>{"Not a valid command".to_string()}
                     }
@@ -100,22 +101,21 @@ impl Client1 {
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
+        //println!("{data}");
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
         match path{
             Some(p) =>{
                 let first_hop = p[1].clone();
-                //let path_rc = Rc::new(RefCell::new(p));
                 for fragment in fragments {
-                    if let Some(sender) = self.sender_channels.get(&first_hop) {
-                        let packet_sent = Packet {
-                            routing_header: SourceRoutingHeader::with_first_hop(p.clone()),
-                            pack_type: PacketType::MsgFragment(fragment.clone()),
-                            session_id
-                        };
-                        //println!("srh: {:?}",packet_sent.routing_header);
-                        //println!("packet: {:?}",packet_sent);
+                    //println!("{:?}",fragment);
+                    let sender = self.sender_channels.get(&first_hop).expect("Failed to get sender");
+                    let packet_sent = Packet {
+                        routing_header: SourceRoutingHeader::with_first_hop(p.clone()),
+                        pack_type: PacketType::MsgFragment(fragment.clone()),
+                        session_id
+                    };
                        match sender.send(packet_sent){
                            // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
                            Ok(_) =>{
@@ -147,7 +147,7 @@ impl Client1 {
                                                _=> ()
                                            }
                                        }
-                                       Err(e) => panic!("{e}")
+                                       Err(e) => println!("{e}")
                                    }
                                }
                            }
@@ -166,41 +166,42 @@ impl Client1 {
                                }
                            }
                        }
-                    }
                 }
             }
             None => {println!("Error: no path to dest_id")}
         }
     }
-    // Handle a received message (e.g. from a server) with eventual parameters TODO check for Alberto format message(His is wrong i think)!!!!!!
+    // Handle a received message (e.g. from a server) with eventual parameters
     pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
-        let original_msg = received_msg.clone();
+
         match received_msg{
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
+                let original_msg = msg.clone();
+                //println!("{}",original_msg);
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
-                        for mut serv in &self.servers{
-                            if *serv.0 == src_id && serv.1.is_empty(){
-                                serv.1 = &serverType.to_string();
-                            }
-                        }
+                        self.servers.entry(src_id).or_insert_with(|| serverType.to_string());
+                        //println!("{}",self.servers.get(&src_id).unwrap());
                         original_msg
                     }
                     None =>{"Not valid server type".to_string()}
                 }
             }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") =>{
+                let original_msg = msg.clone();
+                //println!("{}",original_msg);
                 match Client1::get_file_vec(msg){
                     Some(val) =>{
                         for e in val{
                             self.files_names.push(e);
                         }
-                        "CLIENT1: OK".to_string()
+                        original_msg
                     }
                     None => "There are no file_IDs in the message".to_string()
                 }
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") =>{
+                let original_msg = msg.clone();
                 match Client1::get_file_values(msg){
                     Some(res) =>{
                         if !res.is_empty(){
@@ -226,7 +227,7 @@ impl Client1 {
                                     }
                                 }
                             }
-                            res.to_string()
+                            original_msg
                         }
                         else{ "Error: no file".to_string() }
                     }
@@ -234,6 +235,7 @@ impl Client1 {
                 }
             }
             msg if msg.starts_with("media!(") && msg.ends_with(")") =>{
+                let original_msg = msg.clone();
                 match msg.strip_prefix("media!(").and_then(|s|s.strip_suffix(")")){
                     Some(clean_data) =>{
                         if !clean_data.is_empty(){
@@ -258,7 +260,7 @@ impl Client1 {
                                     }
                                 }
                             }
-                            clean_data.to_string()
+                            original_msg
                         }
                         else{ "Error: no media".to_string() }
                     }
@@ -282,17 +284,19 @@ impl Client1 {
                 "error_unsupported_request!".to_string()
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") =>{
+                let original_msg = msg.clone();
                 match Client1::get_ids(msg){
                     Some(val) =>{
                         for e in val{
                             self.other_client_ids.push(e);
                         }
-                        "CLIENT1: OK".to_string()
+                        original_msg
                     }
                     None => "There are no other clients in the network right now".to_string()
                 }
             }
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") =>{
+                let original_msg = msg.clone();
                 match Self::get_values(&msg){
                     Some(values) =>{
                         let src_id = values.0;
@@ -317,12 +321,12 @@ impl Client1 {
                                 }
                             }
                         }
-                        "CLIENT1: OK".to_string()
+                        original_msg
                     }
                     None => "Failed to get message content".to_string()
                 }
             }
-            _=> original_msg
+            _ => "Error".to_string()
         }
     }
     // Helper functions
@@ -406,28 +410,28 @@ mod test{
         // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
-        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"CLIENT1: OK");
-        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"server_type!(CommunicationServer)");
+        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"files_list!([file1.txt,file2.txt])");
 
         let file_txt = fs::read("src/test/file1").unwrap();
-        let file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
+        let  file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
         let mut msg= String::from("file!(6,");
         msg.push_str(&file_txt2);
         msg.push_str(")");
-        assert_eq!(cl.handle_msg(msg,3,2,0),file_txt2);
+        assert_eq!(cl.handle_msg(msg,3,2,0),"file!(6,test 123456 advanced_programming)");
 
         let file_media = fs::read("src/test/testMedia.mp3").unwrap();
         let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
         let mut msg= String::from("media!(");
         msg.push_str(&file_media2);
         msg.push_str(")");
-        assert_eq!(cl.handle_msg(msg,3,2,0),file_media2);
+        assert_eq!(cl.handle_msg(msg,3,2,0),"media!(ID3\u{3})");
 
         let test_msg1 = "client_list!([1,2,3,4])".to_string();
-        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg1,3,2,0),"client_list!([1,2,3,4])");
 
         let test_msg2 = "message_from!(2,file.txt)".to_string();
-        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"CLIENT1: OK");
+        assert_eq!(cl.handle_msg(test_msg2,3,2,0),"message_from!(2,file.txt)");
 
         let test_msg4 = "error_requested_not_found!(File not found)".to_string() ;
         assert_eq!(cl.handle_msg(test_msg4.clone(),3,2,0),test_msg4);
