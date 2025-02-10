@@ -22,7 +22,6 @@ Their contents are:
 
 All the aforementioned files have some tests within to ensure their most important functions behave correctly.
 */
-#![allow(warnings)]
 mod fragment_reassembler;
 mod communication;
 use fragment_reassembler::*;

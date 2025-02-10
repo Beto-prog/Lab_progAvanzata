@@ -1,4 +1,4 @@
-#![allow(warnings)]
+
 use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::{unbounded};
