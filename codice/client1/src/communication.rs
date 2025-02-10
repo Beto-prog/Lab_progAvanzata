@@ -14,7 +14,7 @@ impl Client1 {
         if let Some((cmd,dest)) = command.split_once("->") {
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
             //println!("{}",self.servers.get(&dest_id).unwrap().as_str());
-            if let value = self.servers.get(&dest_id).unwrap().as_str() {
+            if let value = self.servers.get(&dest_id).expect("Failed to get in map").as_str() {
                 match value {
                     "ContentServer" => {
                         match cmd {
