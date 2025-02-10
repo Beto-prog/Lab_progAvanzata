@@ -172,7 +172,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 }
   
                             }
-                            _=> {println!("Error fragment to long - refuse to process")}
+                            _=> {println!("{}","Error fragment to long - refuse to process".white().bold().on_blue())}
                         }
                         //let message = Repackager::reassembled_to_string(result);
                         
@@ -187,7 +187,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         //try to find the packet in the packet ack manager
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
                         match result {
-                            None => {println!("Received an NAck but I can't trace buck the number to any packet {:?}", msg)}
+                            None => {println!("{} {:?}","Received an NAck but I can't trace back the number to any packet ".white().bold().on_blue(), msg)}
                             Some(ack_value) => {
                                 if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index) {
                                     
@@ -195,7 +195,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     response.pack_type = MsgFragment(ack_value[pos].clone());
                                     self.send_valid_packet(source_id, response);
                                 } else {
-                                    println!("Index of Nack not found.");
+                                    println!("{}","Index of Nack not found.".white().bold().on_blue());
                                 }
                             }
                         }
@@ -208,7 +208,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     PacketType::Ack(msg) => {   //Send the next packet 
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id)); //Get the correct session
                         match result {
-                            None => {println!("SERVER --> Received an Ack but I can't trace back the number to any packet {:?}", msg)}
+                            None => {println!("{} {:?}","SERVER --> Received an Ack but I can't trace back the number to any packet ".white().bold().on_blue(), msg)}
                             Some(ack_value) => {
                                 /*
                                 The ack manager is a structure that use for a ky the source_id and the session id
@@ -232,7 +232,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                             self.paket_ack_manger.remove(&(source_id, packet.session_id));
                                         }
                                         else {
-                                            println!("SERVER --> Index of ack not found.");
+                                            println!("{}","SERVER --> Index of ack not found.".white().bold().on_blue());
                                         }
                                     }
                                 
@@ -279,7 +279,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     self.packet_send.get(&previous_neighbour).expect("Error while getting neighbor").send(response.clone()).expect("Server: Error while sending FloodResponse"); //TODO do match case
                                 //}
                             } else {
-                                panic!("Can not find neighbour who send this packet {} ", flood_packet);
+                                panic!("{} {}","Can not find neighbour who send this packet  ".white().bold().on_blue(), flood_packet);
                             }
                         }
                 }
@@ -296,7 +296,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
         
         //Send flood request to all his neighbour
         for (node,sender) in self.packet_send.iter() {
-            println!("Sending flood request to node {:?}",  node);
+            println!("{} {:?}","Sending flood request to node ".white().bold().on_blue(),  node);
 
             let request = FloodRequest {
                 flood_id : rand::random(),
@@ -343,7 +343,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     Some(x) => {x.send(packet);}
                 }
             },
-            None => {print!("Error not found a valid path to follow")}
+            None => {print!("{}","Error not found a valid path to follow".white().bold().on_blue())}
         }
 
     }
