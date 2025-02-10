@@ -78,7 +78,7 @@ impl Client2 {
     }
 
     pub fn handle_flood_request(&mut self, mut flood_request: FloodRequest, session_id: u64) {
-        flood_request.path_trace.push((self.node_id, NodeType::Client)); // TODO fixed here.  I think Client didn't add itself to path_trace before processing
+        flood_request.path_trace.push((self.node_id, NodeType::Client));
         // Check if this flood request has already been processed
         if flood_request.initiator_id == self.node_id {
             return;  // Skip because its the same to create the flood request
@@ -100,7 +100,7 @@ impl Client2 {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
             }
             if node_type == &NodeType::Server {
-                self.servers.insert(self.node_id, "".to_string());
+                self.servers.insert(self.node_id, "Unknown".to_string());
             }
         }
         // Update the network graph (adjacency list)
@@ -139,13 +139,18 @@ impl Client2 {
     //Handle of commands
     pub fn handle_command(&mut self, command: &str) {
         if command == "commands" {
-            //TODO PRINT COMMANDS
             println!("server_type?->NodeId
+server_list
 files_list?->NodeId
 registration_to_chat->NodeId
 file?(file_id)->NodeId
 media?(media_id)->NodeId
 message_for?(client_id, message)->NodeId");
+            return;
+        } else if command == "server_list" {
+            for(server_id, server_type) in &self.servers {
+                println!("{}, {}", server_id, server_type);
+            }
             return;
         }
         let (comm, dest) = command.split_once("->").expect("Command was formated wrong.");
@@ -374,7 +379,8 @@ message_for?(client_id, message)->NodeId");
                     //self.handle_command("files_list?->6");
                     //self.handle_command("registration_to_chat->6");
                     // self.handle_command("client_list->6");
-                    self.handle_command("message_for?(10, hahaha)->6");
+                    //self.handle_command("message_for?(10, hahaha)->6");
+                    self.handle_command("server_list");
                     executed = true;
                 }
             }
