@@ -97,9 +97,15 @@ impl Client1 {
                 "Destination server not present".to_string()
             }
         }
-        else{
-            "Error: invalid command".to_string()
+        else {
+            if command.eq("Servers") || command.eq("Commands"){
+                "CLIENT1: OK".to_string()
+            }
+            else{
+                "Error: not a valid command".to_string()
+            }
         }
+
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {

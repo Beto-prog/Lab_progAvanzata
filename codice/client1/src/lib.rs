@@ -361,10 +361,8 @@ impl Client1 {
                         }
                         println!("List of servers: {:?}",res);
                     }
-                    else{
-                        println!("{}",self.handle_command(input_buffer.trim()));
-                        input_buffer.clear();
-                    }
+                    println!("{}",self.handle_command(input_buffer.trim()));
+                    input_buffer.clear();
                 }
             }
         }
