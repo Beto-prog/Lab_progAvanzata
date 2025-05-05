@@ -9,6 +9,9 @@ wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = ["
 crossbeam-channel = "0.5.13"
 rand = "0.8.5"
 colored = "3.0.0"
+ratatui = "0.26"
+crossterm = "0.27"
+
 
 [lib]
 name = "server"
