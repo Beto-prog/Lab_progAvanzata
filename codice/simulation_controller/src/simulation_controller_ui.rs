@@ -9,17 +9,20 @@ use egui::Id;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wg_2024::network::NodeId;
+use client1::client1_ui::Client1_UI;
 
 pub struct SimulationControllerUI {
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
     selected_tab: usize,
     ui_command_sender: Sender<UICommand>,
     ui_response_receiver: Receiver<UIResponse>,
+    client1_ui: Client1_UI,
     new_pdr: HashMap<NodeId, f32>,
     selected_add_neighbour: HashMap<NodeId, NodeId>,
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
+    client1_selected: bool
 }
 
 impl SimulationControllerUI {
@@ -29,6 +32,7 @@ impl SimulationControllerUI {
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
         ui_command_sender: Sender<UICommand>,
         ui_response_receiver: Receiver<UIResponse>,
+        ui_rcv: Receiver<Client1_UI>,
     ) -> Self {
         env_logger::init();
         let selected_tab = *drone_stats
@@ -52,17 +56,19 @@ impl SimulationControllerUI {
         for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
-
+        let client1_ui = ui_rcv.recv().expect("Failed to get value");
         Self {
             selected_tab,
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
+            client1_ui,
             new_pdr,
             selected_add_neighbour,
             selected_remove_neighbour,
             snackbar: None,
             snackbar_duration: 2.0,
+            client1_selected: false
         }
     }
 
@@ -200,18 +206,26 @@ impl eframe::App for SimulationControllerUI {
                 {
                     if ui.button(format!("Drone {drone}")).clicked() {
                         self.selected_tab = *drone as usize;
+                        self.client1_selected = false;
                     }
+                }
+                if ui.button(format!("Client1")).clicked(){
+                    self.client1_selected = true;
                 }
             });
 
             let now = ctx.input(|i| i.time);
 
-            self.drone_stats_ui(
-                ui,
-                NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
-                now,
-            );
-
+            if self.client1_selected{
+                self.client1_ui.client1_stats(ui);
+            }
+            else{
+                self.drone_stats_ui(
+                    ui,
+                    NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
+                    now,
+                );
+            }
             if let Some((ref message, expires)) = self.snackbar {
                 if now < expires {
                     // Draw the snackbar at the bottom center of the window.
