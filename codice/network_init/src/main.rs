@@ -316,10 +316,10 @@ impl NetworkInitializer {
                 let mut client =
                     Client1::new(client_config.id, neighbor_senders.clone(),client_receiver,Some(ui_snd.clone()));
                 std::thread::spawn(move || client.run());
-            } else {
+            } else {/*
                 let mut client =
                     Client2::new(client_config.id, neighbor_senders.clone(), client_receiver);
-                std::thread::spawn(move || client.run());
+                std::thread::spawn(move || client.run());*/
             }
         }
 

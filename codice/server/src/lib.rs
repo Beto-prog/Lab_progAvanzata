@@ -147,7 +147,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
-                                println!("{}",message.clone().unwrap());
+                                add_message(&self.message_list, "Server", &format!("{} {}","Messaggio fremmentato",message.clone().unwrap()), Color::White, Color::White);
+        
                                
                                 let mut  flag:i32 = 0;
                                 //1 = client not found
@@ -186,7 +187,9 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
                                         self.send_valid_packet(source_id, response);    
                                     }
-                                    Err(x) => {print!("Error : {}",x)}
+                                    Err(x) => {
+                                        add_message(&self.message_list, "Server", &format!("{} {}","ERRORE : ",x), Color::White, Color::Red); 
+                                        }
                                 }
   
                             }
@@ -252,8 +255,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     else {  //Check if all the packets are arrived correctly 
                                         if  msg.fragment_index as usize  == ack_value.len()-1
                                         {
-                                            
-                                            println!("SERVER --> All ack received - Removing session- (Source id: {}, Session id: {} ).",source_id, packet.session_id);
+                                            add_message(&self.message_list, "Server", &format!("{} {} {} {} {}","All ack received - Removing session- (Source id: ",source_id,", Session id: ",packet.session_id, " )."), Color::White, Color::White);
                                             self.paket_ack_manger.remove(&(source_id, packet.session_id));
                                         }
                                         else {
