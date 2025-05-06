@@ -10,9 +10,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use wg_2024::network::NodeId;
-
 use client1::Client1;
+use client1::client1_ui::Client1_UI;
 use client2::Client2;
+
 
 #[derive(Debug, Deserialize)]
 struct DroneConfig {
@@ -292,6 +293,7 @@ impl NetworkInitializer {
         }
 
         // Initialize clients
+        let (ui_snd,ui_rcv) = unbounded::<Client1_UI>();
         for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             // Find drones that are connected to this client
@@ -304,7 +306,6 @@ impl NetworkInitializer {
                         .clone(),
                 );
             }
-
             // Clone the specific receiver for this client before moving into the thread
             let client_receiver = node_recievers
                 .get(&client_config.id)
@@ -313,7 +314,7 @@ impl NetworkInitializer {
             // Initialize the client with neighbor_senders
             if index % 2 == 0 {
                 let mut client =
-                    Client1::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                    Client1::new(client_config.id, neighbor_senders.clone(),client_receiver,Some(ui_snd.clone()));
                 std::thread::spawn(move || client.run());
             } else {
                 let mut client =
@@ -417,6 +418,7 @@ impl NetworkInitializer {
                     drone_stats_arc.clone(),
                     ui_command_sender,
                     ui_response_receiver,
+                    ui_rcv
                 ));
                 Ok(simulation_controller_ui)
             }),

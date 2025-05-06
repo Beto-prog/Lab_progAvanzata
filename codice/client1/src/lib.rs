@@ -24,16 +24,15 @@ All the aforementioned files have some tests within to ensure their most importa
 */
 mod fragment_reassembler;
 mod communication;
+pub mod client1_ui;
 use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
-use std::{io, thread};
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
-use rand::distr::uniform::SampleBorrow;
 use wg_2024::packet::*;
 use wg_2024::network::*;
-
-
+use crate::client1_ui::Client1_UI;
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
@@ -46,16 +45,17 @@ pub struct Client1 {
     network: Graph,
     fragment_reassembler: FragmentReassembler, // Used to handle fragments
     received_files: Vec<String>,   // Path where to save files received
-    other_client_ids: Vec<NodeId>, // Storage other client IDs
-    files_names: Vec<String>,   // Storage of file names
-    servers: HashMap<NodeId,String>, // map of servers ID and relative type
+    other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
+    files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
+    servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
+    ui_snd: Option<Sender<Client1_UI>>
 }
 
 impl Client1 {
     // Create a new Client with parameters from Network Initializer
     pub fn new(node_id: NodeId,
                sender_channels:HashMap<NodeId,Sender<Packet>>,
-               receiver_channel: Receiver<Packet>
+               receiver_channel: Receiver<Packet>,ui_snd: Option<Sender<Client1_UI>>
     ) -> Self {
         Self {
 
@@ -66,9 +66,10 @@ impl Client1 {
             network: Graph::new(),
             fragment_reassembler: FragmentReassembler::new(),
             received_files: vec![],
-            other_client_ids: vec![],
-            files_names: vec![],
-            servers: HashMap::new(),
+            other_client_ids: Arc::new(Mutex::new(vec![])),
+            files_names: Arc::new(Mutex::new(vec![])),
+            servers: Arc::new(Mutex::new(HashMap::new())),
+            ui_snd: Some(ui_snd.expect("Failed to get value"))
         }
     }
     // Network discovery
@@ -107,7 +108,9 @@ impl Client1 {
     pub fn create_flood_request(&self, request: FloodRequest, neighbor: NodeId,session_id: u64) -> Packet{
         let hops: Vec<NodeId> = vec![self.node_id,neighbor]; // TODO check if correct
         let srh = SourceRoutingHeader::with_first_hop(hops);
-        Packet::new_flood_request(srh,session_id,request)
+        let res = Packet::new_flood_request(srh,session_id,request);
+        //println!("DEBUG CLIENT 1: {:?}",res);
+        res
     }
     // Function to handle received packets of type FloodRequest
     pub fn handle_flood_request(&mut self,packet: Packet) {
@@ -145,24 +148,39 @@ impl Client1 {
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
         //println!("CLIENT1: arrived FloodResponse");
+
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
+                self.update_graph(response.clone());
+                //println!("DEBUG PATH TRACE {:?}",&response.path_trace);
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
-                        self.servers.entry(node.0).or_insert("".to_string());
-                        //println!("CLIENT1: found server with id: {}",node.0);
+                        self.servers.lock().expect("Failed to lock").entry(node.0).or_insert("".to_string());
+                        // Check for the server type immediately after receiving a response
+                        let mut t = "server_type?->".to_string();
+                        t.push_str(node.0.to_string().as_str());
+                        //println!("{t}");
+                        self.handle_command(t.as_str());
                     }
+                        /*
+                    else if node.1.eq(&NodeType::Client) && (node.0 != self.node_id){
+                        let mut clients = self.other_client_ids.lock().expect("Failed to lock");
+                        if !clients.contains(&node.0){
+                            clients.push(node.0);
+                        }
+                    }
+
+                         */
                 }
-                self.update_graph(response);
             }
             _ => {println!("CLIENT1: Wrong packet type received")}
         }
     }
     // Handle received packets of type MsgFragment. Fragments put together and reassembled
-    pub fn handle_msg_fragment(&mut self, packet: Packet){
+    pub fn handle_msg_fragment(&mut self, packet: Packet, msg_snd: &Sender<String>){
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
-                //println!("{:?}",fragment);
+
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
@@ -170,14 +188,13 @@ impl Client1 {
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-                                //println!("message before: {}",msg);
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-
+                                //println!("DEBUG Client: {msg}");
                                 //Handle the reconstructed message
-                                println!("{}",self.handle_msg(msg,packet.session_id,dest_id,frag_index));
+                                msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
                                 // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,frag_index);
@@ -246,7 +263,6 @@ impl Client1 {
     // Update the knowledge of the network based on flood responses
     pub fn update_graph(&mut self, response: FloodResponse){
         let path = &response.path_trace;
-        //println!("CLIENT1:{:?}",path);
         // Iterate over consecutive pairs in the path_trace
         for window in path.windows(2) {
             if let [(node1, _type1), (node2, _type2)] = window {
@@ -302,7 +318,7 @@ impl Client1 {
         None
     }
     // Handle incoming packets and call different methods based on the packet type. Ack and Nack handled in the upper function
-    pub fn handle_packet(&mut self, packet: Packet){
+    pub fn handle_packet(&mut self, packet: Packet,msg_snd: &Sender<String>){
         match packet.pack_type{
             PacketType::FloodRequest(_) =>{
                 self.handle_flood_request(packet);
@@ -311,83 +327,56 @@ impl Client1 {
                 self.handle_flood_response(packet);
             }
             PacketType::MsgFragment(_) =>{
-                self.handle_msg_fragment(packet);
+                self.handle_msg_fragment(packet,&msg_snd);
             }
             _ => ()
         }
     }
-    pub fn run(&mut self) {
-        //Initialize the network field
+
+    pub fn run(&mut self){
+
+        //Initialize network field
         self.discover_network();
-        let (cmd_sender, cmd_receiver) = unbounded::<String>();
-        let (out_sender, out_receiver) = unbounded::<String>();
-        let thread_out_sender = out_sender.clone();
-        thread::spawn(move || {
-            loop {
-                println!("Insert a command: ");
-                io::stdout().flush().unwrap(); // Ensure prompt appears immediately
+        let (cmd_snd, cmd_rcv) = unbounded::<String>();
+        let (msg_snd,msg_rcv) = unbounded::<String>();
+        let receiver_channel = self.receiver_channel.clone();
 
-                let mut input_buffer = String::new();
-                if io::stdin().read_line(&mut input_buffer).is_err() {
-                    thread_out_sender.clone().send("Error reading input.".to_string()).expect("Failed to send");
-                    continue;
-                }
+        let cl1_ui = Client1_UI::new(
+            self.node_id.clone(),
+            Arc::clone(&self.other_client_ids),
+            Arc::clone(&self.servers),
+            Arc::clone(&self.files_names),
+            cmd_snd,
+            msg_rcv
+        );
+        if let Some(ui_snd) = self.ui_snd.take(){
+            ui_snd.send(cl1_ui).expect("Failed to send");
+        }
 
-                let trimmed_input = input_buffer.trim().to_string();
-                thread_out_sender.clone().send(format!(">> {}", trimmed_input)).unwrap(); // Echo the command
-                if trimmed_input == "OFF" {
-                    cmd_sender.send("OFF".to_string()).expect("Failed to send");
-                    break;
-                }
-                // Send the command to the main thread
-                cmd_sender.send(trimmed_input).expect("Failed to send");
-            }
-        });
+        //Packet handle part TODO fix relationship with UI
         loop {
-            select_biased!{
+            select_biased! {
                 // Handle packets in the meantime
-                recv(self.receiver_channel) -> packet =>{
-                    match packet{
-                        Ok(packet) => {
-                            //println!("CLIENT1: Received packet");
-                            self.handle_packet(packet);
-                        },
-                        Err(e) => out_sender.clone().send(format!("CLIENT1: Error: {e}")).expect("Failed to send"),
+                    recv(receiver_channel) -> packet =>{
+                        match packet{
+                                Ok(packet) => {
+                                        self.handle_packet(packet, &msg_snd);
+                                },
+                                Err(e) => println!("Err: {e}")
+                        }
                     }
-                }
-                recv(cmd_receiver) -> cmd => {
-                    match cmd {
-                        Ok(command) => {
-                            if command == "OFF" {
-                                out_sender.clone().send("Shutting down...".to_string()).expect("Failed to send");
-                                break;
-                            } else if command == "Commands" {
-                                out_sender.clone().send("CLIENT1:\n
-                                    server_type?->NodeId #(to a server in general)\n
-                                    files_list?->NodeId #(to a ContentServer)\n
-                                    file?(file_id)->NodeId #(to a ContentServer)\n
-                                    media?(media_id)->NodeId #(to a ContentServer)\n
-                                    message_for?(client_id, message)->NodeId #(to a ChatServer)\n
-                                    client_list?->NodeID #(to a ChatServer)\n
-                                    Servers?
-                                ".to_string()).expect("Failed to send");
-                            } else if command == "Servers" {
-                                let servers: Vec<_> = self.servers.iter().collect();
-                                out_sender.clone().send(format!("List of servers: {:?}", servers)).expect("Failed to send");
-                            } else {
-                                let result = self.handle_command(&command);
-                                out_sender.clone().send(result).expect("Failed to send"); // Send command output
+                    recv(cmd_rcv) -> cmd => {
+                        match cmd {
+                            Ok(cmd) => {
+                                match self.handle_command(cmd.as_str()).as_str() {
+                                    "CLIENT1: OK" => (),
+                                    e => println!("Err: {e}")
+                                }
                             }
-                        },
-                        Err(e) => out_sender.clone().send(format!("Error receiving command: {e}")).expect("Failed to send"),
+                            Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
+                        }
                     }
                 }
-                recv(out_receiver) -> message => {
-                    if let Ok(msg) = message {
-                        println!("{}", msg);
-                    }
-                }
-            }
         }
     }
 }
@@ -400,10 +389,10 @@ mod test{
     #[test]
     fn test_bfs_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv,None);
         cl.sender_channels.insert(19, snd);
         cl.network.insert(1, vec![2, 3]);
-        cl.other_client_ids.push(2);
+        cl.other_client_ids.lock().expect("Failed to lock").push(2);
         cl.network.insert(2, vec![1, 4]);
         cl.network.insert(3, vec![1, 4]);
         cl.network.insert(4, vec![2, 3, 6]);
@@ -423,10 +412,10 @@ mod test{
     #[test]
     fn test_bfs_no_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv,None);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2, 3]);
-        cl.other_client_ids.push(2);
+        cl.other_client_ids.lock().expect("Failed to lock").push(2);
         cl.network.insert(2, vec![1, 4]);
         cl.network.insert(3, vec![1, 4]);
         cl.network.insert(4, vec![2, 3]);
@@ -441,7 +430,7 @@ mod test{
     #[test]
     fn test_update_graph(){
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv,None);
         cl.sender_channels.insert(2, snd);
         cl.network.insert(1, vec![2]);
         let mut f_req = FloodRequest::new(1234, 1);
@@ -462,3 +451,8 @@ mod test{
         assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
     }
 }
+
+//TODO list
+// 1) Read about the ui part (functions, commands, etc) and think about a possible visual appearance of the client interface
+// 2) Create the ui
+// 3) Check about the logic of the program with the ui (e.g. the routing function, what happens when a packet is lost etc)

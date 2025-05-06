@@ -15,6 +15,7 @@ env_logger = { version = "0.10", default-features = false, features = [
 ] }
 egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
+client1 = { path = "../client1" }
 
 bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-features = false }
 lockheedrustin-drone = { git = "https://github.com/Lockheed-Rustin/drone.git" }
@@ -26,7 +27,6 @@ rusty_drones = { git = "https://github.com/rusty-drone-2024/rusty-drone.git" }
 rust-roveri = { git = "https://git@github.com/RustRoveri/rust-roveri.git" }
 rust_do_it = { git = "https://github.com/RustDoIt/Drone.git" }
 krusty_drone = { git = "https://github.com/Danylo37/krusty_drone.git" }
-
 
 [lib]
 name = "simulation_controller"

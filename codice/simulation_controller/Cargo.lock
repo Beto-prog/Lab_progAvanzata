@@ -2966,7 +2966,7 @@ dependencies = [
  "thiserror 1.0.69",
  "wayland-backend",
  "wayland-client",
- "wayland-csd-frame",
+ "wayland-csd-_frame",
  "wayland-cursor",
  "wayland-protocols",
  "wayland-protocols-wlr",
@@ -3456,7 +3456,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wayland-csd-frame"
+name = "wayland-csd-_frame"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "625c5029dbd43d25e6aa9615e88b829a5cad13b2819c4ae129fdbb7c31ab4c7e"

@@ -9,110 +9,68 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client1 {
-
     pub fn handle_command(&mut self, command: &str) -> String{
+    let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
         if let Some((cmd,dest)) = command.split_once("->") {
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
-            //println!("{}",self.servers.get(&dest_id).unwrap().as_str());
-            if let value = self.servers.get(&dest_id).expect("Failed to get in map").as_str() {
-                match value {
-                    "ContentServer" => {
-                        match cmd {
-                            cmd if cmd == "server_type?" => {
-                                self.send_message(dest_id, cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            cmd if cmd == "files_list?" => {
-                                self.send_message(dest_id, cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
-                                if let Some(name) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
-                                    if self.files_names.contains(&name.parse::<String>().ok().expect("Failed to get files names")) {
-                                        self.send_message(dest_id, cmd);
-                                        "CLIENT1: OK".to_string()
-                                    } else {
-                                        "Error: invalid file_id".to_string()
-                                    }
-                                } else {
-                                    "Error: command not formatted correctly".to_string()
-                                }
-                            }
-                            cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
-                                if let Some(id) = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")")) {
-                                    if id.is_empty() {
-                                        "Error: invalid media_id".to_string()
-                                    } else {
-                                        self.send_message(dest_id, cmd);
-                                        "CLIENT1: OK".to_string()
-                                    }
-                                } else {
-                                    "Error: command not formatted correctly".to_string()
-                                }
-                            }
-                            _ => { "Not a valid ContentServer command".to_string() }
-                        }
-                    }
-                    "CommunicationServer" => {
-                        match cmd {
-                            cmd if cmd == "server_type?" => {
-                                self.send_message(dest_id, cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            cmd if cmd == "client_list?" => {
-                                //println!("Entered");
-                                self.send_message(dest_id, cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            cmd if cmd.starts_with("message_for?(") => {
-                                match Self::get_values(cmd) {
-                                    Some(values) => {
-                                        if self.other_client_ids.contains(&values.0) {
-                                            self.send_message(values.0, values.1);
-                                            "CLIENT1: OK".to_string()
-                                        } else {
-                                            "Error: invalid dest_id".to_string()
-                                        }
-                                    }
-                                    None => {
-                                        "Error: command not formatted correctly".to_string()
-                                    }
-                                }
-                            }
-                            _ => { "Not a valid ChatServer command".to_string() }
-                        }
-                    }
-                    "" => {
-                        match cmd {
-                            cmd if cmd == "server_type?" => {
-                                self.send_message(dest_id, cmd);
-                                "CLIENT1: OK".to_string()
-                            }
-                            _ => { "Not a valid command".to_string() }
-                        }
-                    }
-                    _ => "Not valid ServerType".to_string()
-                }
-            } else {
-                "Destination server not present".to_string()
-            }
-        }
-        else {
-            if command.eq("Servers") || command.eq("Commands"){
-                "CLIENT1: OK".to_string()
-            }
-            else{
-                "Error: not a valid command".to_string()
-            }
-        }
+            match cmd {
 
+                cmd if available_simple_commands.contains(&cmd) =>{
+                    self.send_message(dest_id, cmd);
+                    "CLIENT1: OK".to_string()
+                }
+                cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
+                    if let Some(name) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
+                        if self.files_names.lock().expect("Failed to lock").contains(&name.parse::<String>().ok().expect("Failed to get files names")) {
+                            self.send_message(dest_id, cmd);
+                            "CLIENT1: OK".to_string()
+                        } else {
+                            "Error: invalid file_id".to_string()
+                        }
+                    } else {
+                        "Error: command not formatted correctly".to_string()
+                    }
+                }
+                cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
+                    if let Some(id) = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")")) {
+                        if id.is_empty() {
+                            "Error: invalid media_id".to_string()
+                        } else {
+                            self.send_message(dest_id, cmd);
+                            "CLIENT1: OK".to_string()
+                        }
+                    } else {
+                        "Error: command not formatted correctly".to_string()
+                    }
+                }
+                cmd if cmd.starts_with("message_for?(") => {
+                    match Self::get_values(cmd) {
+                        Some(values) => {
+                            if self.other_client_ids.lock().expect("Failed to lock").contains(&values.0) {
+                                self.send_message(values.0, values.1);
+                                "CLIENT1: OK".to_string()
+                            } else {
+                                "Error: invalid dest_id".to_string()
+                            }
+                        }
+                        None => {
+                            "Error: command not formatted correctly".to_string()
+                        }
+                    }
+                }
+                _=> "Not a valid command".to_string()
+            }
+        }
+        else{ "Command not formatted correctly".to_string() }
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
-        //println!("{data}");
+
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
+        //println!("CLIENT4 DEBUG {dest_id}");
+        //println!("CLIENT4 DEBUG {:?}",path.as_ref().expect("Failed to get path"));
         match path{
             Some(p) =>{
                 let first_hop = p[1].clone();
@@ -180,36 +138,42 @@ impl Client1 {
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
-    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
-
+    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{ // TODO finish error commands
+        let error_msg = vec![
+                            "error_requested_not_found!(Problem opening the file)",
+                            "error_requested_not_found!(File not found)",
+                            "error_requested_not_found!",
+                            "error_unsupported_request!"
+        ];
         match received_msg{
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
-                let original_msg = msg.clone();
-                //println!(" sos {}",original_msg);
+                //println!("DEBUG {msg}");
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
-                        self.servers.insert(src_id,serverType.to_string());
-                        //println!("{}",self.servers.get(&src_id).unwrap());
-                        original_msg
+                        self.servers.lock().expect("Failed to lock").insert(src_id,serverType.to_string().clone());
+                        serverType.to_string()
                     }
                     None =>{"Not valid server type".to_string()}
                 }
             }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") =>{
                 let original_msg = msg.clone();
-                //println!("{}",original_msg);
+
                 match Client1::get_file_vec(msg){
                     Some(val) =>{
-                        for e in val{
-                            self.files_names.push(e);
+                        let mut files = self.files_names.lock().expect("Failed to lock");
+                        for e in &val{
+                            if !files.contains(e){
+                                files.push(e.clone());
+                            }
                         }
-                        original_msg
+                        format!("[\"{}\"]", val.join("\", \""))
                     }
                     None => "There are no file_IDs in the message".to_string()
                 }
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") =>{
-                let original_msg = msg.clone();
+
                 match Client1::get_file_values(msg){
                     Some(res) =>{
                         if !res.is_empty(){
@@ -217,7 +181,9 @@ impl Client1 {
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops), session_id, frag_index);
-                            self.received_files.push(res.clone());
+                            if !self.received_files.contains(&res){
+                                self.received_files.push(res.clone());
+                            }
                             match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
                                 Ok(_) => (),
                                 Err(_) =>{ // Error: the first node is crashed
@@ -235,7 +201,7 @@ impl Client1 {
                                     }
                                 }
                             }
-                            original_msg
+                            res
                         }
                         else{ "Error: no file".to_string() }
                     }
@@ -243,7 +209,7 @@ impl Client1 {
                 }
             }
             msg if msg.starts_with("media!(") && msg.ends_with(")") =>{
-                let original_msg = msg.clone();
+
                 match msg.strip_prefix("media!(").and_then(|s|s.strip_suffix(")")){
                     Some(clean_data) =>{
                         if !clean_data.is_empty(){
@@ -268,43 +234,31 @@ impl Client1 {
                                     }
                                 }
                             }
-                            original_msg
+                            clean_data.to_string()
                         }
                         else{ "Error: no media".to_string() }
                     }
                     None => "No media in the message".to_string()
                 }
             }
-            msg if msg == "error_requested_not_found!(Problem opening the file)"=>{
-                println!("{}", msg);
+            msg if error_msg.contains(&msg.as_str())=>{
                 msg.to_string()
-            }
-            msg if msg == "error_requested_not_found!(File not found)"=>{
-                println!("{}", msg);
-                msg.to_string()
-            }
-            msg if msg == "error_requested_not_found!"=>{
-                println!("{}", msg);
-                msg.to_string()
-            }
-            msg if msg == "error_unsupported_request!"=>{
-                println!("{}", msg);
-                "error_unsupported_request!".to_string()
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") =>{
-                let original_msg = msg.clone();
                 match Client1::get_ids(msg){
                     Some(val) =>{
-                        for e in val{
-                            self.other_client_ids.push(e);
+                        let mut other_cl = self.other_client_ids.lock().expect("Failed to lock");
+                        for e in &val{
+                            if !other_cl.contains(e){
+                                other_cl.push(*e);
+                            }
                         }
-                        original_msg
+                        format!("[{}]", val.iter().map(|node| node.to_string()).collect::<Vec<String>>().join(","))
                     }
                     None => "There are no other clients in the network right now".to_string()
                 }
             }
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") =>{
-                let original_msg = msg.clone();
                 match Self::get_values(&msg){
                     Some(values) =>{
                         let src_id = values.0;
@@ -329,7 +283,7 @@ impl Client1 {
                                 }
                             }
                         }
-                        original_msg
+                        values.1.to_string()
                     }
                     None => "Failed to get message content".to_string()
                 }
@@ -411,10 +365,10 @@ mod test{
     fn test_handle_msg_received(){
         // Initialize dummy client
         let (snd,rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let mut cl = Client1::new(1, HashMap::new(), rcv, None);
         cl.sender_channels.insert(2,snd);
         cl.network.insert(1,vec![2]);
-        cl.other_client_ids.push(2);
+        cl.other_client_ids.lock().expect("Failed to lock").push(2);
         // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
@@ -457,3 +411,4 @@ mod test{
         assert_eq!(cl.handle_msg(test_msg8,3,2,0),"Error");
     }
 }
+//TODO check the message formats
