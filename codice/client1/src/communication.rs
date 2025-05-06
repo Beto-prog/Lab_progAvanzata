@@ -2,6 +2,7 @@
 use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::unbounded;
+use egui::accesskit::Node;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
 use crate::Client1;
@@ -245,7 +246,7 @@ impl Client1 {
                 msg.to_string()
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") =>{
-                match Client1::get_ids(msg){
+                match Client1::get_ids(msg,self.node_id){
                     Some(val) =>{
                         let mut other_cl = self.other_client_ids.lock().expect("Failed to lock");
                         for e in &val{
@@ -309,10 +310,13 @@ impl Client1 {
         }
         else{ None }
     }
-    pub fn get_ids(msg: String) -> Option<Vec<NodeId>>{
+    pub fn get_ids(msg: String,id: NodeId) -> Option<Vec<NodeId>>{
         if let Some(raw_data) = msg.strip_prefix("client_list!([").and_then(|s|s.strip_suffix("])")){
             if !raw_data.is_empty(){
-                Some(raw_data.split(",").filter_map(|s|s.trim().parse::<NodeId>().ok()).collect())
+                let mut res: Vec<NodeId> = vec![];
+                res = raw_data.split(",").filter_map(|s|s.trim().parse::<NodeId>().ok()).collect();
+                res.retain(|x| !x.eq(&id));
+                Some(res)
             }
             else{ None }
         }
