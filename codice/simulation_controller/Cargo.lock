@@ -694,6 +694,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
 
 [[package]]
+name = "client1"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "eframe",
+ "egui",
+ "rand 0.9.0",
+ "wg_2024",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2909,6 +2920,7 @@ name = "simulation_controller"
 version = "0.1.0"
 dependencies = [
  "bagel_bomber",
+ "client1",
  "crossbeam-channel",
  "eframe",
  "egui",
@@ -2966,7 +2978,7 @@ dependencies = [
  "thiserror 1.0.69",
  "wayland-backend",
  "wayland-client",
- "wayland-csd-_frame",
+ "wayland-csd-frame",
  "wayland-cursor",
  "wayland-protocols",
  "wayland-protocols-wlr",
@@ -3456,7 +3468,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wayland-csd-_frame"
+name = "wayland-csd-frame"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "625c5029dbd43d25e6aa9615e88b829a5cad13b2819c4ae129fdbb7c31ab4c7e"
