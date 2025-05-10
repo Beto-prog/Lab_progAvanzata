@@ -570,7 +570,7 @@ pub mod file_system {
             source_id: u32,
             flag: &mut i32,
         ) -> Result<Vec<Fragment>, String> {
-            println!("{command}");
+            //println!("{command}");
             // Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
             match command {
                 cmd if cmd.starts_with("server_type?") => {
@@ -615,7 +615,7 @@ pub mod file_system {
                                     );
                                 }
                             } else {
-                                println!("Server --> Error in the string conversion from u32");
+                                //println!("Server --> Error in the string conversion from u32");
                                 Repackager::create_fragments(
                                     &*"error_unsupported_request!".to_string(),
                                     None,
@@ -687,7 +687,7 @@ pub mod file_system {
             } else {
                 // Create the directory if it doesn't exist
                 match fs::create_dir_all(path) {
-                    Ok(_) => println!("Directory '{}' has been created.", path),
+                    Ok(_) => {/*println!("Directory '{}' has been created.", path)*/ },
                     Err(err) => panic!("Error: Could not create directory '{}': {}", path, err),
                 }
             }
@@ -761,7 +761,7 @@ pub mod file_system {
             self.add_client(source_id);
             let mut ids = self.list_of_client.clone();
             ids.sort(); // it's easier when we debug
-            println!("Processed req");
+            //println!("Processed req");
             format!("client_list!({:?})", ids)
         }
 

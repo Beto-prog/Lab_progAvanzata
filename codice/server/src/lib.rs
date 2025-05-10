@@ -44,7 +44,6 @@ impl Server{
         id: NodeId,
         packet_recv: Receiver<Packet>,
         packet_send : HashMap<NodeId, Sender<Packet>>,
-        
         server_type: Box< dyn ServerTrait>,
     ) -> Self {
         
@@ -116,9 +115,10 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         PacketType::FloodRequest(_) => { add_message(&self.message_list, "Server", "Received FloodRequest", Color::White, Color::White); }
                         PacketType::FloodResponse(_) => { add_message(&self.message_list, "Server", "Received FloodResponse", Color::White, Color::White);}
                         _ => { add_message(&self.message_list, "Server", "I received an packet without headers", Color::White, Color::Yellow);}
+                        //the only packets that don't have the routing_header are the FloodRequest and the   FloodResponse
                     }
                 }
-                Some(x) => {source_id =*x}      //FOUND
+                Some(x) => {source_id =*x}    
             }
         
         let mut response = packet.clone();  //The response will be modified later . For now, it's just a copy
@@ -126,37 +126,31 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 match packet.pack_type {                    //Process different packet type
                     PacketType::MsgFragment(msg) => {
 
-                        add_message(&self.message_list, "Server", "Recived message", Color::White, Color::White);
-                        
+                        add_message(&self.message_list, "Server", "Recived Fragment", Color::White, Color::White);
                         
                         //Send back an ack 
-                        response.pack_type = AckType(Ack {          
-                            fragment_index: msg.fragment_index,
-                        });
+                        response.pack_type = AckType(Ack { fragment_index: msg.fragment_index, });
                         self.send_valid_packet(source_id as NodeId, response.clone());
+                        add_message(&self.message_list, "Server", "Send an Ack back", Color::White, Color::White);
+                        
                         
                         //Start transforming the fragment in a vector with all the data in it 
-                        let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are sort . I refuse to eleborate request longer than 128
-                        
-                        add_message(&self.message_list, "Server", "Invio risposta ", Color::White, Color::White);
-                        
+                        let result = self.package_handler.process_fragment(packet.session_id, source_id as u64, msg);    //All the request send by the client are command. I refuse to elaborate request longer than 128
                         
                         
                         match result { 
                             Ok(Some(data)) => {//If we are able to reassemble the data we proceed
+                                add_message(&self.message_list, "Server", "I was able to reassemble a message!", Color::White, Color::Blue);
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
-                                add_message(&self.message_list, "Server", &format!("{} {}","Messaggio fremmentato",message.clone().unwrap()), Color::White, Color::White);
+                                add_message(&self.message_list, "Server", &format!("{} {}","Fragmented message:",message.clone().unwrap()), Color::White, Color::White);
         
                                
-                                let mut  flag:i32 = 0;
-                                //1 = client not found
-
+                                let mut  flag:i32 = 0;  //1 = client not found
                                 let msg_work = message.clone().unwrap();        //temp value
                                 
-                                
-                                    //Process the request
+                                //Process the request
                                 let result =self.server_type.process_request(message.unwrap(),source_id as u32,&mut flag);
 
                                 if flag==0
@@ -172,8 +166,6 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         }
                                     }
                                 }
-                                
-                           
                  
                                 match result {
                                     Ok(value) => {
@@ -185,6 +177,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         response.pack_type = MsgFragment(value.index(0).clone());
 
 
+                                        add_message(&self.message_list, "Server", &format!("{} {}","Sending response to client source id  : ",source_id), Color::White, Color::White);
                                         self.send_valid_packet(source_id, response);    
                                     }
                                     Err(x) => {
@@ -194,10 +187,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
   
                             }
                             _=> {
-                                add_message(&self.message_list, "Server", "Error fragment to long - refuse to process", Color::White, Color::Red); }
+                                add_message(&self.message_list, "Server", "Error I was unable to process the packet. It could be because the fragment to long (I refuse to process)", Color::White, Color::Red); }
                         }
-                        //let message = Repackager::reassembled_to_string(result);
-                        
                     }
                     
                     
@@ -205,23 +196,55 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     
                     
                     PacketType::Nack(msg) => {
+
+
+                        add_message(&self.message_list, "Server","I recived a NACK", Color::White, Color::Blue);
+                        let mut found =  false;
                         
                         //try to find the packet in the packet ack manager
+                        for ((source_id, session_id), vec) in self.paket_ack_manger.iter() {
+                            if *session_id == packet.session_id {
+                                
+                                let mut new_response = response.clone();
+                                new_response.pack_type = MsgFragment(vec[msg.fragment_index as usize].clone());
+                                self.send_valid_packet(*source_id, new_response);
+                                found = true;
+
+                                add_message(&self.message_list, "Server",&format!("{}{}","I sent another time a message to ",source_id), Color::White, Color::Blue);
+                                
+                            }
+                        }
+                        
+                        if !found {
+                            add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id, 
+                                                                               "Received an NAck but I can't trace back the number to any packet ",msg.clone(), 
+                                                                               " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red); 
+                        }
+                        
+                        else
+                        {
+                            
+                        }
+                        
+          
+                        /*
                         let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
                         match result {
                             None => {
-                                add_message(&self.message_list, "Server", &format!("{} {:?}", "Received an NAck but I can't trace back the number to any packet ",msg.clone()), Color::White, Color::Red); }
+                                add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id, "Received an NAck but I can't trace back the number to any packet ",msg.clone(), " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red); }
                             Some(ack_value) => {
                                 if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index) {
                                     
                                     //Send the previous  packet 
-                                    response.pack_type = MsgFragment(ack_value[pos].clone());
-                                    self.send_valid_packet(source_id, response);
+                                    //response.pack_type = MsgFragment(ack_value[pos].clone());
+                                    add_message(&self.message_list, "Server",&format!("{} {} {}", "I recived a Nack. Send back the packet ", ack_value[pos].clone()," again."), Color::White, Color::Red); 
+                                    
+                                    //self.send_valid_packet(source_id, response);
                                 } else {
                                     add_message(&self.message_list, "Server", "Index of Nack not found.", Color::White, Color::Red); }
                                     
                                 }
-                            }
+                            }*/
                         }
                         
                     
@@ -241,16 +264,14 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 The ack manager is a structure that use for a ky the source_id and the session id
                                 it has a vector containing all the packet that need to be sends
                                  */
-                                
-                                //println!("{:?}",ack_value);
-                                
-                                
                                     //I try to get the next packet that is needs to be sent 
                                     if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index + 1) {
                                         
                                             //Send the next packet
                                             response.pack_type = MsgFragment(ack_value[pos].clone());
-                                            self.send_valid_packet(source_id, response);
+                                        add_message(&self.message_list, "Server", &format!("{} {} {} {} {}","Received a ack from source id: ",source_id," and Session id: ",packet.session_id, " ). Sending next paxet"), Color::White, Color::White);
+
+                                        self.send_valid_packet(source_id, response);
                                     } 
                                     else {  //Check if all the packets are arrived correctly 
                                         if  msg.fragment_index as usize  == ack_value.len()-1
@@ -267,17 +288,11 @@ Start by sending a flood request to all the neighbour to fill up the graph
                             }
                         }
                     }
-
-                    
-                    
                     
                     PacketType::FloodResponse(path) => {
                         NewWork::recive_flood_response(&mut self.graph, path.path_trace);            //It's not the job of the server to propagate the message is not a drone
                     }
                     
-                    
-                    
-
                     PacketType::FloodRequest(mut flood_packet) =>
                         {
                             let mut previous_neighbour = 0;
@@ -292,14 +307,12 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     .map(|(id, _)| id)
                                     .rev()
                                     .collect();
-                                //println!("New hops: {:?}",new_hops);
                                 let srh = SourceRoutingHeader::with_first_hop(new_hops);
                                 let flood_resp = FloodResponse{
                                     flood_id: flood_packet.flood_id,
                                     path_trace: flood_packet.path_trace.clone()
                                 };
                                 let response = Packet::new_flood_response(srh,packet.session_id,flood_resp);
-                                //println!("SERVER: {:?}",response);
                                 NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
                                 //for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
@@ -349,7 +362,6 @@ Start by sending a flood request to all the neighbour to fill up the graph
     
    /* fn send_shortcut(&mut self, packet: Packet) {
         if let Err(e) = self.controller_send.send(ControllerShortcut(packet)) {
-            println!("{}", e);
         }
     }*/
 
