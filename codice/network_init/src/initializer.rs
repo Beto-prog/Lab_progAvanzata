@@ -123,6 +123,7 @@ impl NetworkInitializer {
                     packet_receiver.clone(),
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()),
+                    None
                 ),
                 1 => {
                     let _ = std::fs::create_dir("/tmp/ServerTxt");
@@ -134,6 +135,7 @@ impl NetworkInitializer {
                             "/tmp/ServerTxt",
                             server::file_system::ServerType::TextServer,
                         )),
+                        Some("/tmp/ServerTxt".to_string()),
                     )
                 }
                 _ => {
@@ -146,6 +148,7 @@ impl NetworkInitializer {
                             "/tmp/ServerMedia",
                             server::file_system::ServerType::MediaServer,
                         )),
+                        Some("/tmp/ServerTxt".to_string()),
                     )
                 }
             };

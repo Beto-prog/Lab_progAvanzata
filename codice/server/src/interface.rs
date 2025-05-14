@@ -29,7 +29,7 @@ pub mod interface
     // (nome, colore_nome, messaggio, colore_messaggio)
     type Messages = Arc<Mutex<Vec<(String, Color, String, Color)>>>;
 
-    pub fn start_ui(server_name: String, messages: Messages) {
+    pub fn start_ui(server_name: String, messages: Messages, path : Option<String>) {
         thread::spawn(move || {
             enable_raw_mode().unwrap();
             let mut stdout = stdout();
@@ -37,7 +37,7 @@ pub mod interface
             let backend = CrosstermBackend::new(stdout);
             let mut terminal = Terminal::new(backend).unwrap();
 
-            let _ = run_app(&mut terminal, server_name, messages);
+            let _ = run_app(&mut terminal, server_name, messages,path.unwrap_or(".".to_string()));
 
             disable_raw_mode().unwrap();
             execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture).unwrap();
@@ -59,6 +59,7 @@ pub mod interface
         terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
         server_name: String,
         messages: Messages,
+        path : String,
     ) -> Result<()> {
         let mut mode = Mode::Chat;
         let mut selected_index = 0;
@@ -113,7 +114,8 @@ pub mod interface
                         f.render_stateful_widget(list, chunks[1], &mut state);
                     }
                     Mode::FileList => {
-                        let files = fs::read_dir(".")
+                        let copy  = path.clone();
+                        let files = fs::read_dir(copy)
                             .unwrap()
                             .filter_map(|entry| entry.ok())
                             .map(|e| e.file_name().to_string_lossy().to_string())

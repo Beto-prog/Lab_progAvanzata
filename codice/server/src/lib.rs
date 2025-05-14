@@ -29,7 +29,8 @@ pub struct  Server
     packet_recv: Receiver<Packet>,                  //packet receiver
     packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour (drone  for send the packet)  
     server_type: Box<dyn ServerTrait>,              //Server type 
-  
+    path : Option<String>,
+    
     // extra field
     graph: HashMap<NodeId, Vec<NodeId>>,            //I need this for bfs
     package_handler: Repackager,                    // Fragment and reassemble file
@@ -45,6 +46,7 @@ impl Server{
         packet_recv: Receiver<Packet>,
         packet_send : HashMap<NodeId, Sender<Packet>>,
         server_type: Box< dyn ServerTrait>,
+        path : Option<String>,
     ) -> Self {
         
         let mut graph = HashMap::new();
@@ -57,7 +59,7 @@ impl Server{
             packet_recv: packet_recv,
             packet_send: packet_send,   //directly connected neighbour.  
             server_type: server_type,
-            
+            path: path,
            
            // extra field
             graph: graph,            //I nees this for bfs
@@ -76,7 +78,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
     pub fn run(&mut self) {
         self.sendflod_request();
-        start_ui("pollo".to_string(), self.message_list.clone());
+        
+        start_ui("pollo".to_string(), self.message_list.clone(),self.path.clone());
         loop {
             select_biased! {        //copied from the drone        
                 recv(self.packet_recv) -> packet => {
