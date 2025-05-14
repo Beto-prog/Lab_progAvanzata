@@ -196,7 +196,13 @@ impl Client1 {
                                 let new_first_hop = new_hops[1];
                                 //println!("DEBUG Client: {msg}");
                                 //Handle the reconstructed message
-                                msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
+                                if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
+                                    //println!("DEBUG msg: {:?}",msg);
+                                    self.handle_msg(msg,packet.session_id,dest_id,frag_index);
+                                }
+                                else{
+                                    msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
+                                }
                                 // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
                                     SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,frag_index);
@@ -226,7 +232,7 @@ impl Client1 {
                     // There are still Fragments missing: send back Ack for current fragment in the meantime
                     None => {
                         let mut new_hops = packet.routing_header.hops.clone();
-                    let dest_id = new_hops[0].clone();
+                        let dest_id = new_hops[0].clone();
                         new_hops.reverse();
                         let new_first_hop = new_hops[1];
                         let new_pack = Packet::new_ack(
@@ -364,7 +370,7 @@ impl Client1 {
                                 Ok(packet) => {
                                         self.handle_packet(packet, &msg_snd);
                                 },
-                                Err(e) => println!("Err: {e}")
+                                Err(e) => ()//println!("Err1: {e}")
                         }
                     }
                     recv(cmd_rcv) -> cmd => {
@@ -372,7 +378,7 @@ impl Client1 {
                             Ok(cmd) => {
                                 match self.handle_command(cmd.as_str()).as_str() {
                                     "CLIENT1: OK" => (),
-                                    e => println!("Err: {e}")
+                                    e => () //println!("Err2: {e}")
                                 }
                             }
                             Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed

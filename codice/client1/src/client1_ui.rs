@@ -15,7 +15,7 @@ pub struct Client1_UI {
     selected_server: (NodeId,String),    // Selected server name
     selected_client_id: NodeId, // Selected client ID
     selected_command: String,  // Selected command
-    selected_media_id: String,   // Selected file ID
+    selected_content_id: String,   // Selected file ID
     input_text: String,
     cmd_snd: Option<Sender<String>>,    // Command sender
     msg_rcv: Option<Receiver<String>>,   // Message receiver
@@ -25,7 +25,8 @@ pub struct Client1_UI {
     response: String,
     error: (bool,String),
     communication_server_commands: Vec<String>,
-    content_server_commands: Vec<String>,
+    text_server_commands: Vec<String>,
+    media_server_commands: Vec<String>,
 }
 
 impl Client1_UI {
@@ -38,7 +39,7 @@ impl Client1_UI {
             selected_server: (0,String::new()),
             selected_client_id: 0,
             selected_command: String::from("Select command"),
-            selected_media_id: String::from("Select media"),
+            selected_content_id: String::from(""),
             input_text: String::new(),
             cmd_snd: Some(cmd_snd),
             msg_rcv: Some(msg_rcv),
@@ -47,7 +48,8 @@ impl Client1_UI {
             can_show_file_list: false,
             response: String::new(),
             error: (false,String::new()),
-            content_server_commands: vec!["file?".to_string(), "media?".to_string(), "file_list?".to_string()],
+            text_server_commands: vec!["file?".to_string(),"files_list?".to_string()],
+            media_server_commands: vec!["media?".to_string(), "files_list?".to_string()],
             communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()]
 
         }
@@ -105,18 +107,26 @@ impl Client1_UI {
                                             ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
                                         }
                                     });
-                                //ui.separator();
-                                }
-                            _ => {
-
-                                egui::ComboBox::new("Select content_server_commands", "")
-                                    .selected_text(format!("{:?}", self.selected_command))
+                            }
+                            "TextServer" => {
+                                egui::ComboBox::new("Select text_server_commands", "")
+                                    .selected_text(format!("{:?}",self.selected_command))
                                     .show_ui(ui, |ui| {
-                                        for command in &self.content_server_commands {
+                                        for command in &self.text_server_commands {
                                             ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
                                         }
                                     });
                             }
+                            "MediaServer" => {
+                                egui::ComboBox::new("Select media_server_commands", "")
+                                    .selected_text(format!("{:?}",self.selected_command))
+                                    .show_ui(ui, |ui| {
+                                        for command in &self.media_server_commands {
+                                            ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
+                                        }
+                                    });
+                            }
+                            _ => ()
                         }
                         ui.add_space(10.0);
                     });
@@ -126,7 +136,7 @@ impl Client1_UI {
                             "message_for?" => {
                                 if !self.clients.lock().expect("Failed to lock").is_empty(){
                                     ui.horizontal(|ui|{
-                                        self.selected_command = "message_for?".to_string();
+                                        //self.selected_command = "message_for?".to_string();
                                         ui.label("Write a message:");
                                         ui.add(TextEdit::singleline(&mut self.input_text).desired_width(200.0));
                                         ui.label("to client:");
@@ -150,16 +160,20 @@ impl Client1_UI {
                                 if !self.files_names.lock().expect("Failed to lock").is_empty(){
                                     let binding = self.files_names.lock().expect("Failed to lock");
                                     let ids = binding.iter().clone();
-                                    egui::ComboBox::new("Select file", "")
-                                        .selected_text(format!("{}", self.selected_media_id))
-                                        .show_ui(ui, |ui| {
-                                            for id in ids {
-                                                ui.selectable_value(&mut self.selected_media_id, id.to_string(), id.to_string());
-                                            }
-                                        });
+                                    ui.horizontal(|ui|{
+                                        ui.label("File");
+                                        ui.add_space(10.0);
+                                        egui::ComboBox::new("Select file", "")
+                                            .selected_text(format!("{}", self.selected_content_id))
+                                            .show_ui(ui, |ui| {
+                                                for id in ids {
+                                                    ui.selectable_value(&mut self.selected_content_id, id.to_string(), id.to_string());
+                                                }
+                                            });
+                                    });
                                 }
                                 else{
-                                    self.error = (true,"No content available.\nCheck for available content first".to_string());
+                                    self.error = (true,"No content available.\nCheck for available files first".to_string());
                                 }
 
                             },
@@ -167,25 +181,30 @@ impl Client1_UI {
                                 if !self.files_names.lock().expect("Failed to lock").is_empty() {
                                     let binding = self.files_names.lock().expect("Failed to lock");
                                     let ids = binding.iter().clone();
-                                    egui::ComboBox::new("Select media", "")
-                                        .selected_text(format!("{}", self.selected_media_id))
-                                        .show_ui(ui, |ui| {
-                                            for id in ids {
-                                                ui.selectable_value(&mut self.selected_media_id, id.to_string(), id.to_string());
-                                            }
-                                        });
+                                    ui.horizontal(|ui|{
+                                        ui.label("Media");
+                                        ui.add_space(10.0);
+                                        egui::ComboBox::new("Select media", "")
+                                            .selected_text(format!("{}", self.selected_content_id))
+                                            .show_ui(ui, |ui| {
+                                                for id in ids {
+                                                    ui.selectable_value(&mut self.selected_content_id, id.to_string(), id.to_string());
+                                                }
+                                            });
+                                    });
                                 }
                                 else{
-                                    self.error = (true,"No content available.\nCheck for available content first".to_string());
+                                    self.error = (true,"No content available.\nCheck for available media first".to_string());
                                 }
 
                             }
                             "files_list?" => {
                                 self.selected_command = "files_list?".to_string();
                             }
-                            _ => {
+                            "client_list?" => {
                                 self.selected_command = "client_list?".to_string();
                             }
+                            _ => ()
                         }
                     });
                     ui.add_space(30.0);
@@ -237,7 +256,7 @@ impl Client1_UI {
                     });
                     ui.add_space(20.0);
                     let cmd = self.create_command();
-                    if !self.error.0{ // TODO check what is the best choice to do
+                    if !self.error.0 && !self.selected_command.eq("Select command"){ // TODO check what is the best choice to do
                         if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("SEND")).clicked(){
                             self.handle_response_show(cmd);
                         }
@@ -277,7 +296,12 @@ impl Client1_UI {
             }
         }
         else {
-            Client1_UI::create_complex_command(&self.selected_command,&self.selected_media_id,self.selected_server.0)
+            if self.selected_command.eq("files_list?"){
+                Client1_UI::create_simple_command(&self.selected_command,self.selected_server.0)
+            }
+            else{
+                Client1_UI::create_complex_command(&self.selected_command,&self.selected_content_id,self.selected_server.0)
+            }
         }
     }
     pub fn create_simple_command(selected_c: &String, selected_s: NodeId) -> String{
@@ -307,24 +331,30 @@ impl Client1_UI {
         r
     }
     pub fn handle_response_show(&mut self,cmd: String){
-        if self.communication_server_commands.contains(&self.selected_command) && self.selected_command.eq("client_list?"){
+        if self.selected_command.eq("client_list?"){
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = true;
             self.can_show_response = false;
             self.can_show_file_list = false;
         }
-        else if self.content_server_commands.contains(&self.selected_command) && self.selected_command.eq("files_list?"){
+        else if self.selected_command.eq("files_list?"){
+            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_response = false;
             self.can_show_file_list = true;
         }
-        else{ // TODO need to test why it receives a "CommunicationServer"
+        else if self.error.0{
+            self.can_show_clients = false;
+            self.can_show_response = false;
+            self.can_show_file_list = false;
+        }
+        else{
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
             if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").recv() {
-                self.response = response;
                 self.can_show_response = true;
+                self.response = response;
             }
         }
     }
@@ -343,7 +373,7 @@ impl Client1_UI {
                             ui.add_space(10.0);
                             if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
                                 self.can_show_response = false;
-                                self.response = "".to_string();
+                                self.response = String::new();
                             }
                         });
                 },
@@ -389,8 +419,8 @@ impl Client1_UI {
                             ui.add_space(10.0);
                             if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
                                 self.error.0 = false;
-                                self.error.1 = "".to_string();
-                                self.selected_command = String::new();
+                                self.error.1 = String::new();
+                                //self.selected_command = String::new();
                             }
                         });
                 }

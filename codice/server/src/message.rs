@@ -496,7 +496,6 @@ pub mod file_system {
                         cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"))
                     {
                         let path = Path::new(&self.path).join(file_id);
-
                         if path.exists() && path.is_file() {
                             let size = fs::metadata(path.clone())
                                 .ok()

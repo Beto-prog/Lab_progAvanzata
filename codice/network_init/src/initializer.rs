@@ -118,13 +118,13 @@ impl NetworkInitializer {
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
             let mut server = match index % 3 {
-                0 => server::Server::new(
+                1 => server::Server::new(
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()),
                 ),
-                1 => {
+                0 => {
                     let _ = std::fs::create_dir("/tmp/ServerTxt");
                     server::Server::new(
                         server_config.id,

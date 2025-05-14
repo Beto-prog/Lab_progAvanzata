@@ -13,6 +13,7 @@ impl Client1 {
     pub fn handle_command(&mut self, command: &str) -> String{
     let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
         if let Some((cmd,dest)) = command.split_once("->") {
+            //println!("DEBUG COMMAND: {}",cmd);
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
             match cmd {
 
@@ -23,6 +24,7 @@ impl Client1 {
                 cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                     if let Some(name) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
                         if self.files_names.lock().expect("Failed to lock").contains(&name.parse::<String>().ok().expect("Failed to get files names")) {
+                            //println!("debug cl {cmd}");
                             self.send_message(dest_id, cmd);
                             "CLIENT1: OK".to_string()
                         } else {
@@ -139,26 +141,27 @@ impl Client1 {
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
-    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{ // TODO finish error commands
+    pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
         let error_msg = vec![
                             "error_requested_not_found!(Problem opening the file)",
                             "error_requested_not_found!(File not found)",
                             "error_requested_not_found!",
                             "error_unsupported_request!"
         ];
+        //println!("DEBUG {received_msg}");
         match received_msg{
+
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
                 //println!("DEBUG {msg}");
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
                         self.servers.lock().expect("Failed to lock").insert(src_id,serverType.to_string().clone());
-                        serverType.to_string()
+                        "".to_string()
                     }
                     None =>{"Not valid server type".to_string()}
                 }
             }
-            msg if msg.starts_with("files_list!([") && msg.ends_with("])") =>{
-                let original_msg = msg.clone();
+            msg if msg.starts_with("files_list!(") && msg.ends_with(")") =>{
 
                 match Client1::get_file_vec(msg){
                     Some(val) =>{
@@ -168,7 +171,7 @@ impl Client1 {
                                 files.push(e.clone());
                             }
                         }
-                        format!("[\"{}\"]", val.join("\", \""))
+                        "".to_string()
                     }
                     None => "There are no file_IDs in the message".to_string()
                 }
@@ -254,7 +257,8 @@ impl Client1 {
                                 other_cl.push(*e);
                             }
                         }
-                        format!("[{}]", val.iter().map(|node| node.to_string()).collect::<Vec<String>>().join(","))
+                        "".to_string()
+                        //format!("[{}]", val.iter().map(|node| node.to_string()).collect::<Vec<String>>().join(","))
                     }
                     None => "There are no other clients in the network right now".to_string()
                 }
@@ -334,7 +338,8 @@ impl Client1 {
     pub fn get_file_vec(cmd: String) -> Option<Vec<String>>{
         if let Some(raw_data) = cmd.strip_prefix("files_list!([").and_then(|s| s.strip_suffix("])")){
             if !raw_data.is_empty(){
-                Some(raw_data.split(",").filter_map(|s|s.trim().parse::<String>().ok()).collect())
+                let res = raw_data.split(",").filter_map(|s|s.trim().parse::<String>().ok()).collect();
+                Some(res)
             }
             else{ None }
         } else { None }
