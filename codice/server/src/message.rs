@@ -66,15 +66,12 @@ pub mod net_work {
     pub fn remove_neighbor(
         graph: &mut HashMap<NodeId, Vec<NodeId>>,
         node: NodeId,
-        neighbor: NodeId,
     ) {
-        if let Some(neighbors) = graph.get_mut(&node) {
-            neighbors.retain(|&n| n != neighbor);
-        }
-        /*     //Delete both way
-        if let Some(neighbors) = graph.get_mut(&neighbor) {
+        graph.remove(&node);
+        // Rimuove il nodo dalla lista dei vicini di tutti gli altri nodi
+        for neighbors in graph.values_mut() {
             neighbors.retain(|&n| n != node);
-        }*/
+        }
     }
 
     //this function start creating the graph with the flood response that it receive

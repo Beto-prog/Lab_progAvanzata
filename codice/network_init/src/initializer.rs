@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use super::config::NetworkConfig;
 use super::validation::validate_config;
 use client1::client1_ui::Client1_UI;
@@ -117,6 +118,11 @@ impl NetworkInitializer {
             }
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
+            let base_path = if cfg!(target_os = "windows") {
+                "C:\\Temp\\ServerTxt"
+            } else {
+                "/tmp/ServerTxt"
+            };
             let mut server = match index % 3 {
                 1 => server::Server::new(
                     server_config.id,
@@ -126,29 +132,29 @@ impl NetworkInitializer {
                     None
                 ),
                 0 => {
-                    let _ = std::fs::create_dir("/tmp/ServerTxt");
+                    let _ = std::fs::create_dir(base_path);
                     server::Server::new(
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
-                            "/tmp/ServerTxt",
+                            base_path,
                             server::file_system::ServerType::TextServer,
                         )),
-                        Some("/tmp/ServerTxt".to_string()),
+                        Some(base_path.to_string()),
                     )
                 }
                 _ => {
-                    let _ = std::fs::create_dir("/tmp/ServerMedia");
+                    let _ = std::fs::create_dir(base_path);
                     server::Server::new(
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
-                            "/tmp/ServerMedia",
+                            base_path,
                             server::file_system::ServerType::MediaServer,
                         )),
-                        Some("/tmp/ServerTxt".to_string()),
+                        Some(base_path.to_string()),
                     )
                 }
             };

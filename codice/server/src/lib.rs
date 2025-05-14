@@ -17,7 +17,7 @@ use message::net_work as NewWork;
 use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
 use wg_2024::packet::PacketType::{Ack as AckType,  MsgFragment};
-use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NodeType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use NewWork::bfs_shortest_path;
 use std::{sync::{Arc, Mutex}, thread, time::Duration};
 use ratatui::style::Color;
@@ -59,7 +59,7 @@ impl Server{
             packet_recv: packet_recv,
             packet_send: packet_send,   //directly connected neighbour.  
             server_type: server_type,
-            path: path,
+            path: path,                 //path where the file are stored
            
            // extra field
             graph: graph,            //I nees this for bfs
@@ -199,55 +199,52 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     
                     
                     PacketType::Nack(msg) => {
-
-
-                        add_message(&self.message_list, "Server","I recived a NACK", Color::White, Color::Blue);
-                        let mut found =  false;
                         
+                        match msg.nack_type {
+                            NackType::ErrorInRouting(Nodeid) => {   //contains id or not neighbor
+                                //if we ended up here it means that the drone tryed to pass the packet that is not one of his neighbour thus (since my routing is correct) 
+                                // the drone not found is dropped
+
+                                add_message(&self.message_list, "Server", "It seems that one drone has fallen, trying to send again the packet through another way", 
+                                            Color::White, Color::Blue);
+
+                                NewWork::remove_neighbor(&mut self.graph,Nodeid);
+                            }
+                            NackType::DestinationIsDrone => {
+                                //what can I do in this case. It 's impossible ??
+                            }
+                            NackType::Dropped => {
+
+                                add_message(&self.message_list, "Server","I received a NACK (packet dropped)", Color::White, Color::Blue);
+                            }
+                            
+                            NackType::UnexpectedRecipient(Nodeid) => {
+                                //no idea 
+                            }
+                            
+                        }
+                        let mut found =  false;
+
                         //try to find the packet in the packet ack manager
                         for ((source_id, session_id), vec) in self.paket_ack_manger.iter() {
                             if *session_id == packet.session_id {
-                                
+
                                 let mut new_response = response.clone();
                                 new_response.pack_type = MsgFragment(vec[msg.fragment_index as usize].clone());
                                 self.send_valid_packet(*source_id, new_response);
                                 found = true;
 
                                 add_message(&self.message_list, "Server",&format!("{}{}","I sent another time a message to ",source_id), Color::White, Color::Blue);
-                                
+
                             }
                         }
-                        
+
                         if !found {
-                            add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id, 
-                                                                               "Received an NAck but I can't trace back the number to any packet ",msg.clone(), 
-                                                                               " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red); 
+                            add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id,
+                                                                               "Received an NAck but I can't trace back the number to any packet ",msg.clone(),
+                                                                               " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red);
                         }
                         
-                        else
-                        {
-                            
-                        }
-                        
-          
-                        /*
-                        let result =self.paket_ack_manger.get(&(source_id, packet.session_id));
-                        match result {
-                            None => {
-                                add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id, "Received an NAck but I can't trace back the number to any packet ",msg.clone(), " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red); }
-                            Some(ack_value) => {
-                                if let Some(pos) = ack_value.iter().position(|f| f.fragment_index == msg.fragment_index) {
-                                    
-                                    //Send the previous  packet 
-                                    //response.pack_type = MsgFragment(ack_value[pos].clone());
-                                    add_message(&self.message_list, "Server",&format!("{} {} {}", "I recived a Nack. Send back the packet ", ack_value[pos].clone()," again."), Color::White, Color::Red); 
-                                    
-                                    //self.send_valid_packet(source_id, response);
-                                } else {
-                                    add_message(&self.message_list, "Server", "Index of Nack not found.", Color::White, Color::Red); }
-                                    
-                                }
-                            }*/
                         }
                         
                     
@@ -383,7 +380,10 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 packet.routing_header = path;
                 let c =self.packet_send.get(&packet.routing_header.hops[1]);    //take the first node to which you need to send the messages
                 match c {
-                    None => {}
+                    None => {
+                        add_message(&self.message_list, "Server", "I was not able to find a routing header to the destination!!!!", Color::White, Color::Red);
+                        
+                    }
                     Some(x) => {x.send(packet);}
                 }
             },
