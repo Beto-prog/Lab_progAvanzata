@@ -10,7 +10,7 @@ use crate::fragment_reassembler::FragmentReassembler;
 
 //Communication part related to the Client
 impl Client1 {
-    pub fn handle_command(&mut self, command: &str) -> String{
+    pub fn handle_command(&mut self, command: String) -> String{
     let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
         if let Some((cmd,dest)) = command.split_once("->") {
             //println!("DEBUG COMMAND: {}",cmd);
@@ -162,12 +162,12 @@ impl Client1 {
                 }
             }
             msg if msg.starts_with("files_list!(") && msg.ends_with(")") =>{
-
+                //println!("{msg}");
                 match Client1::get_file_vec(msg){
                     Some(val) =>{
                         let mut files = self.files_names.lock().expect("Failed to lock");
-                        for e in &val{
-                            if !files.contains(e){
+                        for e in val{
+                            if !files.contains(&e){
                                 files.push(e.clone());
                             }
                         }
@@ -293,7 +293,7 @@ impl Client1 {
                     None => "Failed to get message content".to_string()
                 }
             }
-            _ => "Error".to_string()
+            _ => "Error: return message not correctly formatted".to_string()
         }
     }
     // Helper functions
@@ -338,11 +338,20 @@ impl Client1 {
     pub fn get_file_vec(cmd: String) -> Option<Vec<String>>{
         if let Some(raw_data) = cmd.strip_prefix("files_list!([").and_then(|s| s.strip_suffix("])")){
             if !raw_data.is_empty(){
-                let res = raw_data.split(",").filter_map(|s|s.trim().parse::<String>().ok()).collect();
-                Some(res)
+                let res: Vec<String> = raw_data
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('"').to_string()) // remove whitespace & quotes
+                    .collect();
+
+                if res.is_empty() {
+                    None
+                } else {
+                    Some(res)
+                }
             }
             else{ None }
-        } else { None }
+        }
+        else { None }
     }
 }
 // Tests of helper functions and received messages

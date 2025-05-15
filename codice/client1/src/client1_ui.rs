@@ -39,7 +39,7 @@ impl Client1_UI {
             selected_server: (0,String::new()),
             selected_client_id: 0,
             selected_command: String::from("Select command"),
-            selected_content_id: String::from(""),
+            selected_content_id: String::new(),
             input_text: String::new(),
             cmd_snd: Some(cmd_snd),
             msg_rcv: Some(msg_rcv),
@@ -101,7 +101,7 @@ impl Client1_UI {
                         match self.selected_server.1.as_str() {
                             "CommunicationServer" => {
                                 egui::ComboBox::new("Select communication_server_command", "")
-                                    .selected_text(format!("{:?}", self.selected_command))
+                                    .selected_text(format!("{}", self.selected_command))
                                     .show_ui(ui, |ui| {
                                         for command in &self.communication_server_commands {
                                             ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
@@ -110,7 +110,7 @@ impl Client1_UI {
                             }
                             "TextServer" => {
                                 egui::ComboBox::new("Select text_server_commands", "")
-                                    .selected_text(format!("{:?}",self.selected_command))
+                                    .selected_text(format!("{}",self.selected_command))
                                     .show_ui(ui, |ui| {
                                         for command in &self.text_server_commands {
                                             ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
@@ -119,7 +119,7 @@ impl Client1_UI {
                             }
                             "MediaServer" => {
                                 egui::ComboBox::new("Select media_server_commands", "")
-                                    .selected_text(format!("{:?}",self.selected_command))
+                                    .selected_text(format!("{}",self.selected_command))
                                     .show_ui(ui, |ui| {
                                         for command in &self.media_server_commands {
                                             ui.selectable_value(&mut self.selected_command, command.clone(), command.clone());
@@ -167,7 +167,7 @@ impl Client1_UI {
                                             .selected_text(format!("{}", self.selected_content_id))
                                             .show_ui(ui, |ui| {
                                                 for id in ids {
-                                                    ui.selectable_value(&mut self.selected_content_id, id.to_string(), id.to_string());
+                                                    ui.selectable_value(&mut self.selected_content_id, (*id).clone(), id.to_string());
                                                 }
                                             });
                                     });
@@ -188,7 +188,7 @@ impl Client1_UI {
                                             .selected_text(format!("{}", self.selected_content_id))
                                             .show_ui(ui, |ui| {
                                                 for id in ids {
-                                                    ui.selectable_value(&mut self.selected_content_id, id.to_string(), id.to_string());
+                                                    ui.selectable_value(&mut self.selected_content_id, (*id).clone(), id.to_string());
                                                 }
                                             });
                                     });

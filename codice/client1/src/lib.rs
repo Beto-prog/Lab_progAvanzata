@@ -162,7 +162,7 @@ impl Client1 {
                         let mut t = "server_type?->".to_string();
                         t.push_str(node.0.to_string().as_str());
                         //println!("{t}");
-                        self.handle_command(t.as_str());
+                        self.handle_command(t.clone());
                     }
                         /*
                     else if node.1.eq(&NodeType::Client) && (node.0 != self.node_id){
@@ -361,7 +361,7 @@ impl Client1 {
             ui_snd.send(cl1_ui).expect("Failed to send");
         }
 
-        //Packet handle part TODO fix relationship with UI
+        //Packet handle part
         loop {
             select_biased! {
                 // Handle packets in the meantime
@@ -376,7 +376,7 @@ impl Client1 {
                     recv(cmd_rcv) -> cmd => {
                         match cmd {
                             Ok(cmd) => {
-                                match self.handle_command(cmd.as_str()).as_str() {
+                                match self.handle_command(cmd.clone()).as_str() {
                                     "CLIENT1: OK" => (),
                                     e => () //println!("Err2: {e}")
                                 }
