@@ -2,7 +2,7 @@
 
 mod message;
 mod interface;
-
+mod logger;
 
 use crate::interface::interface::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
@@ -22,8 +22,12 @@ use NewWork::bfs_shortest_path;
 use std::{sync::{Arc, Mutex}, thread, time::Duration};
 use ratatui::style::Color;
 
+
 pub use message::file_system;
-pub struct  Server  
+use crate::logger::logger::init_logger;
+use crate::logger::logger::write_log;
+
+pub struct  Server
 {
     id: NodeId,
     packet_recv: Receiver<Packet>,                  //packet receiver
@@ -78,7 +82,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
     pub fn run(&mut self) {
         self.sendflod_request();
-        
+        init_logger();
+
         start_ui("pollo".to_string(), self.message_list.clone(),self.path.clone());
         loop {
             select_biased! {        //copied from the drone        
