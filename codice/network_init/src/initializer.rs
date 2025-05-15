@@ -14,6 +14,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use wg_2024::network::NodeId;
 
+use std::fs::{ File};
+use std::io::Write;
+use std::path::Path;
+
 pub struct NetworkInitializer;
 
 impl NetworkInitializer {
@@ -132,7 +136,7 @@ impl NetworkInitializer {
                     None
                 ),
                 0 => {
-                    let _ = std::fs::create_dir(base_path);
+                    Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
                         packet_receiver.clone(),
@@ -145,7 +149,7 @@ impl NetworkInitializer {
                     )
                 }
                 _ => {
-                    let _ = std::fs::create_dir(base_path);
+                    Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
                         packet_receiver.clone(),
@@ -204,6 +208,30 @@ impl NetworkInitializer {
         ) {
             println!("Error: {}", error);
         }
+    }
+    fn prepare_files(base_path: &str) -> std::io::Result<()> {
+        // Crea la directory se non esiste
+        if !Path::new(base_path).exists() {
+            fs::create_dir_all(base_path)?;
+        }
+
+        // Controlla se ci sono già file nella directory
+        let entries = fs::read_dir(base_path)?
+            .filter_map(Result::ok)
+            .filter(|e| e.path().is_file())
+            .count();
+
+        if entries == 0 {
+            // Se la cartella è vuota, crea alcuni file di esempio
+            let sample_contents = vec!["123", "456", "789"];
+            for (i, content) in sample_contents.iter().enumerate() {
+                let file_path = format!("{}/text{}.txt", base_path, i + 1);
+                let mut file = File::create(file_path)?;
+                file.write_all(content.as_bytes())?;
+            }
+        }
+
+        Ok(())
     }
 
     fn get_network_topology(config: &NetworkConfig) -> HashMap<NodeId, HashSet<NodeId>> {
