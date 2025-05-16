@@ -21,7 +21,7 @@ impl FragmentReassembler {
         }
     }
     // Add a fragment in the buffer and proceed to assemble the message as a Vec is all fragments received
-    pub fn add_fragment(&mut self, session_id: u64, source_id: NodeId, fragment: Fragment) -> Result<Vec<u8>,String> {
+    pub fn add_fragment(&mut self, session_id: u64, source_id: NodeId, fragment: Fragment) -> Result<Vec<u8>, String> {
         let key = (session_id, source_id);
 
         // Initialize tracking structures for this (session_id, source_id) pair if needed
@@ -30,7 +30,7 @@ impl FragmentReassembler {
         }
         // Get the buffer for this (session_id, source_id)
         let buffer = self.buffer.get_mut(&key).expect("Failed to get buffer");
-        if buffer.len() < (fragment.total_n_fragments * 128) as usize{
+        if buffer.len() < (fragment.total_n_fragments * 128) as usize {
             buffer.resize((fragment.total_n_fragments * 128) as usize, 0);
         }
         // Copy the fragment's data into the correct position in the buffer
@@ -39,7 +39,7 @@ impl FragmentReassembler {
         buffer[start..end].copy_from_slice(&fragment.data[..fragment.length as usize]);
 
         // Update count of received fragments
-        *self.processed_fragments.entry(key).or_insert(0) +=1;
+        *self.processed_fragments.entry(key).or_insert(0) += 1;
         if self.processed_fragments[&key] == fragment.total_n_fragments as u8 {
             // Reassemble the message
             let total_length = ((fragment.total_n_fragments - 1) * 128 + fragment.length as u64) as usize;
@@ -77,7 +77,7 @@ impl FragmentReassembler {
 
             fragments.push(Fragment {
                 fragment_index: i,
-                total_n_fragments  ,
+                total_n_fragments,
                 length: slice.len() as u8,
                 data,
             });
@@ -86,49 +86,13 @@ impl FragmentReassembler {
     }
     // Assemble the Vec and save the result
     pub fn assemble_string_file(data: Vec<u8>, mut received_files: &mut Vec<String>) -> Result<String, String> {
-        // Remove null character
-        let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();
-        let clean_data_clone = clean_data.clone();
-        // Search position of first separator
-        let separator_pos = clean_data.iter().position(|&b| b == b'(' );
-        if let Some(pos) = separator_pos {
-            // Take initial string
-            let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
-                Ok(s) => s,
-                Err(e) => return Err(format!("Error while converting initial string: {}", e)),
-            };
-
-            // Extract file content
-            let file_data = &clean_data[pos + 1..];
-
-            // If file has data save it in the received_files vector
-            if !file_data.is_empty() {
-                if received_files.contains(&initial_string){
-                    received_files.push(initial_string.clone());
-                }
+        match String::from_utf8(data) {
+            Ok(mut string) => {
+                // Remove trailing null characters
+                string = string.trim_end_matches('\0').to_string();
+                Ok(string)
             }
-            if initial_string.eq("server_type!") || initial_string.eq("client_list!") || initial_string.eq("files_list!") {
-                match String::from_utf8(clean_data_clone) {
-                    Ok(mut string) => {
-                        string = string.trim_end_matches('\0').to_string();
-                        Ok(string)
-                    },
-                    Err(e) => Err(format!("Error while converting message to string: {}", e)),
-                }
-            }
-            else{
-                Ok(initial_string)
-            }
-            // Return  value
-        }
-        else{
-            match String::from_utf8(clean_data_clone) {
-                Ok(mut string) => {
-                    string = string.trim_end_matches('\0').to_string();
-                    Ok(string)
-                },
-                Err(e) => Err(format!("Error while converting message to string: {}", e)),
-            }
+            Err(e) => Err(format!("Failed to convert data to string: {}", e)),
         }
     }
 }
