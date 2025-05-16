@@ -20,6 +20,7 @@ pub mod interface
         thread,
         time::Duration,
     };
+    use wg_2024::network::NodeId;
 
     enum Mode {
         Chat,
@@ -28,6 +29,7 @@ pub mod interface
 
     // (nome, colore_nome, messaggio, colore_messaggio)
     type Messages = Arc<Mutex<Vec<(String, Color, String, Color)>>>;
+    type UserList = Arc<Mutex<Vec<(NodeId, bool)>>>;
 
     pub fn start_ui(server_name: String, messages: Messages, path : Option<String>) {
         thread::spawn(move || {
@@ -54,6 +56,35 @@ pub mod interface
             msg_color,
         ));
     }
+    
+    pub fn add_client_to_interface (users  : &UserList ,clientId : NodeId )
+    {
+        let mut locked = users.lock().unwrap();
+        
+        if !locked.contains(&(clientId,true))
+        {
+            locked.push((
+                clientId, true
+            ));
+        }
+
+    }
+    
+    pub fn unreachable  (users  : &UserList, client_id: NodeId )     //function that set a client not reachable 
+    {
+        let mut locked = users.lock().unwrap();
+        for i in locked.iter_mut()
+            {
+                if i.0 == client_id {
+                    i.1 = false;
+                    break;
+                }
+                
+            }
+            
+    }
+    
+    
 
     fn run_app(
         terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,

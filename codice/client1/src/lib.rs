@@ -185,11 +185,12 @@ impl Client1 {
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
 
+                write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
                     message =>{
-                        write_log(&format!("{:?}",message));
+                        //write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
@@ -197,7 +198,7 @@ impl Client1 {
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                write_log(msg.as_str());
+                                //write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
                                     //println!("DEBUG msg: {:?}",msg);

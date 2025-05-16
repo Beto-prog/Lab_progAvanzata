@@ -40,6 +40,7 @@ pub struct  Server
     package_handler: Repackager,                    // Fragment and reassemble file
     paket_ack_manger: HashMap<(NodeId, u64), Vec<Fragment>>,        // Keep track of the ack 
     message_list: Arc<Mutex<Vec<(String, Color, String, Color)>>>,
+    connected_user : Arc<Mutex<Vec<(NodeId, bool)>>>,       //List of all connected client and if they are reachable
 }
 
 
@@ -69,7 +70,8 @@ impl Server{
             graph: graph,            //I nees this for bfs
             package_handler: Repackager::new(),
             paket_ack_manger: HashMap::new(),
-           message_list: Arc::new(Mutex::new(vec![])),
+            message_list: Arc::new(Mutex::new(vec![])),
+            connected_user: Arc::new(Mutex::new(Vec::new())),
         }
     }    
     
@@ -126,7 +128,9 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         //the only packets that don't have the routing_header are the FloodRequest and the   FloodResponse
                     }
                 }
-                Some(x) => {source_id =*x}    
+                Some(x) => {source_id =*x;
+                    add_client_to_interface(&self.connected_user, source_id);
+                }    
             }
         
         let mut response = packet.clone();  //The response will be modified later . For now, it's just a copy
@@ -178,6 +182,28 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 match result {
                                     Ok(value) => {
                                         
+                                        
+                                        //debugging-------------------------
+                                        match self.package_handler.process_fragment(packet.session_id, source_id as u64, value.index(0).clone()) {
+                                            Ok(x) => {
+                                                
+                                                match x {
+                                                    None => {write_log("Errore nella processione dato")}
+                                                    Some(val) => {
+                                                        write_log(  &Repackager::assemble_string(val).unwrap());
+                                                    }
+                                                }
+                                            }
+                                            Err(_) => {write_log("Impossibile la ricostruzioene messaggio")}
+                                        };
+                                  
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        //------
+                                        
                                         //It's the structure used to control the that the packet send to the client are received correctly 
                                         self.paket_ack_manger.insert((source_id, packet.session_id), value.clone());
 
@@ -185,8 +211,23 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         response.pack_type = MsgFragment(value.index(0).clone());
 
 
+
                                         add_message(&self.message_list, "Server", &format!("{} {}","Sending response to client source id  : ",source_id), Color::White, Color::White);
-                                        self.send_valid_packet(source_id, response);    
+
+
+                                        match response.pack_type.clone() {
+                                            MsgFragment( log_value) => {
+                                                write_log(&format!("Message to {} {:?}",source_id, log_value));
+                                            }
+                                            PacketType::Ack(_) => {}
+                                            PacketType::Nack(_) => {}
+                                            PacketType::FloodRequest(_) => {}
+                                            PacketType::FloodResponse(_) => {}
+                                        }
+
+
+
+                                        self.send_valid_packet(source_id, response);
                                     }
                                     Err(x) => {
                                         add_message(&self.message_list, "Server", &format!("{} {}","ERRORE : ",x), Color::White, Color::Red); 
@@ -393,6 +434,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 }
             },
             None => {
+                unreachable(&self.connected_user, dest_id);
                 add_message(&self.message_list, "Server", "Error not found a valid path to follow", Color::White, Color::Red);
             
             }
