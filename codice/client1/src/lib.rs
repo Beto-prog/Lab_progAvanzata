@@ -194,6 +194,7 @@ impl Client1 {
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
+                                write_log(&format !("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
