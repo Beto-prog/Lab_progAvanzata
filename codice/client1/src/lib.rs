@@ -188,8 +188,8 @@ impl Client1 {
                 write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
-                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
-                    message =>{
+                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment){
+                    Some(message) =>{
                         //write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
@@ -235,7 +235,7 @@ impl Client1 {
                         }
                     }
                     // There are still Fragments missing: send back Ack for current fragment in the meantime
-                    _ => {
+                     None => {
                         let mut new_hops = packet.routing_header.hops.clone();
                         let dest_id = new_hops[0].clone();
                         new_hops.reverse();
