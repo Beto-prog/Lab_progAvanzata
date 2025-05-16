@@ -11,22 +11,22 @@ pub struct Client1_UI {
     self_id: NodeId,                    // Node ID for the client
     clients: Arc<Mutex<Vec<NodeId>>>,               // List of clients
     servers: Arc<Mutex<HashMap<NodeId,String>>>,    // List of server names
-    files_names: Arc<Mutex<Vec<String>>>,
+    files_names: Arc<Mutex<Vec<String>>>,           //Storage of the file names
     selected_server: (NodeId,String),    // Selected server name
     selected_client_id: NodeId, // Selected client ID
     selected_command: String,  // Selected command
     selected_content_id: String,   // Selected file ID
-    input_text: String,
+    input_text: String,             // Input text from the user (in message_for cmd)
     cmd_snd: Option<Sender<String>>,    // Command sender
     msg_rcv: Option<Receiver<String>>,   // Message receiver
-    can_show_clients: bool,
-    can_show_response: bool,
-    can_show_file_list: bool,
-    response: String,
-    error: (bool,String),
-    communication_server_commands: Vec<String>,
-    text_server_commands: Vec<String>,
-    media_server_commands: Vec<String>,
+    can_show_clients: bool,                 //Response handle
+    can_show_response: bool,                //Response handle
+    can_show_file_list: bool,               //Response handle
+    response: String,                       //Response
+    error: (bool,String),                   //Error check
+    communication_server_commands: Vec<String>,     //Commands
+    text_server_commands: Vec<String>,              //Commands
+    media_server_commands: Vec<String>,             //Commands
 }
 
 impl Client1_UI {

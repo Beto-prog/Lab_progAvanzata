@@ -188,7 +188,7 @@ impl Client1 {
                 write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
-                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment){
+                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to get value"){
                     Some(message) =>{
                         //write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
