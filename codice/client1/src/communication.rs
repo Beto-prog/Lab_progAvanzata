@@ -1,8 +1,6 @@
-
 use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::unbounded;
-use egui::accesskit::Node;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
 use crate::Client1;
@@ -16,7 +14,6 @@ impl Client1 {
             //println!("DEBUG COMMAND: {}",cmd);
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
             match cmd {
-
                 cmd if available_simple_commands.contains(&cmd) =>{
                     self.send_message(dest_id, cmd);
                     "CLIENT1: OK".to_string()

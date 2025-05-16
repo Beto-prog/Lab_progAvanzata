@@ -27,6 +27,7 @@ All the aforementioned files have some tests within to ensure their most importa
 mod fragment_reassembler;
 mod communication;
 pub mod client1_ui;
+mod logger;
 use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
 use std::io::Write;
@@ -35,6 +36,7 @@ use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
 use wg_2024::network::*;
 use crate::client1_ui::Client1_UI;
+use crate::logger::logger::{init_logger, write_log};
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
@@ -186,7 +188,8 @@ impl Client1 {
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("CLIENT1: Error while processing fragment"){
-                    Some(message) =>{
+                    message =>{
+                        write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
@@ -194,7 +197,7 @@ impl Client1 {
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                //println!("DEBUG Client: {msg}");
+                                write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
                                     //println!("DEBUG msg: {:?}",msg);
@@ -230,7 +233,7 @@ impl Client1 {
                         }
                     }
                     // There are still Fragments missing: send back Ack for current fragment in the meantime
-                    None => {
+                    _ => {
                         let mut new_hops = packet.routing_header.hops.clone();
                         let dest_id = new_hops[0].clone();
                         new_hops.reverse();
@@ -342,7 +345,7 @@ impl Client1 {
     }
 
     pub fn run(&mut self){
-
+        init_logger();
         //Initialize network field
         self.discover_network();
         let (cmd_snd, cmd_rcv) = unbounded::<String>();

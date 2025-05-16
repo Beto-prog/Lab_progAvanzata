@@ -21,7 +21,7 @@ impl FragmentReassembler {
         }
     }
     // Add a fragment in the buffer and proceed to assemble the message as a Vec is all fragments received
-    pub fn add_fragment(&mut self, session_id: u64, source_id: NodeId, fragment: Fragment) -> Result<Option<Vec<u8>>,u8> {
+    pub fn add_fragment(&mut self, session_id: u64, source_id: NodeId, fragment: Fragment) -> Result<Vec<u8>,String> {
         let key = (session_id, source_id);
 
         // Initialize tracking structures for this (session_id, source_id) pair if needed
@@ -51,10 +51,10 @@ impl FragmentReassembler {
 
             // Return reassembled message
             //println!("{:?}",message);
-            Ok(Some(message))
+            Ok(message)
         } else {
-            // If not all fragments received, return None
-            Ok(None)
+            // If not all fragments received, return Error
+            Err("Error: not all Fragments received".to_string())
         }
     }
     // Given a &str create the fragments from it
