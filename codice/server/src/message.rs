@@ -963,7 +963,7 @@ mod tests_message_media_server {
     #[test]
     fn test_file_not_found() {
         let test_dir = "/tmp/testServer";
-        //setup_test_dir(test_dir);
+        setup_test_dir(test_dir);
 
         let mut c = 0;
         let mut fs = ContentServer::new(test_dir, ServerType::TextServer);
