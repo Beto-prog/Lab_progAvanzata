@@ -1,3 +1,0 @@
-[1747333395] server_type!(TextServer)
-[1747333410] files_list!(["file1.txt", "file2.txt"])
-[1747333417] file!
