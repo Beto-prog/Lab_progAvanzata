@@ -135,7 +135,7 @@ impl NetworkInitializer {
                     Box::new(server::file_system::ChatServer::new()),
                     None
                 ),
-                0 => {
+                2 => {
                     Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
@@ -148,7 +148,7 @@ impl NetworkInitializer {
                         Some(base_path.to_string()),
                     )
                 }
-                _ => {
+                0 => {
                     Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
@@ -161,6 +161,24 @@ impl NetworkInitializer {
                         Some(base_path.to_string()),
                     )
                 }
+                
+                _ =>
+                    {
+                        Self::prepare_files(base_path);
+                        server::Server::new(
+                            server_config.id,
+                            packet_receiver.clone(),
+                            neighbor_senders,
+                            Box::new(server::file_system::ContentServer::new(
+                                base_path,
+                                server::file_system::ServerType::MediaServer,
+                            )),
+                            Some(base_path.to_string()),
+                        )  
+                    }
+
+
+
             };
 
             thread::spawn(move || server.run());

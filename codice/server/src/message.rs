@@ -539,7 +539,7 @@ pub mod file_system {
                         if path.exists() && path.is_file() {
                             Repackager::create_fragments(
                                 &*"media!(",
-                                Some(&*(self.path.clone() + media_id)),
+                                Some(path.to_str().unwrap()),
                             )
                         } else
                         //can not retrieve file
