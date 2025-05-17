@@ -109,7 +109,7 @@ pub mod interface
                     ])
                     .split(size);
 
-                let header = Paragraph::new(format!("Chat Server: {}", server_name))
+                let header = Paragraph::new(server_name.as_str())
                     .style(Style::default().fg(Color::Yellow))
                     .block(Block::default().borders(Borders::ALL).title("Server"));
                 f.render_widget(header, chunks[0]);

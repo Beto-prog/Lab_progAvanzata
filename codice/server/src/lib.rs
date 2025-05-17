@@ -6,7 +6,7 @@ mod logger;
 
 use crate::interface::interface::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
-use rand::{Rng, SeedableRng};
+use rand::{thread_rng, Rng, SeedableRng};
 use std::collections::HashMap;
 use std::ops::Index;
 use wg_2024::network::*;
@@ -24,8 +24,10 @@ use ratatui::style::Color;
 
 
 pub use message::file_system;
+use crate::file_system::ServerType;
 use crate::logger::logger::init_logger;
 use crate::logger::logger::write_log;
+use rand::seq::SliceRandom;
 
 pub struct  Server
 {
@@ -79,14 +81,36 @@ impl Server{
 Start by sending a flood request to all the neighbour to fill up the graph
  */
 
- 
+
+    fn genera_nome_server() -> String {
+        let aggettivi = [
+            "Crimson", "Iron", "Shadow", "Silver", "Rapid", "Frozen", "Quantum", "Dark", "Electric", "Nova",
+        ];
+
+        let sostantivi = [
+            "Falcon", "Echo", "Phoenix", "Core", "Storm", "Node", "Pulse", "Vortex", "Drive", "Sentinel",
+        ];
+
+        let mut rng = thread_rng();
+
+        let aggettivo = aggettivi.choose(&mut rng).unwrap();
+        let sostantivo = sostantivi.choose(&mut rng).unwrap();
+
+        format!("{}{}", aggettivo, sostantivo)
+    }
     
 
     pub fn run(&mut self) {
         self.sendflod_request();
         init_logger();
 
-        start_ui("pollo".to_string(), self.message_list.clone(),self.path.clone());
+        let name_server =
+        match self.server_type.kind() {
+            ServerType::TextServer => {format!("TextServer: {}",Self::genera_nome_server())},
+            ServerType::MediaServer => {format!("MediaServer: {}",Self::genera_nome_server())},
+            ServerType::CommunicationServer => {format!("CommunicationServer: {}",Self::genera_nome_server())},
+        };
+        start_ui(name_server, self.message_list.clone(),self.path.clone());
         loop {
             select_biased! {        //copied from the drone        
                 recv(self.packet_recv) -> packet => {
@@ -156,8 +180,17 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 
                                 //Reassemble the vector to a string with the original message 
                                 let message = Repackager::assemble_string(data);
-                                add_message(&self.message_list, "Server", &format!("{} {}","Fragmented message:",message.clone().unwrap()), Color::White, Color::White);
-        
+                                match message.clone() {
+                                    Ok(val) => {
+                                        add_message(&self.message_list, "Server", &format!("Fragmented message: {}",val), Color::White, Color::White);
+
+                                    }
+                                    Err(error) => {
+                                        add_message(&self.message_list, "Server", &format!("Error in reassembling string - {}",error), Color::White, Color::Red);
+
+                                    }
+                                }
+
                                
                                 let mut  flag:i32 = 0;  //1 = client not found
                                 let msg_work = message.clone().unwrap();        //temp value
@@ -183,7 +216,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     Ok(value) => {
                                         
                                         
-                                        //debugging-------------------------
+                                      /*  //debugging-------------------------
                                         match self.package_handler.process_fragment(packet.session_id, source_id as u64, value.index(0).clone()) {
                                             Ok(x) => {
                                                 
@@ -196,7 +229,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                             }
                                             Err(_) => {write_log("Impossibile la ricostruzioene messaggio")}
                                         };
-                                  
+                                  */
                                         
                                         
                                         
@@ -212,7 +245,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
 
 
-                                        add_message(&self.message_list, "Server", &format!("{} {}","Sending response to client source id  : ",source_id), Color::White, Color::White);
+                                        add_message(&self.message_list, "Server", &format!("Sending response to client source id: {}",source_id), Color::White, Color::White);
 
 
                                         match response.pack_type.clone() {
@@ -230,7 +263,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         self.send_valid_packet(source_id, response);
                                     }
                                     Err(x) => {
-                                        add_message(&self.message_list, "Server", &format!("{} {}","ERRORE : ",x), Color::White, Color::Red); 
+                                        add_message(&self.message_list, "Server", &format!("ERRORE: {}",x), Color::White, Color::Red);
                                         }
                                 }
   
@@ -280,15 +313,18 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 self.send_valid_packet(*source_id, new_response);
                                 found = true;
 
-                                add_message(&self.message_list, "Server",&format!("{}{}","I sent another time a message to ",source_id), Color::White, Color::Blue);
+                                add_message(&self.message_list, "Server",&format!("I sent another time a message to {}",source_id), Color::White, Color::Blue);
 
                             }
                         }
 
                         if !found {
-                            add_message(&self.message_list, "Server", &format!("{}{} {:?}{}{}{}{:?}",source_id,
-                                                                               "Received an NAck but I can't trace back the number to any packet ",msg.clone(),
-                                                                               " session id: ",packet.session_id," current packet handler: ",self.paket_ack_manger), Color::White, Color::Red);
+                            add_message(&self.message_list, "Server",
+                                        &format!("Received an Nack but I can't trace back the number to any packet. Source id: {}, message: {:?}, session id: {}, current packet handler: {:?}",
+                                                                                source_id,
+                                                                               msg.clone(),
+                                                                               packet.session_id
+                                                                               ,self.paket_ack_manger), Color::White, Color::Red);
                         }
                         
                         }
@@ -315,14 +351,16 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         
                                             //Send the next packet
                                             response.pack_type = MsgFragment(ack_value[pos].clone());
-                                        add_message(&self.message_list, "Server", &format!("{} {} {} {} {}","Received a ack from source id: ",source_id," and Session id: ",packet.session_id, " ). Sending next paxet"), Color::White, Color::White);
+                                        add_message(&self.message_list, "Server", &format!("Received a ack from source id: {} and Session id: {}",source_id,packet.session_id, ), Color::White, Color::White);
 
                                         self.send_valid_packet(source_id, response);
+                                        add_message(&self.message_list, "Server", &format!("Sent packet number : {} / {} to client: {}",pos ,ack_value.len(),source_id), Color::White, Color::White);
+
                                     } 
                                     else {  //Check if all the packets are arrived correctly 
                                         if  msg.fragment_index as usize  == ack_value.len()-1
                                         {
-                                            add_message(&self.message_list, "Server", &format!("{} {} {} {} {}","All ack received - Removing session- (Source id: ",source_id,", Session id: ",packet.session_id, " )."), Color::White, Color::White);
+                                            add_message(&self.message_list, "Server", &format!("All ack received, removing session - (Source id: {}, Session id: {})",source_id,packet.session_id), Color::White, Color::White);
                                             self.paket_ack_manger.remove(&(source_id, packet.session_id));
                                         }
                                         else {
