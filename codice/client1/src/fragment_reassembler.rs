@@ -101,68 +101,38 @@ impl FragmentReassembler {
     pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
         Ok(general_purpose::STANDARD.encode(data))
     }
-    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
-        /*
-        // Remove null charachter
-        let clean_data = data
-            .into_iter()
-            .take_while(|&byte| byte != 0)
-            .collect::<Vec<_>>();
+    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {          //Attenzione gli mp3 non hanno problemi ma le immagini e i video sono molto sensibil. Basta un byte fuori posto e non va piu 
+        // 1. dopo la prima '('
+        let after_paren = data.iter()
+            .position(|&b| b == b'(')
+            .ok_or("Formato non valido: '(' mancante")? + 1;
 
-        // Serch the posizion of tje first separator
-        let separator_pos = clean_data.iter().position(|&b| b == b'(');
+        // 2. se esiste una virgola subito dopo (caso file!(size, ...)), non
+        //    salta anche <size>, fino alla prima ','
+        let payload_start = match data[after_paren..].iter().position(|&b| b == b',') {
+            Some(idx) => after_paren + idx + 1, // byte dopo la virgola
+            None      => after_paren,           // messaggio media!(...) ‑ niente size
+        };
 
-        if let Some(pos) = separator_pos {
-            // Take the initial string
-            let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
-                Ok(s) => s,
-                Err(e) => {
-                    return Err(format!(
-                        "Errore nella conversione della stringa iniziale: {}",
-                        e
-                    ))
-                }
-            };
+        // 3. ultima ')' (esclude pure il padding 0x00 finale) !!IMPORTANTE
+        let mut payload_end = data.iter()
+            .rposition(|&b| b == b')')
+            .ok_or("Formato non valido: ')' mancante")?;
 
-            // Extract file content
-            let file_data = &clean_data[pos + 1..];
-
-            // If the file has some data save it to the file system
-            if !file_data.is_empty() {
-                let file_path = Path::new(output_path);
-                if let Err(e) = fs::write(file_path, file_data) {
-                    return Err(format!("Errore nella scrittura del file: {}", e));
-                }
-            }
-
-            // Return the value
-            Ok("Succesful conversion".to_string())
-        } else {
-            // In this case is a normal string I suggest to revise this. This is for the client user
-            match String::from_utf8(clean_data) {
-                Ok(s) => Ok(s),
-                Err(e) => Err(format!(
-                    "Errore nella conversione del messaggio in stringa: {}",
-                    e
-                )),
-            }
+        while payload_end > payload_start && data[payload_end] == 0 {
+            payload_end -= 1;        // togli eventuali 0x00 dopo la ')'
         }
-         */
-        let start = data.iter().position(|&b| b == b'(').map(|p| p + 1).unwrap_or(0);
-        //let end = data.iter().position(|&b| b == b')').map(|p| p + 1).unwrap_or(data.len());
-        let mut file = File::create(Path::new(output_path)).expect("Failed to create file");
-        file.write_all(&data[start..]).map_err(|e| format!("Error during file writing: {e}"))?;
-        Ok("Message successfully converted".to_string())
-        /*
-        // Cerca il primo '('
-        let payload_start = data.iter().position(|&b| b == b'(').map(|p| p + 1).unwrap_or(0);
-        let file_data = &data[payload_start..];
 
-        fs::write_all(output_path, file_data)
-            .map_err(|e| format!("Errore nella scrittura del file: {e}"))?;
+        let payload = &data[payload_start..payload_end]; // ')' esclusa
 
-         */
+        let mut file = File::create(Path::new(output_path))
+            .map_err(|e| format!("Errore creazione file: {e}"))?;
+        file.write_all(payload)
+            .map_err(|e| format!("Errore scrittura file: {e}"))?;
+
+        Ok("File salvato correttamente".into())
     }
+
 }
 //Some tests about different files fragmented and reconstructed
 #[cfg(test)]
