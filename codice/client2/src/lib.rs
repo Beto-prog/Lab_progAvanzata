@@ -355,8 +355,10 @@ message_for?(client_id, message)->NodeId");
     }
 
     pub fn run(&mut self) {
+        let (mut reader, mut writer) = setup_window();
+        let mut buffer = String::new();
         self.discover_network();
-        let mut input = "files_list?->6";
+        //let mut input = "files_list?->6";
         let mut executed = false;
         loop {
             select_biased! {
@@ -374,20 +376,22 @@ message_for?(client_id, message)->NodeId");
 
             }
             if !self.servers.is_empty() {
-                if(!executed) {
-                    //self.handle_command("server_type?->6");
-                    //self.handle_command("files_list?->6");
-                    //self.handle_command("registration_to_chat->6");
-                    // self.handle_command("client_list->6");
-                    //self.handle_command("message_for?(10, hahaha)->6");
-                    self.handle_command("server_list");
-                    executed = true;
-                }
+
+                reader.read_line(&mut buffer).expect("Error reading input");
+                self.handle_command(buffer.clone().as_str());
+                // if(!executed) {
+                //     //self.handle_command("server_type?->6");
+                //     //self.handle_command("files_list?->6");
+                //     //self.handle_command("registration_to_chat->6");
+                //     // self.handle_command("client_list->6");
+                //     //self.handle_command("message_for?(10, hahaha)->6");
+                //     self.handle_command("server_list");
+                //     executed = true;
+                // }
             }
         }
     }
 }
-/*
 
 fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -411,8 +415,6 @@ fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
 
     return (reader, writer);
 }
-
- */
 
 // //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
 // fn main() {
