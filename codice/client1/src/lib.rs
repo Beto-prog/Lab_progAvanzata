@@ -238,8 +238,8 @@ impl Client1 {
                             Err(_) => {
                                 let path= env::current_dir().expect("Failed to get value");
                                 let mut file_path = path;
-                                let path = self.selected_file_name.clone().as_str();
-                                file_path.push(path);
+                                let path = self.selected_file_name.clone();
+                                file_path.push(path.as_str());
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to get value")).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
