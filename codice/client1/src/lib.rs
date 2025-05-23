@@ -54,7 +54,8 @@ pub struct Client1 {
     other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
     files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
-    ui_snd: Option<Sender<Client1_UI>>
+    ui_snd: Option<Sender<Client1_UI>>,
+    selected_file_name: String
 }
 
 impl Client1 {
@@ -75,7 +76,8 @@ impl Client1 {
             other_client_ids: Arc::new(Mutex::new(vec![])),
             files_names: Arc::new(Mutex::new(vec![])),
             servers: Arc::new(Mutex::new(HashMap::new())),
-            ui_snd: Some(ui_snd.expect("Failed to get value"))
+            ui_snd: Some(ui_snd.expect("Failed to get value")),
+            selected_file_name: String::new()
         }
     }
     // Network discovery
@@ -236,7 +238,8 @@ impl Client1 {
                             Err(_) => {
                                 let path= env::current_dir().expect("Failed to get value");
                                 let mut file_path = path;
-                                file_path.push("song.mp3");
+                                let path = self.selected_file_name.clone().as_str();
+                                file_path.push(path);
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to get value")).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
