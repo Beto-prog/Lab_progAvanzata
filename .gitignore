@@ -2,3 +2,8 @@
 target/
 *.lock
 *.log
+*.mp4
+*.mp3
+*.png
+*.jpg
+
