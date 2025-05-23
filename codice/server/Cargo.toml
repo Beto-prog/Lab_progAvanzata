@@ -16,3 +16,4 @@ crossterm = "0.27"
 [lib]
 name = "server"
 path = "src/lib.rs"
+

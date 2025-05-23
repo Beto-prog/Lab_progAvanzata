@@ -14,9 +14,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use wg_2024::network::NodeId;
 
+
 use std::fs::{ File};
 use std::io::Write;
 use std::path::Path;
+use toml::ser;
 
 pub struct NetworkInitializer;
 
@@ -111,7 +113,7 @@ impl NetworkInitializer {
                 );
                 thread::spawn(move || client.run());
             }
-            
+            /*
             else
             {
                 let mut client = Client2::new(
@@ -121,9 +123,12 @@ impl NetworkInitializer {
                  
                 );
                 thread::spawn(move || client.run());
-            }
+            }*/
         }
 
+        let InterfaceHub : server::interface::interface::AllServersUi =  Arc::new(Mutex::new(Vec::new()));
+        
+        
         // Server initialization
         for (index, server_config) in config.server.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
@@ -138,13 +143,20 @@ impl NetworkInitializer {
             } else {
                 "/tmp/ServerTxt"
             };
-            let mut server = match index % 3 {
+            
+            
+            
+            let mut server = match index % 2 {
                 0 => server::Server::new(
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
-                    Box::new(server::file_system::ChatServer::new()),
-                    None
+                    Box::new(server::file_system::ContentServer::new(
+                        base_path,
+                        server::file_system::ServerType::MediaServer,
+                    )),
+                    Some(base_path.to_string()),
+                    InterfaceHub.clone()
                 ),
                 1 => {
                     Self::prepare_files(base_path);
@@ -157,19 +169,22 @@ impl NetworkInitializer {
                             server::file_system::ServerType::TextServer,
                         )),
                         Some(base_path.to_string()),
+                        InterfaceHub.clone()
                     )
                 }
                 _ => {
                     Self::prepare_files(base_path);
                     server::Server::new(
+             
+
+
+
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
-                        Box::new(server::file_system::ContentServer::new(
-                            base_path,
-                            server::file_system::ServerType::MediaServer,
-                        )),
-                        Some(base_path.to_string()),
+                        Box::new(server::file_system::ChatServer::new()),
+                        None,
+                        InterfaceHub.clone()
                     )
                 }
             };
@@ -177,6 +192,8 @@ impl NetworkInitializer {
             thread::spawn(move || server.run());
         }
 
+        server::interface::interface::start_ui(InterfaceHub);        
+        
         let network_topology = Self::get_network_topology(config);
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
         let (ui_command_sender, ui_command_receiver) = unbounded();

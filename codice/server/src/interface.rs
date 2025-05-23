@@ -1,5 +1,4 @@
-pub mod interface
-{
+pub mod interface {
     use crossterm::{
         event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
         execute,
@@ -10,7 +9,7 @@ pub mod interface
         layout::{Constraint, Direction, Layout},
         style::{Color, Style},
         text::{Span, Line},
-        widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+        widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
         Terminal,
     };
     use std::{
@@ -20,18 +19,71 @@ pub mod interface
         thread,
         time::Duration,
     };
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use wg_2024::network::NodeId;
 
+    /* ──────────────────────────────────────────────────────────
+       ───────  DATI CONDIVISI TRA TUTTI I THREAD / SERVER  ─────
+       ────────────────────────────────────────────────────────── */
+    pub type AllServersUi = Arc<Mutex<Vec<ServerUiState>>>;
+
+    #[derive(Clone)]
+    pub struct ServerUiState {
+        pub id: usize,
+        pub name: String,
+        pub path: String,
+        pub messages: Arc<Mutex<Vec<(String, Color, String, Color)>>>,
+        pub clients: Arc<Mutex<Vec<(NodeId, bool)>>>,
+        pub selected_index: Arc<AtomicUsize>,   // <── cambiato!
+    }
+
+    /* ────────────────────────────────────────────────────────── */
     enum Mode {
         Chat,
         FileList,
     }
 
-    // (nome, colore_nome, messaggio, colore_messaggio)
+    // alias utili (non cambiano)
     type Messages = Arc<Mutex<Vec<(String, Color, String, Color)>>>;
     type UserList = Arc<Mutex<Vec<(NodeId, bool)>>>;
 
-    pub fn start_ui(server_name: String, messages: Messages, path : Option<String>) {
+    /* ──────────────────────────────────────────────────────────
+       ───────────── FUNZIONI CHIAMATE DAI SERVER ───────────────
+       ────────────────────────────────────────────────────────── */
+    pub fn add_message(
+        messages: &Messages,
+        name: &str,
+        msg: &str,
+        name_color: Color,
+        msg_color: Color,
+    ) {
+        let mut locked = messages.lock().unwrap();
+        locked.push((name.to_string(), name_color, msg.to_string(), msg_color));
+    }
+
+    pub fn add_client_to_interface(users: &UserList, client_id: NodeId) {
+        let mut locked = users.lock().unwrap();
+        if !locked.iter().any(|(id, _)| *id == client_id) {
+            locked.push((client_id, true));
+        }
+    }
+
+    pub fn unreachable(users: &UserList, client_id: NodeId) {
+        let mut locked = users.lock().unwrap();
+        if let Some((_, reachable)) = locked.iter_mut().find(|(id, _)| *id == client_id) {
+            *reachable = false;
+        }
+    }
+
+    /* ──────────────────────────────────────────────────────────
+       ────────────────────  AVVIO DELLA UI  ────────────────────
+       ────────────────────────────────────────────────────────── */
+    ///
+    /// Avvia la TUI in un thread separato.
+    /// - `all_servers` dev'essere lo stesso `Arc<Mutex<_>>`
+    ///   passato a **tutti** i `Server::new`.
+    ///
+    pub fn start_ui(all_servers: AllServersUi) {
         thread::spawn(move || {
             enable_raw_mode().unwrap();
             let mut stdout = stdout();
@@ -39,152 +91,182 @@ pub mod interface
             let backend = CrosstermBackend::new(stdout);
             let mut terminal = Terminal::new(backend).unwrap();
 
-            let _ = run_app(&mut terminal, server_name, messages,path.unwrap_or(".".to_string()));
+            let _ = run_app(&mut terminal, all_servers);
 
             disable_raw_mode().unwrap();
-            execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture).unwrap();
+            execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            )
+                .unwrap();
             terminal.show_cursor().unwrap();
         });
     }
 
-    pub fn add_message(messages: &Messages, name: &str, msg: &str, name_color: Color, msg_color: Color) {
-        let mut locked = messages.lock().unwrap();
-        locked.push((
-            name.to_string(),
-            name_color,
-            msg.to_string(),
-            msg_color,
-        ));
-    }
-    
-    pub fn add_client_to_interface (users  : &UserList ,clientId : NodeId )
-    {
-        let mut locked = users.lock().unwrap();
-        
-        if !locked.contains(&(clientId,true))
-        {
-            locked.push((
-                clientId, true
-            ));
-        }
-
-    }
-    
-    pub fn unreachable  (users  : &UserList, client_id: NodeId )     //function that set a client not reachable 
-    {
-        let mut locked = users.lock().unwrap();
-        for i in locked.iter_mut()
-            {
-                if i.0 == client_id {
-                    i.1 = false;
-                    break;
-                }
-                
-            }
-            
-    }
-    
-    
-
+    /* ──────────────────────────────────────────────────────────
+       ────────────────  LOOP PRINCIPALE DELLA UI  ──────────────
+       ────────────────────────────────────────────────────────── */
     fn run_app(
         terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-        server_name: String,
-        messages: Messages,
-        path : String,
+        all_servers: AllServersUi,
     ) -> Result<()> {
-        let mut mode = Mode::Chat;
-        let mut selected_index = 0;
-        let mut auto_scroll = true;
+        let mut global_mode = Mode::Chat;          // Chat/File per il server selezionato
+        let mut current_srv = 0usize;              // indice del tab/server attivo
+        let mut auto_scroll = true;                // vale per il server corrente
 
         loop {
+            /* ─────── Disegno ─────── */
             terminal.draw(|f| {
                 let size = f.size();
-
-                let chunks = Layout::default()
+                let layout = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
-                        Constraint::Length(3),
-                        Constraint::Min(5),
-                        Constraint::Length(3),
+                        Constraint::Length(3),    // header con tab
+                        Constraint::Min(5),       // corpo (chat o files)
+                        Constraint::Length(3),    // footer
                     ])
                     .split(size);
 
-                let header = Paragraph::new(server_name.as_str())
-                    .style(Style::default().fg(Color::Yellow))
-                    .block(Block::default().borders(Borders::ALL).title("Server"));
-                f.render_widget(header, chunks[0]);
+                /* ---- Header: Tabs con i nomi dei server ---- */
+                let servers_guard = all_servers.lock().unwrap();
+                if servers_guard.is_empty() {
+                    let empty = Paragraph::new("Nessun server attivo")
+                        .block(Block::default().borders(Borders::ALL));
+                    f.render_widget(empty, layout[1]);
+                    return;
+                }
+                let titles: Vec<Span> = servers_guard
+                    .iter()
+                    .map(|s| Span::styled(s.name.clone(), Style::default().fg(Color::Yellow)))
+                    .collect();
+                let tabs = Tabs::new(titles)
+                    .select(current_srv)
+                    .block(Block::default().borders(Borders::ALL).title("Server"))
+                    .highlight_style(Style::default().bg(Color::Blue));
+                f.render_widget(tabs, layout[0]);
 
-                match mode {
+                /* ---- Corpo: Chat o FileList per il server attivo ---- */
+                let srv = &servers_guard[current_srv];
+
+                match global_mode {
                     Mode::Chat => {
-                        let locked = messages.lock().unwrap();
-                        let items: Vec<ListItem> = locked
-                            .iter()
-                            .map(|(name, name_color, msg, msg_color)| {
-                                let line = Line::from(vec![
-                                    Span::styled(format!("{}: ", name), Style::default().fg(*name_color)),
-                                    Span::styled(msg.clone(), Style::default().fg(*msg_color)),
-                                ]);
-                                ListItem::new(line)
-                            })
-                            .collect();
+                        let mut items: Vec<ListItem> = {
+                            let locked = srv.messages.lock().unwrap();
+                            locked
+                                .iter()
+                                .map(|(name, name_color, msg, msg_color)| {
+                                    let line = Line::from(vec![
+                                        Span::styled(
+                                            format!("{}: ", name),
+                                            Style::default().fg(*name_color),
+                                        ),
+                                        Span::styled(msg.clone(), Style::default().fg(*msg_color)),
+                                    ]);
+                                    ListItem::new(line)
+                                })
+                                .collect()
+                        };
+
+                        // auto‑scroll / bounds check
+                        let list_len = items.len();
+                        let mut new_sel = srv.selected_index.load(Ordering::Relaxed);
 
                         if auto_scroll {
-                            selected_index = items.len().saturating_sub(1);
-                        } else if selected_index >= items.len() {
-                            selected_index = items.len().saturating_sub(1);
+                            new_sel = list_len.saturating_sub(1);
+                        } else if new_sel >= list_len {
+                            new_sel = list_len.saturating_sub(1);
                         }
 
+                        srv.selected_index.store(new_sel, Ordering::Relaxed);
+
                         let mut state = ListState::default();
-                        if !items.is_empty() {
-                            state.select(Some(selected_index));
+                        if list_len > 0 {
+                            state.select(Some(new_sel));
                         }
 
                         let list = List::new(items)
                             .block(Block::default().borders(Borders::ALL).title("Messaggi"))
                             .highlight_style(Style::default().bg(Color::Blue));
-                        f.render_stateful_widget(list, chunks[1], &mut state);
+                        f.render_stateful_widget(list, layout[1], &mut state);
                     }
                     Mode::FileList => {
-                        let copy  = path.clone();
-                        let files = fs::read_dir(copy)
-                            .unwrap()
-                            .filter_map(|entry| entry.ok())
+                        let files = fs::read_dir(&srv.path)
+                            .unwrap_or_else(|_| fs::read_dir(".").unwrap())
+                            .filter_map(|e| e.ok())
                             .map(|e| e.file_name().to_string_lossy().to_string())
                             .collect::<Vec<_>>();
-                        let items: Vec<ListItem> = files.iter().map(|f| ListItem::new(f.as_str())).collect();
+                        let items: Vec<_> = files.iter().map(|f| ListItem::new(f.as_str())).collect();
                         let list = List::new(items)
-                            .block(Block::default().borders(Borders::ALL).title("File nella cartella corrente"));
-                        f.render_widget(list, chunks[1]);
+                            .block(
+                                Block::default()
+                                    .borders(Borders::ALL)
+                                    .title("File nella cartella corrente"),
+                            );
+                        f.render_widget(list, layout[1]);
                     }
                 }
 
-                let footer = Paragraph::new("1 - Messaggi  |  2 - File  |  ↑↓ per scorrere  |  q - Esci")
+                /* ---- Footer ---- */
+                let footer = Paragraph::new(
+                    "←/→ cambia server  |  1 Chat  2 File  |  ↑↓ scroll  |  q quit",
+                )
                     .style(Style::default().fg(Color::Green))
                     .block(Block::default().borders(Borders::ALL));
-                f.render_widget(footer, chunks[2]);
+                f.render_widget(footer, layout[2]);
             })?;
 
+            /* ─────── Input ─────── */
             if event::poll(Duration::from_millis(30))? {
                 if let Event::Key(key) = event::read()? {
                     match key.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('1') => mode = Mode::Chat,
-                        KeyCode::Char('2') => mode = Mode::FileList,
-                        KeyCode::Up => {
-                            if selected_index > 0 {
-                                selected_index -= 1;
-                            }
-                            auto_scroll = false;
-                        }
-                        KeyCode::Down => {
-                            let len = messages.lock().unwrap().len();
-                            if selected_index + 1 < len {
-                                selected_index += 1;
-                                auto_scroll = false;
-                            } else {
+                        /* ---- Cambio server ---- */
+                        KeyCode::Left => {
+                            if current_srv > 0 {
+                                current_srv -= 1;
                                 auto_scroll = true;
                             }
                         }
+                        KeyCode::Right => {
+                            let len = all_servers.lock().unwrap().len();
+                            if current_srv + 1 < len {
+                                current_srv += 1;
+                                auto_scroll = true;
+                            }
+                        }
+
+                        /* ---- Cambio modalità ---- */
+                        KeyCode::Char('1') => global_mode = Mode::Chat,
+                        KeyCode::Char('2') => global_mode = Mode::FileList,
+
+                        /* ---- Scroll messaggi (solo modalità Chat) ---- */
+                        KeyCode::Up => {
+                            if matches!(global_mode, Mode::Chat) {
+                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let cur = srv.selected_index.load(Ordering::Relaxed);
+                                if cur > 0 {
+                                    srv.selected_index.store(cur - 1, Ordering::Relaxed);
+                                }
+                                auto_scroll = false;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if matches!(global_mode, Mode::Chat) {
+                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let len = srv.messages.lock().unwrap().len();
+                                let cur = srv.selected_index.load(Ordering::Relaxed);
+                                if cur + 1 < len {
+                                    srv.selected_index.store(cur + 1, Ordering::Relaxed);
+                                    auto_scroll = false;
+                                } else {
+                                    auto_scroll = true;
+                                }
+                            }
+                        }
+
+                        /* ---- Uscita ---- */
+                        KeyCode::Char('q') => return Ok(()),
+
                         _ => {}
                     }
                 }
