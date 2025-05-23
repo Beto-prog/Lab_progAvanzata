@@ -369,7 +369,7 @@ impl Client1_UI {
 
             match message.expect("Failed to get value").as_str() {
                 "Response" => {
-                    if !self.selected_server.1.eq("MediaServer") {
+                    if self.selected_server.1.eq("CommunicationServer") {
                         Frame::none()
                             .fill(Color32::BLACK)
                             .rounding(egui::Rounding::same(3.0))
@@ -377,7 +377,7 @@ impl Client1_UI {
                             .inner_margin(egui::Margin::same(20.0))
                             .show(ui, |ui| {
                                 ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                                ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}", self.response));
+                                ui.colored_label(Color32::LIGHT_GREEN, format!("Message from client {} : {}",self.selected_client_id ,self.response));
                                 ui.add_space(10.0);
                                 if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
                                     self.can_show_response = false;
@@ -400,52 +400,7 @@ impl Client1_UI {
                                 }
                             });
 
-                        //String -> Vec<u8>
-                        /*
-                        let first_conv = Client1_UI::string_to_bytes(self.response.clone());
-                        match first_conv{
-                            Ok(vec) =>{
-                                let path = Path::new("C:\\Temp\\ServerMedia\\recvMedia");
 
-                                std::fs::create_dir_all(path).map_err(|e| e.to_string()).expect("Failed to create directory");
-                                let mut file = File::create("C:\\Temp\\ServerMedia\\recvMedia\\result.mp3").map_err(|e| e.to_string()).expect("Failed to get value");
-                                file.write_all(&vec).map_err(|e| e.to_string()).expect("Failed to write value");
-                                //Vec<u8> -> image
-                                /*
-                                let second_conv = Client1_UI::bytes_to_image(vec);
-                                match second_conv{
-                                    Ok(image) =>{
-                                        let res = ctx.load_texture("received-image", image, Default::default());
-                                        self.image = Some(res);
-                                        if let Some(tex) = &self.image {
-                                            ui.image(tex);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                                        ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",e));
-                                        ui.add_space(10.0);
-                                        if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
-                                            self.can_show_response = false;
-                                            self.response = String::new();
-                                        }
-                                    }
-                                }
-
-                                 */
-                            }
-                            Err(e) =>{
-                                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                                ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",e));
-                                ui.add_space(10.0);
-                                if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
-                                    self.can_show_response = false;
-                                    self.response = String::new();
-                                }
-                            }
-                         }à
-
-                         */
                     }
                 },
                 "Clients" => {
