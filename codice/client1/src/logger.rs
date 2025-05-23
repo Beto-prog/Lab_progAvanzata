@@ -1,5 +1,6 @@
 pub mod logger
 {
+    use std::env;
     use std::fs::{OpenOptions};
     use std::io::Write;
     use std::sync::Mutex;
@@ -22,11 +23,13 @@ pub mod logger
         unsafe {
             if let Some(lock) = &LOGGER {
                 let _guard = lock.lock().unwrap();
+                let mut path = env::current_dir().expect("Failed to get value");
+                path.push("client1.log");
 
                 let mut file = OpenOptions::new()
                     .append(true)
                     .create(true)
-                    .open("C:\\Temp\\client1.log")
+                    .open(path.as_path())
                     .unwrap();
 
                 let timestamp = SystemTime::now()

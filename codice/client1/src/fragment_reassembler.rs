@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::collections::{HashMap};
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 use crossbeam_channel::{unbounded};
 use wg_2024::network::NodeId;
@@ -147,14 +149,20 @@ impl FragmentReassembler {
             }
         }
          */
+        let start = data.iter().position(|&b| b == b'(').map(|p| p + 1).unwrap_or(0);
+        //let end = data.iter().position(|&b| b == b')').map(|p| p + 1).unwrap_or(data.len());
+        let mut file = File::create(Path::new(output_path)).expect("Failed to create file");
+        file.write_all(&data[start..]).map_err(|e| format!("Error during file writing: {e}"))?;
+        Ok("Message successfully converted".to_string())
+        /*
         // Cerca il primo '('
         let payload_start = data.iter().position(|&b| b == b'(').map(|p| p + 1).unwrap_or(0);
-
         let file_data = &data[payload_start..];
 
-        fs::write(output_path, file_data)
+        fs::write_all(output_path, file_data)
             .map_err(|e| format!("Errore nella scrittura del file: {e}"))?;
-        Ok("Message successfully converted".to_string())
+
+         */
     }
 }
 //Some tests about different files fragmented and reconstructed

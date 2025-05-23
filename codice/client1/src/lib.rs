@@ -234,7 +234,7 @@ impl Client1 {
                             },
                             // FragmentReassembler encountered an error
                             Err(_) => {
-                                let path: PathBuf = env::current_dir().expect("Failed to get value");
+                                let path= env::current_dir().expect("Failed to get value");
                                 let mut file_path = path;
                                 file_path.push("song.mp3");
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to get value")).expect("Failed to get value");
