@@ -233,7 +233,11 @@ impl Client1 {
                             },
                             // FragmentReassembler encountered an error
                             Err(_) => {
-                                let path = "C:\\Temp\\ServerMedia\\recvMedia";
+                                let path = if cfg!(target_os = "windows") {
+                                    "C:\\Temp\\ServerMedia"
+                                } else {
+                                    "/tmp/ServerMedia"
+                                };
                                 let msg = FragmentReassembler::assemble_file(message,path).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
