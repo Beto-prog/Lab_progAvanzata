@@ -732,6 +732,7 @@ pub mod file_system {
 
     use crate::message;
     use std::collections::HashMap;
+    use crate::logger::logger::write_log;
     //use crate::message::packaging::Repackager;
 
     pub struct ChatServer {

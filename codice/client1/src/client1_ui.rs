@@ -1,10 +1,15 @@
 #[allow(warnings)]
 use std::collections::HashMap;
-use std::fmt::format;
+use base64::{engine::general_purpose, Engine as _};
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use eframe::egui::{ColorImage, TextureHandle};
+use image::GenericImageView;
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
-use egui::{Color32, Frame, RichText, TextEdit, TextStyle};
+use egui::{Color32, Context, Frame, RichText, TextEdit, TextStyle};
 use wg_2024::network::NodeId;
 
 pub struct Client1_UI {
@@ -22,7 +27,8 @@ pub struct Client1_UI {
     can_show_clients: bool,                 //Response handle
     can_show_response: bool,                //Response handle
     can_show_file_list: bool,               //Response handle
-    response: String,                       //Response
+    response: String,                       //Response txt
+    image: Option<TextureHandle>,           //Response image
     error: (bool,String),                   //Error check
     communication_server_commands: Vec<String>,     //Commands
     text_server_commands: Vec<String>,              //Commands
@@ -47,6 +53,7 @@ impl Client1_UI {
             can_show_response: false,
             can_show_file_list: false,
             response: String::new(),
+            image: None,
             error: (false,String::new()),
             text_server_commands: vec!["file?".to_string(),"files_list?".to_string()],
             media_server_commands: vec!["media?".to_string(), "files_list?".to_string()],
@@ -54,7 +61,7 @@ impl Client1_UI {
 
         }
     }
-    pub fn client1_stats(&mut self, ui: &mut egui::Ui){
+    pub fn client1_stats(&mut self, ui: &mut egui::Ui, ctx: &Context){
 
         ui.separator();
         ui.columns(2,|columns|{
@@ -270,17 +277,17 @@ impl Client1_UI {
                 ui.add_space(10.0);
                 if !self.error.0{
                     if self.can_show_clients{
-                        self.show_response(ui,Some("Clients".to_string()));
+                        self.show_response(ui,Some("Clients".to_string()),ctx);
                     }
                     if self.can_show_response{
-                        self.show_response(ui,Some("Response".to_string()));
+                        self.show_response(ui, Some("Response".to_string()),ctx );
                     }
                     if self.can_show_file_list{
-                        self.show_response(ui,Some("Files".to_string()));
+                        self.show_response(ui, Some("Files".to_string()),ctx );
                     }
                 }
                 else{
-                    self.show_response(ui,Some(self.error.1.clone()));
+                    self.show_response(ui, Some(self.error.1.clone()),ctx);
                 }
             });
         });
@@ -358,24 +365,78 @@ impl Client1_UI {
             }
         }
     }
-    pub fn show_response(&mut self, ui: &mut egui::Ui,message: Option<String>){
+    pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>, ctx: &Context){
 
             match message.expect("Failed to get value").as_str(){
                 "Response" =>{
-                    Frame::none()
-                        .fill(Color32::BLACK)
-                        .rounding(egui::Rounding::same(3.0))
-                        .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                        .inner_margin(egui::Margin::same(20.0))
-                        .show(ui, |ui| {
-                            ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                            ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",self.response));
-                            ui.add_space(10.0);
-                            if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
-                                self.can_show_response = false;
-                                self.response = String::new();
-                            }
-                        });
+                    if !self.selected_server.1.eq("MediaServer"){
+                        Frame::none()
+                            .fill(Color32::BLACK)
+                            .rounding(egui::Rounding::same(3.0))
+                            .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+                            .inner_margin(egui::Margin::same(20.0))
+                            .show(ui, |ui| {
+                                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                                ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",self.response));
+                                ui.add_space(10.0);
+                                if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
+                                    self.can_show_response = false;
+                                    self.response = String::new();
+                                }
+                            });
+                    }
+                    else{
+                        Frame::none()
+                            .fill(Color32::BLACK)
+                            .rounding(egui::Rounding::same(3.0))
+                            .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+                            .inner_margin(egui::Margin::same(20.0))
+                            .show(ui, |ui| {
+                                //String -> Vec<u8>
+                                let first_conv = Client1_UI::string_to_bytes(self.response.clone());
+                                match first_conv{
+                                    Ok(vec) =>{
+                                        let path = Path::new("C:\\Temp\\ServerMedia\\recvMedia");
+
+                                        std::fs::create_dir_all(path).map_err(|e| e.to_string()).expect("Failed to create directory");
+                                        let mut file = File::create("C:\\Temp\\ServerMedia\\recvMedia\\result.mp3").map_err(|e| e.to_string()).expect("Failed to get value");
+                                        file.write_all(&vec).map_err(|e| e.to_string()).expect("Failed to write value");
+                                        //Vec<u8> -> image
+                                        /*
+                                        let second_conv = Client1_UI::bytes_to_image(vec);
+                                        match second_conv{
+                                            Ok(image) =>{
+                                                let res = ctx.load_texture("received-image", image, Default::default());
+                                                self.image = Some(res);
+                                                if let Some(tex) = &self.image {
+                                                    ui.image(tex);
+                                                }
+                                            }
+                                            Err(e) => {
+                                                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                                                ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",e));
+                                                ui.add_space(10.0);
+                                                if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
+                                                    self.can_show_response = false;
+                                                    self.response = String::new();
+                                                }
+                                            }
+                                        }
+
+                                         */
+                                    }
+                                    Err(e) =>{
+                                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                                        ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}",e));
+                                        ui.add_space(10.0);
+                                        if ui.add_sized(egui::vec2(50.0,50.0),egui::Button::new("Clear")).clicked() {
+                                            self.can_show_response = false;
+                                            self.response = String::new();
+                                        }
+                                    }
+                                }
+                            });
+                    }
                 },
                 "Clients" => {
                     Frame::none()
@@ -425,6 +486,21 @@ impl Client1_UI {
                         });
                 }
             }
+    }
+    pub fn string_to_bytes(encoded: String) -> Result<Vec<u8>, String> {
+        general_purpose::STANDARD
+            .decode(&encoded)
+            .map_err(|e| format!("Base64 decode err: {}", e))
+    }
+    pub fn bytes_to_image(bytes: Vec<u8>) -> Result<ColorImage, String> {
+        let image = image::load_from_memory(&bytes)
+            .map_err(|e| format!("Image decoding failed: {}", e))?
+            .to_rgba8();
+
+        let (w, h) = image.dimensions();
+        let pixels = image.into_raw(); // RGBA u8 flat vec
+        let color_image = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &pixels);
+        Ok(color_image)
     }
 }
 

@@ -48,7 +48,6 @@ pub struct Client1 {
     flood_ids: Vec<(u64,NodeId)>,
     network: Graph,
     fragment_reassembler: FragmentReassembler, // Used to handle fragments
-    received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
     files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
@@ -69,7 +68,6 @@ impl Client1 {
             flood_ids: vec![],
             network: Graph::new(),
             fragment_reassembler: FragmentReassembler::new(),
-            received_files: vec![],
             other_client_ids: Arc::new(Mutex::new(vec![])),
             files_names: Arc::new(Mutex::new(vec![])),
             servers: Arc::new(Mutex::new(HashMap::new())),
@@ -185,24 +183,24 @@ impl Client1 {
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
 
-                write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
+                write_log(&format!("{:?}",fragment));
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to get value"){
                     Some(message) =>{
-                        //write_log(&format!("{:?}",message));
-                        match FragmentReassembler::assemble_string_file(message,&mut self.received_files){
+
+                        //Encode differently based on the type. If I want to share an image I need a different conversion
+                        match FragmentReassembler::assemble_string_file(message.clone()){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-                                write_log(&format !("{:?}",msg));
+                                //write_log(&format!("{}", msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                //write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
-                                    //println!("DEBUG msg: {:?}",msg);
+
                                     self.handle_msg(msg,packet.session_id,dest_id,frag_index);
                                 }
                                 else{
@@ -230,8 +228,45 @@ impl Client1 {
                                     }
                                 }
                             },
-                            // FragmentReassembler encountered an error
-                            Err(e) => println!("{e}")
+                            // FragmentReassembler couldn't assemble the message -> must be an image
+                            Err(_) =>{
+                                match FragmentReassembler::assemble_image_file(message.clone()){
+                                    Ok(msg) =>{
+                                        //write_log(&format!("{}", msg));
+                                        let mut new_hops = packet.routing_header.hops.clone();
+                                        let dest_id = new_hops[0].clone();
+                                        new_hops.reverse();
+                                        let new_first_hop = new_hops[1];
+                                        //Handle the reconstructed message
+                                        if msg.starts_with("media!(") && msg.ends_with(")"){
+                                            msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
+                                        }
+                                        // A message is reconstructed: create and send back an Ack
+                                        let new_pack = Packet::new_ack(
+                                            SourceRoutingHeader::with_first_hop(new_hops),packet.session_id,frag_index);
+
+                                        match self.sender_channels.get(&new_first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
+                                            Ok(_) => (),
+                                            Err(_) =>{ // Error: the first node is crashed
+
+                                                self.sender_channels.remove(&new_first_hop);
+                                                self.discover_network();
+
+                                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
+                                                let first_hop = new_path[1];
+
+                                                let packet_sent = Packet::new_ack(
+                                                    SourceRoutingHeader::with_first_hop(new_path),packet.session_id,frag_index);
+                                                if let Some(sender) = self.sender_channels.get(&first_hop){
+                                                    sender.send(packet_sent).expect("CLIENT1: failed to send message");
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) =>{}
+                                }
+
+                            }
                         }
                     }
                     // There are still Fragments missing: send back Ack for current fragment in the meantime

@@ -182,9 +182,7 @@ impl Client1 {
                             let first_hop = hops[1].clone();
                             let new_pack = Packet::new_ack(
                                 SourceRoutingHeader::with_first_hop(hops), session_id, frag_index);
-                            if !self.received_files.contains(&res){
-                                self.received_files.push(res.clone());
-                            }
+
                             match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
                                 Ok(_) => (),
                                 Err(_) =>{ // Error: the first node is crashed
@@ -391,14 +389,14 @@ mod test{
         assert_eq!(cl.handle_msg(test_msg2,3,2,0),"files_list!([file1.txt,file2.txt])");
 
         let file_txt = fs::read("src/test/file1").unwrap();
-        let  file_txt2 = FragmentReassembler::assemble_string_file(file_txt,&mut cl.received_files).unwrap();
+        let  file_txt2 = FragmentReassembler::assemble_string_file(file_txt).unwrap();
         let mut msg= String::from("file!(6,");
         msg.push_str(&file_txt2);
         msg.push_str(")");
         assert_eq!(cl.handle_msg(msg,3,2,0),"file!(6,test 123456 advanced_programming)");
 
         let file_media = fs::read("src/test/testMedia.mp3").unwrap();
-        let file_media2 = FragmentReassembler::assemble_string_file(file_media,&mut cl.received_files).unwrap();
+        let file_media2 = FragmentReassembler::assemble_string_file(file_media).unwrap();
         let mut msg= String::from("media!(");
         msg.push_str(&file_media2);
         msg.push_str(")");

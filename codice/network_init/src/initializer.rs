@@ -123,9 +123,9 @@ impl NetworkInitializer {
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
             let base_path = if cfg!(target_os = "windows") {
-                "C:\\Temp\\ServerTxt"
+                "C:\\Temp\\ServerMedia"
             } else {
-                "/tmp/ServerTxt"
+                "/tmp/ServerMedia"
             };
             let mut server = match index % 3 {
                 1 => server::Server::new(
@@ -135,6 +135,7 @@ impl NetworkInitializer {
                     Box::new(server::file_system::ChatServer::new()),
                     None
                 ),
+
                 0 => {
                     Self::prepare_files(base_path);
                     server::Server::new(
@@ -143,7 +144,7 @@ impl NetworkInitializer {
                         neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
-                            server::file_system::ServerType::TextServer,
+                            server::file_system::ServerType::MediaServer,
                         )),
                         Some(base_path.to_string()),
                     )
@@ -156,7 +157,7 @@ impl NetworkInitializer {
                         neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
-                            server::file_system::ServerType::MediaServer,
+                            server::file_system::ServerType::TextServer,
                         )),
                         Some(base_path.to_string()),
                     )

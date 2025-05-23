@@ -10,6 +10,8 @@ rand = "0.9.0-beta.3"
 crossbeam-channel = "0.5.14"
 egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
+base64 = "0.22.1"
+image = "0.25.6"
 [lib]
 name = "client1"
 path = "src/lib.rs"

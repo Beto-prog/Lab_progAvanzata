@@ -1,4 +1,4 @@
-
+use base64::{engine::general_purpose, Engine as _};
 use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::{unbounded};
@@ -42,13 +42,14 @@ impl FragmentReassembler {
         *self.processed_fragments.entry(key).or_insert(0) += 1;
         if self.processed_fragments[&key] == fragment.total_n_fragments as u8 {
             // Reassemble the message
-            let total_length = ((fragment.total_n_fragments - 1) * 128 + fragment.length as u64) as usize;
-            let message = buffer[..total_length].to_vec();
-
-            // Clean up tracking structures
-            self.buffer.remove(&key);
+            let message = self.buffer.remove(&key).unwrap_or_default();
+        
+            //Clean tracking structures
             self.processed_fragments.remove(&key);
+            self.buffer.remove(&key);
 
+            //let total_length = ((fragment.total_n_fragments - 1) * 128 + fragment.length as u64) as usize;
+            //let message = buffer[..total_length].to_vec();
             // Return reassembled message
             //println!("{:?}",message);
             Ok(Some(message))
@@ -85,7 +86,7 @@ impl FragmentReassembler {
         Ok(fragments)
     }
     // Assemble the Vec and save the result
-    pub fn assemble_string_file(data: Vec<u8>, mut received_files: &mut Vec<String>) -> Result<String, String> {
+    pub fn assemble_string_file(data: Vec<u8>) -> Result<String, String> {
         match String::from_utf8(data) {
             Ok(mut string) => {
                 // Remove trailing null characters
@@ -94,6 +95,9 @@ impl FragmentReassembler {
             }
             Err(e) => Err(format!("Failed to convert data to string: {}", e)),
         }
+    }
+    pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
+        Ok(general_purpose::STANDARD.encode(data))
     }
 }
 //Some tests about different files fragmented and reconstructed
