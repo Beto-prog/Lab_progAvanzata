@@ -474,9 +474,12 @@ pub mod file_system {
             source_id: u32,
             flag: &mut i32,
         ) -> Result<Vec<Fragment>, String>;
+        fn kind (&self) ->  ServerType;
     }
 
     impl ServerTrait for ContentServer {
+
+
         fn process_request(
             &mut self,
             command: String,
@@ -539,7 +542,7 @@ pub mod file_system {
                         if path.exists() && path.is_file() {
                             Repackager::create_fragments(
                                 &*"media!(",
-                                Some(&*(self.path.clone() + media_id)),
+                                Some(path.to_str().unwrap()),
                             )
                         } else
                         //can not retrieve file
@@ -560,7 +563,18 @@ pub mod file_system {
                 _ => Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None),
             }
         }
+
+        fn kind(&self) -> ServerType {
+            match self.serv {
+                message::file_system::ServerType::TextServer =>  {TextServer},
+                message::file_system::ServerType::MediaServer => {message::file_system::ServerType::MediaServer},
+                message::file_system::ServerType::CommunicationServer => {ServerType::CommunicationServer},
+            }
+
+
+        }
     }
+
 
     impl ServerTrait for ChatServer {
         fn process_request(
@@ -638,6 +652,14 @@ pub mod file_system {
                     //
                     Repackager::create_fragments(&*"error_unsupported_request!".to_string(), None)
                 }
+            }
+        }
+
+        fn kind(&self) -> ServerType {
+            match self.serv {
+                message::file_system::ServerType::TextServer =>  {TextServer},
+                message::file_system::ServerType::MediaServer => {message::file_system::ServerType::MediaServer},
+                message::file_system::ServerType::CommunicationServer => {ServerType::CommunicationServer},
             }
         }
     }
@@ -732,6 +754,7 @@ pub mod file_system {
 
     use crate::message;
     use std::collections::HashMap;
+    use crate::file_system::ServerType::TextServer;
     //use crate::message::packaging::Repackager;
 
     pub struct ChatServer {
@@ -845,7 +868,7 @@ mod tests_chat_server {
         let mut c = 0;
         let mut server = ChatServer::new();
         let value = server.process_request("message_for?(2,Hello)".to_string(), 1, &mut c);
-       // assert_eq!(convert_back(value), "message_from!(1,Hello)");
+        // assert_eq!(convert_back(value), "message_from!(1,Hello)");
     }
 
     #[test]
@@ -949,7 +972,7 @@ mod tests_message_media_server {
         let mut transformation = Ok(Some(vec![]));
         for i in processed_request.unwrap().iter() {
             transformation = c.process_fragment(1, 1, i.clone());
-             println!("{:?}", transformation);
+            println!("{:?}", transformation);
         }
 
         let string_result = Repackager::assemble_string(transformation.unwrap().unwrap());
