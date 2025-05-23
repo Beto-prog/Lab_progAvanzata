@@ -236,7 +236,7 @@ impl Client1 {
                                 let path = if cfg!(target_os = "windows") {
                                     "C:\\Temp\\ServerMedia"
                                 } else {
-                                    "/tmp/ServerMedia"
+                                    "."
                                 };
                                 let msg = FragmentReassembler::assemble_file(message,path).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
