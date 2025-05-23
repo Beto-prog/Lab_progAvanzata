@@ -128,14 +128,14 @@ impl NetworkInitializer {
                 "/tmp/ServerTxt"
             };
             let mut server = match index % 3 {
-                1 => server::Server::new(
+                0 => server::Server::new(
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()),
                     None
                 ),
-                0 => {
+                1 => {
                     Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
