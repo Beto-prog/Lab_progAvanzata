@@ -43,13 +43,12 @@ impl FragmentReassembler {
 
         // Update count of received fragments
         *self.processed_fragments.entry(key).or_insert(0) += 1;
-        if self.processed_fragments[&key] == fragment.total_n_fragments as u8 {
+        if self.processed_fragments.get(&key).expect("Failed to get value").eq(&(fragment.total_n_fragments as u8)) {
             // Reassemble the message
             let message = self.buffer.remove(&key).unwrap_or_default();
 
             //Clean tracking structures
             self.processed_fragments.remove(&key);
-            self.buffer.remove(&key);
 
             //let total_length = ((fragment.total_n_fragments - 1) * 128 + fragment.length as u64) as usize;
             //let message = buffer[..total_length].to_vec();
