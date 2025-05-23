@@ -32,7 +32,6 @@ use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
 use std::env;
 use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
@@ -55,7 +54,8 @@ pub struct Client1 {
     files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
     ui_snd: Option<Sender<Client1_UI>>,
-    selected_file_name: String
+    selected_file_name: String,
+    selected_server: NodeId
 }
 
 impl Client1 {
@@ -77,7 +77,8 @@ impl Client1 {
             files_names: Arc::new(Mutex::new(vec![])),
             servers: Arc::new(Mutex::new(HashMap::new())),
             ui_snd: Some(ui_snd.expect("Failed to get value")),
-            selected_file_name: String::new()
+            selected_file_name: String::new(),
+            selected_server: NodeId::default()
         }
     }
     // Network discovery

@@ -11,8 +11,11 @@ impl Client1 {
     pub fn handle_command(&mut self, command: String) -> String{
     let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
         if let Some((cmd,dest)) = command.split_once("->") {
-            //println!("DEBUG COMMAND: {}",cmd);
+
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
+            if cmd.eq("client_list?"){
+                self.selected_server = dest_id;
+            }
             match cmd {
                 cmd if available_simple_commands.contains(&cmd) =>{
                     self.send_message(dest_id, cmd);
@@ -44,19 +47,16 @@ impl Client1 {
                     }
                 }
                 cmd if cmd.starts_with("message_for?(") => {
-                    match Self::get_values(cmd) {
-                        Some(values) => {
-                            if self.other_client_ids.lock().expect("Failed to lock").contains(&values.0) {
-                                self.send_message(values.0, values.1);
-                                "CLIENT1: OK".to_string()
-                            } else {
-                                "Error: invalid dest_id".to_string()
-                            }
-                        }
-                        None => {
-                            "Error: command not formatted correctly".to_string()
-                        }
+                    let dest_id = Self::get_values(cmd.to_string().clone().as_str()).expect("Failed to get values").0;
+                    if self.other_client_ids.lock().expect("Failed to lock").contains(&dest_id) {
+                        self.send_message(self.selected_server, cmd);
+                        "CLIENT1: OK".to_string()
+                    } else {
+                        "Error: invalid dest_id".to_string()
                     }
+                }
+                None => {
+                    "Error: command not formatted correctly".to_string()
                 }
                 _=> "Not a valid command".to_string()
             }
