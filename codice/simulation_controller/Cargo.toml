@@ -16,6 +16,7 @@ env_logger = { version = "0.10", default-features = false, features = [
 egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
 client1 = { path = "../client1" }
+client2 = { path = "../client2" }
 
 bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-features = false }
 lockheedrustin-drone = { git = "https://github.com/Lockheed-Rustin/drone.git" }

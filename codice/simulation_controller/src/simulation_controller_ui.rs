@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wg_2024::network::NodeId;
 use client1::client1_ui::Client1_UI;
+use client2::client2_ui::Client2_UI;
 
 pub struct SimulationControllerUI {
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
@@ -17,12 +18,14 @@ pub struct SimulationControllerUI {
     ui_command_sender: Sender<UICommand>,
     ui_response_receiver: Receiver<UIResponse>,
     client1_ui: Client1_UI,
+    client2_ui: Client2_UI,
     new_pdr: HashMap<NodeId, f32>,
     selected_add_neighbour: HashMap<NodeId, NodeId>,
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
-    client1_selected: bool
+    client1_selected: bool,
+    client2_selected: bool,
 }
 
 impl SimulationControllerUI {
@@ -33,6 +36,7 @@ impl SimulationControllerUI {
         ui_command_sender: Sender<UICommand>,
         ui_response_receiver: Receiver<UIResponse>,
         ui_rcv: Receiver<Client1_UI>,
+        ui_rcv2: Receiver<Client2_UI>,
     ) -> Self {
         env_logger::init();
         let selected_tab = *drone_stats
@@ -57,18 +61,21 @@ impl SimulationControllerUI {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
         let client1_ui = ui_rcv.recv().expect("Failed to get value");
+        let client2_ui = ui_rcv2.recv().expect("Failed to get value");
         Self {
             selected_tab,
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
             client1_ui,
+            client2_ui,
             new_pdr,
             selected_add_neighbour,
             selected_remove_neighbour,
             snackbar: None,
             snackbar_duration: 2.0,
-            client1_selected: false
+            client1_selected: false,
+            client2_selected: false,
         }
     }
 
@@ -207,10 +214,14 @@ impl eframe::App for SimulationControllerUI {
                     if ui.button(format!("Drone {drone}")).clicked() {
                         self.selected_tab = *drone as usize;
                         self.client1_selected = false;
+                        self.client2_selected = false;
                     }
                 }
                 if ui.button(format!("Client1")).clicked(){
                     self.client1_selected = true;
+                }
+                if ui.button("Client2").clicked(){
+                    self.client2_selected = true;
                 }
             });
 
@@ -218,6 +229,9 @@ impl eframe::App for SimulationControllerUI {
 
             if self.client1_selected{
                 self.client1_ui.client1_stats(ui,ctx);
+            }
+            else if self.client2_selected{
+                self.client2_ui.client2_stats(ui,ctx);
             }
             else{
                 self.drone_stats_ui(

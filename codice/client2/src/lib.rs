@@ -2,6 +2,10 @@
 
 mod repackager;
 
+mod logger;
+
+pub mod client2_ui;
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::io::{Read, Write};
@@ -10,8 +14,9 @@ use wg_2024::packet::*;
 use wg_2024::network::*;
 use crossbeam_channel::{Sender, Receiver, select_biased, unbounded};
 use std::io::{BufRead, BufReader};
-use std::net::{TcpListener, TcpStream};
+use crate::client2_ui::Client2_UI;
 use crate::repackager::Repackager;
+use crate::logger::logger::{init_logger, write_log};
 
 
 pub struct Client2 {
@@ -19,28 +24,35 @@ pub struct Client2 {
     discovered_drones: HashMap<NodeId, NodeType>,
     neighbor_senders: HashMap<NodeId, Sender<Packet>>,
     network_graph: HashMap<NodeId, HashSet<NodeId>>,
-    servers: HashMap<NodeId, String>,
+    servers: Arc<Mutex<HashMap<NodeId,String>>>,
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
     repackager: Repackager,
     receiver_channel: Receiver<Packet>,
     saved_files: HashSet<String>,
+    ui_snd: Option<Sender<Client2_UI>>,
+    other_client_ids: Arc<Mutex<Vec<NodeId>>>,
+    files_names: Arc<Mutex<Vec<String>>>,
     //reader: BufReader<TcpStream>,
     //writer: TcpStream,
 }
 
 impl Client2 {
-    pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>) -> Self {
+    pub fn new(node_id: NodeId, neighbor_senders: HashMap<NodeId, Sender<Packet>>, receiver_channel: Receiver<Packet>,
+               ui_snd: Option<Sender<Client2_UI>>) -> Self {
         //let (reader, writer) = setup_window();
         Self {
             node_id,
             discovered_drones: HashMap::new(),
             neighbor_senders,
             network_graph: HashMap::new(),
-            servers: HashMap::new(),
+            servers: Arc::new(Mutex::new(HashMap::new())),
             sent_packets: HashMap::new(), // Initialize the sent packets map
             repackager: Repackager::new(),
             receiver_channel,
             saved_files: HashSet::new(),
+            ui_snd: Some(ui_snd.expect("Failed to get value")),
+            other_client_ids: Arc::new(Mutex::new(vec![])),
+            files_names: Arc::new(Mutex::new(vec![])),
             //reader,
             //writer,
         }
@@ -100,7 +112,10 @@ impl Client2 {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
             }
             if node_type == &NodeType::Server {
-                self.servers.insert(self.node_id, "Unknown".to_string());
+                self.servers
+                    .lock()
+                    .expect("Failed to lock the servers map")
+                    .insert(self.node_id, "Unknown".to_string());
             }
         }
         // Update the network graph (adjacency list)
@@ -137,7 +152,7 @@ impl Client2 {
     }
 
     //Handle of commands
-    pub fn handle_command(&mut self, command: &str) {
+    pub fn handle_command(&mut self, command: String) -> String {
         if command == "commands" {
             println!("server_type?->NodeId
 server_list
@@ -146,12 +161,13 @@ registration_to_chat->NodeId
 file?(file_id)->NodeId
 media?(media_id)->NodeId
 message_for?(client_id, message)->NodeId");
-            return;
+            return "CLIENT1: OK".to_string()
         } else if command == "server_list" {
-            for(server_id, server_type) in &self.servers {
+            let servers = self.servers.lock().unwrap();
+            for(server_id, server_type) in servers.iter() {
                 println!("{}, {}", server_id, server_type);
             }
-            return;
+            return "CLIENT1: OK".to_string()
         }
         let (comm, dest) = command.split_once("->").expect("Command was formated wrong.");
         let server_id = dest.parse().unwrap();
@@ -162,24 +178,29 @@ message_for?(client_id, message)->NodeId");
                 //registration_to_chat
                 //client_list?
                 self.send_message(server_id, cmd, None);
+                return "CLIENT1: OK".to_string()
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                 //file?(file_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
+                return "CLIENT1: OK".to_string()
             }
             cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
                 //media?(media_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
+                return "CLIENT1: OK".to_string()
             }
             cmd if cmd.starts_with("message_for?(") && cmd.ends_with(")") => {
                 //message_for?(client_id, message)
                 let text = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")"));
                 let mut val = text.unwrap().split_once(", ");
                 self.send_message(server_id, cmd, None);
+                return "CLIENT1: OK".to_string()
             }
-            _ => { "Wrong command, type 'commands' to see the full list of the commands."; }
+            _ => { "Wrong command, type 'commands' to see the full list of the commands.";
+                return "CLIENT1: OK".to_string()}
         }
     }
 
@@ -203,7 +224,11 @@ message_for?(client_id, message)->NodeId");
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
                 let svtype = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
-                self.servers.entry(sender).or_insert_with(|| svtype.unwrap().to_string());
+                self.servers
+                    .lock()
+                    .expect("Failed to lock the servers map")
+                    .entry(sender)
+                    .or_insert_with(|| svtype.unwrap().to_string());
                 println!("SERVERS: {:?}", self.servers);
             }
             msg if msg.starts_with("files_list!(") && msg.ends_with(")") => {
@@ -277,7 +302,7 @@ message_for?(client_id, message)->NodeId");
             PacketType::Ack(ack) => {println!("I RECEIVED ACK: {:?}", ack);}
             PacketType::Nack(nack) => {
                 //Check again all nodes, servers and connections
-                self.servers = HashMap::new();
+                self.servers = Arc::new(Mutex::new(HashMap::new()));
                 self.discovered_drones = HashMap::new();
                 self.network_graph = HashMap::new();
                 self.discover_network();
@@ -354,85 +379,85 @@ message_for?(client_id, message)->NodeId");
         rand::random()
     }
 
-    pub fn run(&mut self) {
-        let (mut reader, mut writer) = setup_window();
-        let mut buffer = String::new();
-        self.discover_network();
-        //let mut input = "files_list?->6";
-        let mut executed = false;
-        loop {
-            select_biased! {
-                recv(self.receiver_channel) -> packet => {
-                    match packet {
-                        Ok(packet) => {
-                            //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
-                            self.handle_packet(packet);
-                        },
-                        Err(e) => {
-                            eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
+//     pub fn run(&mut self) {
+//         self.discover_network();
+//         let mut input = "files_list?->6";
+//         let mut executed = false;
+//         loop {
+//             select_biased! {
+//                 recv(self.receiver_channel) -> packet => {
+//                     match packet {
+//                         Ok(packet) => {
+//                             //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
+//                             self.handle_packet(packet);
+//                         },
+//                         Err(e) => {
+//                             eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
+//                         }
+//                     }
+//                 }
+//
+//             }
+//             if !self.servers.is_empty() {
+//                 // if(!executed) {
+//                 //     //self.handle_command("server_type?->6");
+//                 //     //self.handle_command("files_list?->6");
+//                 //     //self.handle_command("registration_to_chat->6");
+//                 //     // self.handle_command("client_list->6");
+//                 //     //self.handle_command("message_for?(10, hahaha)->6");
+//                 //     self.handle_command("server_list");
+//                 //     executed = true;
+//                 // }
+//             }
+//         }
+//     }
+pub fn run(&mut self){
+    init_logger();
+    self.discover_network();
+    let (cmd_snd,cmd_rcv) = unbounded::<String>();
+    let (msg_snd,msg_rcv) = unbounded::<String>();
+    let receiver_channel = self.receiver_channel.clone();
+
+    let cl2_ui = Client2_UI::new(
+        self.node_id.clone(),
+        Arc::clone(&self.other_client_ids),
+        Arc::clone(&self.servers),
+        Arc::clone(&self.files_names),
+        cmd_snd,
+        msg_rcv
+    );
+    if let Some(ui_snd) = self.ui_snd.take(){
+        ui_snd.send(cl2_ui).expect("Failed to send");
+    }
+
+    //Packet handle part
+    loop {
+        select_biased! {
+                // Handle packets in the meantime
+                    recv(receiver_channel) -> packet =>{
+                        match packet{
+                                Ok(packet) => {
+                                        self.handle_packet(packet); //, &msg_snd
+                                },
+                                Err(e) => ()//println!("Err2: {e}")
+                        }
+                    }
+                    recv(cmd_rcv) -> cmd => {
+                        match cmd {
+                            Ok(cmd) => {
+                                match self.handle_command(cmd.clone()).as_str() {
+                                    "CLIENT2: OK" => (),
+                                    e => () //println!("Err2: {e}")
+                                }
+                            }
+                            Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
                         }
                     }
                 }
-
-            }
-            if !self.servers.is_empty() {
-
-                reader.read_line(&mut buffer).expect("Error reading input");
-                self.handle_command(buffer.clone().as_str());
-                // if(!executed) {
-                //     //self.handle_command("server_type?->6");
-                //     //self.handle_command("files_list?->6");
-                //     //self.handle_command("registration_to_chat->6");
-                //     // self.handle_command("client_list->6");
-                //     //self.handle_command("message_for?(10, hahaha)->6");
-                //     self.handle_command("server_list");
-                //     executed = true;
-                // }
-            }
-        }
     }
 }
 
-fn setup_window() -> (BufReader<TcpStream>, TcpStream) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    // Launch terminal with persistent shell
-    std::process::Command::new("xterm")
-        .args(&[
-            "-e",
-            &format!(
-                "sh -c ' nc localhost {}; read -p \"Press enter to exit...\"'",
-                port
-            ),
-        ])
-        .spawn()
-        .unwrap_or_else(|_| panic!("Failed to open terminal window"));
-
-    let (stream, _) = listener.accept().unwrap();
-    let reader = BufReader::new(stream.try_clone().unwrap());
-    let writer = stream;
-
-    return (reader, writer);
 }
-
-// //Esempio di utilizzo (il thread non è necessario, serve solo a simulare un client)
-// fn main() {
-//     let thread1 = thread::spawn(|| {
-//         let (mut reader, mut writer) = setup_window();
-//         let mut buffer = String::new();
-//         loop {
-//             //Read values
-//             reader.read_line(&mut buffer).unwrap();
-//             //print values
-//             writeln!(writer, "{}", buffer).unwrap();
-//             //in questo caso si chiama clear perchè riutilizziamo sempre lo stesso buffer, ma in genere non è necessario
-//             buffer.clear();
-//         }
-//     });
-//
-//     thread1.join().unwrap();
-// }
 
 /*#[test]
 fn test_discovery(){

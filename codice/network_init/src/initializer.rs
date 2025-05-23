@@ -4,6 +4,7 @@ use super::validation::validate_config;
 use client1::client1_ui::Client1_UI;
 use client1::Client1;
 use client2::Client2;
+use client2::client2_ui::Client2_UI;
 use crossbeam_channel::unbounded;
 use simulation_controller::node_stats::DroneStats;
 use simulation_controller::SimulationController;
@@ -93,6 +94,7 @@ impl NetworkInitializer {
 
         // Client initialization
         let (ui_snd, ui_rcv) = unbounded::<Client1_UI>();
+        let (ui_snd2, ui_rcv2) = unbounded::<Client2_UI>();
         for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &client_config.connected_drone_ids {
@@ -118,6 +120,7 @@ impl NetworkInitializer {
                     client_config.id,
                     neighbor_senders.clone(),
                     client_receiver,
+                    Some(ui_snd2.clone()),
                  
                 );
                 thread::spawn(move || client.run());
@@ -214,6 +217,7 @@ impl NetworkInitializer {
                     ui_command_sender,
                     ui_response_receiver,
                     ui_rcv,
+                    ui_rcv2,
                 )))
             }),
         ) {
