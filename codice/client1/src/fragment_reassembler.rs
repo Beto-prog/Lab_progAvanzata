@@ -101,6 +101,7 @@ impl FragmentReassembler {
         Ok(general_purpose::STANDARD.encode(data))
     }
     pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
+        /*
         // Remove null charachter
         let clean_data = data
             .into_iter()
@@ -145,6 +146,15 @@ impl FragmentReassembler {
                 )),
             }
         }
+         */
+        // Cerca il primo '('
+        let payload_start = data.iter().position(|&b| b == b'(').map(|p| p + 1).unwrap_or(0);
+
+        let file_data = &data[payload_start..];
+
+        fs::write(output_path, file_data)
+            .map_err(|e| format!("Errore nella scrittura del file: {e}"))?;
+        Ok("Message successfully converted".to_string())
     }
 }
 //Some tests about different files fragmented and reconstructed
