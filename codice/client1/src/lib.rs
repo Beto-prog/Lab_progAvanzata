@@ -114,7 +114,7 @@ impl Client1 {
     }
     // Creation of a packet of type FloodRequest
     pub fn create_flood_request(&self, request: FloodRequest, neighbor: NodeId,session_id: u64) -> Packet{
-        let hops: Vec<NodeId> = vec![self.node_id,neighbor]; // TODO check if correct
+        let hops: Vec<NodeId> = vec![self.node_id,neighbor];
         let srh = SourceRoutingHeader::with_first_hop(hops);
         let res = Packet::new_flood_request(srh,session_id,request);
         //println!("DEBUG CLIENT 1: {:?}",res);

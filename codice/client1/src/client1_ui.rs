@@ -1,9 +1,6 @@
 #[allow(warnings)]
 use std::collections::HashMap;
 use base64::{engine::general_purpose, Engine as _};
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
 use eframe::egui::{ColorImage, TextureHandle};
 use image::GenericImageView;
 use std::sync::{Arc, Mutex};

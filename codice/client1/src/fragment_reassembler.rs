@@ -105,7 +105,7 @@ impl FragmentReassembler {
         // 1. dopo la prima '('
         let after_paren = data.iter()
             .position(|&b| b == b'(')
-            .ok_or("Formato non valido: '(' mancante")? + 1;
+            .ok_or("Not a valid format: '(' missing")? + 1;
 
         // 2. se esiste una virgola subito dopo (caso file!(size, ...)), non
         //    salta anche <size>, fino alla prima ','
@@ -117,7 +117,7 @@ impl FragmentReassembler {
         // 3. ultima ')' (esclude pure il padding 0x00 finale) !!IMPORTANTE
         let mut payload_end = data.iter()
             .rposition(|&b| b == b')')
-            .ok_or("Formato non valido: ')' mancante")?;
+            .ok_or("Not a valid format: ')' missing")?;
 
         while payload_end > payload_start && data[payload_end] == 0 {
             payload_end -= 1;        // togli eventuali 0x00 dopo la ')'
@@ -126,11 +126,11 @@ impl FragmentReassembler {
         let payload = &data[payload_start..payload_end]; // ')' esclusa
 
         let mut file = File::create(Path::new(output_path))
-            .map_err(|e| format!("Errore creazione file: {e}"))?;
+            .map_err(|e| format!("Error while creating file: {e}"))?;
         file.write_all(payload)
-            .map_err(|e| format!("Errore scrittura file: {e}"))?;
+            .map_err(|e| format!("Error while writing file: {e}"))?;
 
-        Ok("File salvato correttamente".into())
+        Ok("File saved correctly".into())
     }
 
 }
