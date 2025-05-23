@@ -12,7 +12,7 @@ use crate::Client1;
 // Struct FragmentReassembler to manage reassembly of fragments
 pub struct FragmentReassembler {
     pub buffer: HashMap<(u64, NodeId), Vec<u8>>, // Map of (session_id, source_id) to message buffer
-    pub processed_fragments: HashMap<(u64, NodeId), u8>, // Number of received fragments per (session_id, source_id)
+    pub processed_fragments: HashMap<(u64, NodeId), u64>, // Number of received fragments per (session_id, source_id)
 }
 
 impl FragmentReassembler {
@@ -43,7 +43,7 @@ impl FragmentReassembler {
 
         // Update count of received fragments
         *self.processed_fragments.entry(key).or_insert(0) += 1;
-        if self.processed_fragments.get(&key).expect("Failed to get value").eq(&(fragment.total_n_fragments as u8)) {
+        if self.processed_fragments.get(&key).expect("Failed to get value").eq(&(fragment.total_n_fragments)) {
             // Reassemble the message
             let message = self.buffer.remove(&key).unwrap_or_default();
 
