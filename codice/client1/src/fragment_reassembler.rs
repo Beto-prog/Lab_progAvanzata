@@ -43,7 +43,7 @@ impl FragmentReassembler {
         if self.processed_fragments[&key] == fragment.total_n_fragments as u8 {
             // Reassemble the message
             let message = self.buffer.remove(&key).unwrap_or_default();
-        
+
             //Clean tracking structures
             self.processed_fragments.remove(&key);
             self.buffer.remove(&key);

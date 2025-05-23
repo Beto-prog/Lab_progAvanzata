@@ -26,7 +26,7 @@ pub mod logger
                 let mut file = OpenOptions::new()
                     .append(true)
                     .create(true)
-                    .open("C:\\Temp\\log.txt")
+                    .open("C:\\Temp\\client1.log")
                     .unwrap();
 
                 let timestamp = SystemTime::now()
