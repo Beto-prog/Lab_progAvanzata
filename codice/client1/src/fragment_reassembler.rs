@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::collections::{HashMap};
 use std::fs;
+use std::path::Path;
 use crossbeam_channel::{unbounded};
 use wg_2024::network::NodeId;
 use wg_2024::packet::{Fragment, Packet};
@@ -98,6 +99,52 @@ impl FragmentReassembler {
     }
     pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
         Ok(general_purpose::STANDARD.encode(data))
+    }
+    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
+        // Remove null charachter
+        let clean_data = data
+            .into_iter()
+            .take_while(|&byte| byte != 0)
+            .collect::<Vec<_>>();
+
+        // Serch the posizion of tje first separator
+        let separator_pos = clean_data.iter().position(|&b| b == b'(');
+
+        if let Some(pos) = separator_pos {
+            // Take the initial string
+            let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
+                Ok(s) => s,
+                Err(e) => {
+                    return Err(format!(
+                        "Errore nella conversione della stringa iniziale: {}",
+                        e
+                    ))
+                }
+            };
+
+            // Extract file content
+            let file_data = &clean_data[pos + 1..];
+
+            // If the file has some data save it to the file system
+            if !file_data.is_empty() {
+                let file_path = Path::new(output_path);
+                if let Err(e) = fs::write(file_path, file_data) {
+                    return Err(format!("Errore nella scrittura del file: {}", e));
+                }
+            }
+
+            // Return the value
+            Ok("Succesful conversion".to_string())
+        } else {
+            // In this case is a normal string I suggest to revise this. This is for the client user
+            match String::from_utf8(clean_data) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(format!(
+                    "Errore nella conversione del messaggio in stringa: {}",
+                    e
+                )),
+            }
+        }
     }
 }
 //Some tests about different files fragmented and reconstructed

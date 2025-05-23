@@ -31,6 +31,7 @@ mod logger;
 use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
 use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
@@ -232,15 +233,16 @@ impl Client1 {
                             },
                             // FragmentReassembler encountered an error
                             Err(_) => {
-                                let msg = FragmentReassembler::assemble_image_file(message).expect("Failed to get value");
+                                let path = "C:\\Temp\\ServerMedia\\recvMedia";
+                                let msg = FragmentReassembler::assemble_file(message,path).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                
-                                //Handle the reconstructed message
-                                msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
+
+                                //Send the reconstructed message
+                                msg_snd.send(msg).expect("Failed to send message");
 
                                 // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
