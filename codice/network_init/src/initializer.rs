@@ -111,6 +111,17 @@ impl NetworkInitializer {
                 );
                 thread::spawn(move || client.run());
             }
+            
+            else
+            {
+                let mut client = Client2::new(
+                    client_config.id,
+                    neighbor_senders.clone(),
+                    client_receiver,
+                 
+                );
+                thread::spawn(move || client.run());
+            }
         }
 
         // Server initialization
