@@ -30,8 +30,9 @@ pub mod client1_ui;
 mod logger;
 use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
+use std::env;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
@@ -233,12 +234,10 @@ impl Client1 {
                             },
                             // FragmentReassembler encountered an error
                             Err(_) => {
-                                let path = if cfg!(target_os = "windows") {
-                                    "C:\\Temp\\ServerMedia"
-                                } else {
-                                    "."
-                                };
-                                let msg = FragmentReassembler::assemble_file(message,path).expect("Failed to get value");
+                                let path: PathBuf = env::current_dir().expect("Failed to get value");
+                                let mut file_path = path;
+                                file_path.push("song.mp3");
+                                let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to get value")).expect("Failed to get value");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
