@@ -71,7 +71,7 @@ impl Server{
         let new_interface =   ServerUiState
         {
             id: id as usize,
-            name :  
+            name :
             match server_type.kind() {
         ServerType::TextServer => {format!("TextServer: {}",Self::genera_nome_server())},
         ServerType::MediaServer => {format!("MediaServer: {}",Self::genera_nome_server())},
@@ -94,7 +94,7 @@ impl Server{
             server_type: server_type,
             path: path,                 //path where the file are stored
             myInterface : new_interface,
-           
+
            // extra field
             graph: graph,            //I nees this for bfs
             package_handler: Repackager::new(),
@@ -109,8 +109,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
 
     fn genera_nome_server() -> String {
-        
-  
+
+
         let aggettivi = [
             "Crimson", "Iron", "Shadow", "Silver", "Rapid", "Frozen", "Quantum", "Dark", "Electric", "Nova",
         ];
@@ -173,8 +173,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 None => {       
                         match &packet.pack_type
                     {
-                        PacketType::FloodRequest(_) => { add_message(&self.myInterface.messages, "Server", "Received FloodRequest", Color::White, Color::White); }
-                        PacketType::FloodResponse(_) => { add_message(&self.myInterface.messages, "Server", "Received FloodResponse", Color::White, Color::White);}
+                        PacketType::FloodRequest(_) => { }
+                        PacketType::FloodResponse(_) => { }
                         _ => { add_message(&self.myInterface.messages, "Server", "I received an packet without headers", Color::White, Color::Yellow);}
                         //the only packets that don't have the routing_header are the FloodRequest and the   FloodResponse
                     }
@@ -401,11 +401,13 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     }
                     
                     PacketType::FloodResponse(path) => {
+                        add_message(&self.myInterface.messages, "Server", "Received FloodResponse", Color::White, Color::White);
                         NewWork::recive_flood_response(&mut self.graph, path.path_trace);            //It's not the job of the server to propagate the message is not a drone
                     }
                     
                     PacketType::FloodRequest(mut flood_packet) =>
                         {
+                            add_message(&self.myInterface.messages, "Server", "Received FloodRequest", Color::White, Color::White);
                             let mut previous_neighbour = 0;
                             if let Some(last) = flood_packet.path_trace.last()
                             {

@@ -9,10 +9,13 @@ use crate::fragment_reassembler::FragmentReassembler;
 //Communication part related to the Client
 impl Client1 {
     pub fn handle_command(&mut self, command: String) -> String{
-    let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
+        let available_simple_commands = vec!["server_type?","files_list?","client_list?"];
         if let Some((cmd,dest)) = command.split_once("->") {
-            //println!("DEBUG COMMAND: {}",cmd);
+
             let dest_id = dest.parse::<NodeId>().expect("Failed to parse a correct destination");
+            if cmd.eq("client_list?"){
+                self.selected_server = dest_id;
+            }
             match cmd {
                 cmd if available_simple_commands.contains(&cmd) =>{
                     self.send_message(dest_id, cmd);
@@ -44,21 +47,17 @@ impl Client1 {
                     }
                 }
                 cmd if cmd.starts_with("message_for?(") => {
-                    match Self::get_values(cmd) {
-                        Some(values) => {
-                            if self.other_client_ids.lock().expect("Failed to lock").contains(&values.0) {
-                                self.send_message(values.0, values.1);
-                                "CLIENT1: OK".to_string()
-                            } else {
-                                "Error: invalid dest_id".to_string()
-                            }
-                        }
-                        None => {
-                            "Error: command not formatted correctly".to_string()
-                        }
+                    let dest_id = Self::get_values(cmd.to_string().clone().as_str()).expect("Failed to get values").0;
+                    if self.other_client_ids.lock().expect("Failed to lock").contains(&dest_id) {
+                        self.send_message(self.selected_server, cmd);
+                        "CLIENT1: OK".to_string()
+                    } else {
+                        "Error: invalid dest_id".to_string()
                     }
                 }
-                _=> "Not a valid command".to_string()
+                _ => {
+                    "Error: command not formatted correctly".to_string()
+                }
             }
         }
         else{ "Command not formatted correctly".to_string() }
@@ -82,39 +81,36 @@ impl Client1 {
                         pack_type: PacketType::MsgFragment(fragment.clone()),
                         session_id
                     };
+                    let key = (session_id,fragment.fragment_index);
+                    self.packet_sent.lock().expect("Failed to lock").insert(key,packet_sent.clone());
                     match sender.send(packet_sent){
                         // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
                         Ok(_) =>{
-                            'internal: loop {
-                                match self.receiver_channel.recv(){
-                                    Ok(packet) =>{
-                                        match packet.pack_type{
-                                            PacketType::Ack(ack) =>{
-                                                // In case I receive an Ack with same session_id and fragment_index message arrived correctly: restored normal course of the program
-                                                if packet.session_id == session_id && fragment.fragment_index == ack.fragment_index {break 'internal}
-                                            },
-                                            PacketType::Nack(nack) =>{
-                                                if packet.session_id == session_id && nack.fragment_index == fragment.fragment_index{
-                                                    // In case I receive a Nack with same session_id I need to send again the message.
-                                                    //self.discover_network();
-                                                    match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
-                                                        Some(path) =>{
-                                                            let packet = Packet {
-                                                                routing_header: SourceRoutingHeader::with_first_hop(path),
-                                                                pack_type: PacketType::MsgFragment(fragment.clone()),
-                                                                session_id
-                                                            };
-                                                            sender.send(packet.clone()).expect("Failed to send packet");
-                                                        }
-                                                        None =>{println!("Error: no path to the dest_id")}
-                                                    }
+                            match self.receiver_channel.recv(){
+                                Ok(packet) =>{
+                                    match packet.pack_type{
+                                        PacketType::Ack(ack) =>{
+                                            // In case I receive an Ack message arrived correctly: removed it from the packet_sent Hashmap
+                                            let key = (packet.session_id,ack.fragment_index);
+                                            self.packet_sent.lock().expect("Failed to lock").remove(&key);
+                                        },
+                                        PacketType::Nack(nack) =>{
+                                            // In case I receive a Nack with same session_id I need to send again the message.
+                                            //self.discover_network();
+                                            match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
+                                                Some(path) =>{
+                                                    let key = (packet.session_id,nack.fragment_index);
+                                                    let mut packet_retry = self.packet_sent.lock().expect("Failed to lock").get(&key).expect("Failed to get value").clone();
+                                                    packet_retry.routing_header = SourceRoutingHeader::with_first_hop(path);
+                                                    sender.send(packet_retry).expect("Failed to send packet");
                                                 }
+                                                None =>{println!("Error: no path to the dest_id")}
                                             }
-                                            _=> ()
                                         }
+                                        _=> ()
                                     }
-                                    Err(e) => println!("{e}")
                                 }
+                                Err(e) => println!("{e}")
                             }
                         }
                         Err(_) =>{ // Case of crashed drone
@@ -140,10 +136,10 @@ impl Client1 {
     // Handle a received message (e.g. from a server) with eventual parameters
     pub fn handle_msg(&mut self, received_msg: String, session_id: u64, src_id: NodeId,frag_index: u64) -> String{
         let error_msg = vec![
-                            "error_requested_not_found!(Problem opening the file)",
-                            "error_requested_not_found!(File not found)",
-                            "error_requested_not_found!",
-                            "error_unsupported_request!"
+            "error_requested_not_found!(Problem opening the file)",
+            "error_requested_not_found!(File not found)",
+            "error_requested_not_found!",
+            "error_unsupported_request!"
         ];
         //println!("DEBUG {received_msg}");
         match received_msg{

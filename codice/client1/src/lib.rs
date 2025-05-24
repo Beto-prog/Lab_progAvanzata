@@ -32,7 +32,6 @@ use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
 use std::env;
 use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
@@ -42,7 +41,8 @@ use crate::logger::logger::{init_logger, write_log};
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
-
+type AckKey = (u64, u64);
+type AckMap = Arc<Mutex<HashMap<AckKey, Packet>>>;
 pub struct Client1 {
     node_id: NodeId,
     sender_channels: HashMap<NodeId,Sender<Packet>>,
@@ -54,8 +54,10 @@ pub struct Client1 {
     other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
     files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
+    packet_sent: AckMap,
     ui_snd: Option<Sender<Client1_UI>>,
-    selected_file_name: String
+    selected_file_name: String,
+    selected_server: NodeId
 }
 
 impl Client1 {
@@ -76,8 +78,10 @@ impl Client1 {
             other_client_ids: Arc::new(Mutex::new(vec![])),
             files_names: Arc::new(Mutex::new(vec![])),
             servers: Arc::new(Mutex::new(HashMap::new())),
+            packet_sent: Arc::new(Mutex::new(HashMap::new())),
             ui_snd: Some(ui_snd.expect("Failed to get value")),
-            selected_file_name: String::new()
+            selected_file_name: String::new(),
+            selected_server: NodeId::default()
         }
     }
     // Network discovery
@@ -170,15 +174,15 @@ impl Client1 {
                         //println!("{t}");
                         self.handle_command(t.clone());
                     }
-                        /*
-                    else if node.1.eq(&NodeType::Client) && (node.0 != self.node_id){
-                        let mut clients = self.other_client_ids.lock().expect("Failed to lock");
-                        if !clients.contains(&node.0){
-                            clients.push(node.0);
-                        }
+                    /*
+                else if node.1.eq(&NodeType::Client) && (node.0 != self.node_id){
+                    let mut clients = self.other_client_ids.lock().expect("Failed to lock");
+                    if !clients.contains(&node.0){
+                        clients.push(node.0);
                     }
+                }
 
-                         */
+                     */
                 }
             }
             _ => {println!("CLIENT1: Wrong packet type received")}
@@ -276,7 +280,7 @@ impl Client1 {
 
                     }
                     // There are still Fragments missing: send back Ack for current fragment in the meantime
-                     None => {
+                    None => {
                         let mut new_hops = packet.routing_header.hops.clone();
                         let dest_id = new_hops[0].clone();
                         new_hops.reverse();
