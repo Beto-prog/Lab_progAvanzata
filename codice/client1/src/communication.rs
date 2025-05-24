@@ -55,10 +55,9 @@ impl Client1 {
                         "Error: invalid dest_id".to_string()
                     }
                 }
-                None => {
+                _ => {
                     "Error: command not formatted correctly".to_string()
                 }
-                _=> "Not a valid command".to_string()
             }
         }
         else{ "Command not formatted correctly".to_string() }
@@ -82,32 +81,30 @@ impl Client1 {
                         pack_type: PacketType::MsgFragment(fragment.clone()),
                         session_id
                     };
+                    let key = (session_id,fragment.fragment_index);
+                    self.packet_sent.lock().expect("Failed to lock").insert(key,packet_sent.clone());
                     match sender.send(packet_sent){
                         // After sending a fragment wait until an Ack returns back. If Nack received, proceed to send again the fragment with updated network and new route
                         Ok(_) =>{
-                            'internal: loop {
                                 match self.receiver_channel.recv(){
                                     Ok(packet) =>{
                                         match packet.pack_type{
                                             PacketType::Ack(ack) =>{
-                                                // In case I receive an Ack with same session_id and fragment_index message arrived correctly: restored normal course of the program
-                                                if packet.session_id == session_id && fragment.fragment_index == ack.fragment_index {break 'internal}
+                                                // In case I receive an Ack message arrived correctly: removed it from the packet_sent Hashmap
+                                                let key = (packet.session_id,ack.fragment_index);
+                                                self.packet_sent.lock().expect("Failed to lock").remove(&key);
                                             },
                                             PacketType::Nack(nack) =>{
-                                                if packet.session_id == session_id && nack.fragment_index == fragment.fragment_index{
-                                                    // In case I receive a Nack with same session_id I need to send again the message.
-                                                    //self.discover_network();
-                                                    match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
-                                                        Some(path) =>{
-                                                            let packet = Packet {
-                                                                routing_header: SourceRoutingHeader::with_first_hop(path),
-                                                                pack_type: PacketType::MsgFragment(fragment.clone()),
-                                                                session_id
-                                                            };
-                                                            sender.send(packet.clone()).expect("Failed to send packet");
-                                                        }
-                                                        None =>{println!("Error: no path to the dest_id")}
+                                                // In case I receive a Nack with same session_id I need to send again the message.
+                                                //self.discover_network();
+                                                match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
+                                                    Some(path) =>{
+                                                        let key = (packet.session_id,nack.fragment_index);
+                                                        let mut packet_retry = self.packet_sent.lock().expect("Failed to lock").get(&key).expect("Failed to get value").clone();
+                                                        packet_retry.routing_header = SourceRoutingHeader::with_first_hop(path);
+                                                        sender.send(packet_retry).expect("Failed to send packet");
                                                     }
+                                                    None =>{println!("Error: no path to the dest_id")}
                                                 }
                                             }
                                             _=> ()
@@ -115,7 +112,6 @@ impl Client1 {
                                     }
                                     Err(e) => println!("{e}")
                                 }
-                            }
                         }
                         Err(_) =>{ // Case of crashed drone
                             self.sender_channels.remove(&first_hop);

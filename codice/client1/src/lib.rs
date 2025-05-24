@@ -41,7 +41,8 @@ use crate::logger::logger::{init_logger, write_log};
 
 //Client struct and functions/methods related. Client has some additional fields to handle more things
 type Graph = HashMap<NodeId,Vec<NodeId>>;
-
+type AckKey = (u64, u64);
+type AckMap = Arc<Mutex<HashMap<AckKey, Packet>>>;
 pub struct Client1 {
     node_id: NodeId,
     sender_channels: HashMap<NodeId,Sender<Packet>>,
@@ -53,6 +54,7 @@ pub struct Client1 {
     other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
     files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
+    packet_sent: AckMap,
     ui_snd: Option<Sender<Client1_UI>>,
     selected_file_name: String,
     selected_server: NodeId
@@ -76,6 +78,7 @@ impl Client1 {
             other_client_ids: Arc::new(Mutex::new(vec![])),
             files_names: Arc::new(Mutex::new(vec![])),
             servers: Arc::new(Mutex::new(HashMap::new())),
+            packet_sent: Arc::new(Mutex::new(HashMap::new())),
             ui_snd: Some(ui_snd.expect("Failed to get value")),
             selected_file_name: String::new(),
             selected_server: NodeId::default()
