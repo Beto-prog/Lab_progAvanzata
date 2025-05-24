@@ -80,7 +80,6 @@ impl Client2 {
         for (node_id, node_type) in flood_request.path_trace.iter().rev() {
             hops.push(*node_id);
         }
-        hops.reverse();
         let response = FloodResponse {
             flood_id: flood_request.flood_id,
             path_trace: flood_request.path_trace,
@@ -97,25 +96,35 @@ impl Client2 {
         }
 
         // Create and send the flood response back
-        let response_packet = self.create_flood_response(session_id, flood_request);
-        self.forward_packet(response_packet);
+        let response_packet = self.create_flood_response(session_id, flood_request.clone());
+        self.forward_packet(response_packet.clone());
+        println!("CLIENT2: CLIENT{}: Recieve flood request: {:?}", self.node_id, flood_request);
+        println!("CLIENT2: CLIENT{}: Sent flood response: {:?}", self.node_id, response_packet);
     }
 
     // Handle a received FloodResponse and build the network graph
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
         let mut discovered_drones = &mut self.discovered_drones;
         let mut network_graph = &mut self.network_graph;
+        let mut other_client_ids = &mut self.other_client_ids;
+        //println!("CLIENT2: CLIENT{}: Received flood response: {:?}", self.node_id, response);
 
         // Update the discovered drones list
         for (node_id, node_type) in &response.path_trace {
+            if node_id == &self.node_id {continue}
             if node_type == &NodeType::Drone {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
-            }
-            if node_type == &NodeType::Server {
+                println!("DISCOVERED DRONES: {:?}", discovered_drones);
+            } else if node_type == &NodeType::Server {
                 self.servers
                     .lock()
                     .expect("Failed to lock the servers map")
-                    .insert(self.node_id, "Unknown".to_string());
+                    .insert(*node_id, "Unknown".to_string());
+                println!("SERVERS FOUND: {:?}", self.servers);
+            } else if node_type == &NodeType::Client {
+                if !other_client_ids.lock().unwrap().contains(node_id) {
+                    other_client_ids.lock().unwrap().push(*node_id);
+                }
             }
         }
         // Update the network graph (adjacency list)
@@ -127,6 +136,7 @@ impl Client2 {
             network_graph.entry(*node_a_id).or_insert_with(HashSet::new).insert(*node_b_id);
             network_graph.entry(*node_b_id).or_insert_with(HashSet::new).insert(*node_a_id);
         }
+        //println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
     }
 
     // Send a message to a server through drones
