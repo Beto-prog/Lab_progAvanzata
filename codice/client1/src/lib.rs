@@ -196,7 +196,7 @@ impl Client1 {
                 write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
-                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to get value"){
+                match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to add fragment"){
                     Some(message) =>{
                         //write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message.clone()){
@@ -238,13 +238,13 @@ impl Client1 {
                                     }
                                 }
                             },
-                            // FragmentReassembler encountered an error
+                            // assemble_string_file encountered an error: the file is big --> it needs to be processed in a different way
                             Err(_) => {
-                                let path= env::current_dir().expect("Failed to get value");
+                                let path= env::current_dir().expect("Failed to get current_dir value");
                                 let mut file_path = path;
                                 let path = self.selected_file_name.clone();
                                 file_path.push(path.as_str());
-                                let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to get value")).expect("Failed to get value");
+                                let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
