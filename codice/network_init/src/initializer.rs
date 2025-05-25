@@ -136,11 +136,7 @@ impl NetworkInitializer {
             }
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
-            let base_path = if cfg!(target_os = "windows") {
-                "C:\\Temp\\ServerTxt"
-            } else {
-                "/tmp/ServerTxt"
-            };
+
             let mut server = match index % 3 {
                 0 => server::Server::new(
                     server_config.id,
@@ -150,19 +146,11 @@ impl NetworkInitializer {
                     None
                 ),
                 1 => {
-                    Self::prepare_files(base_path);
-                    server::Server::new(
-                        server_config.id,
-                        packet_receiver.clone(),
-                        neighbor_senders,
-                        Box::new(server::file_system::ContentServer::new(
-                            base_path,
-                            server::file_system::ServerType::TextServer,
-                        )),
-                        Some(base_path.to_string()),
-                    )
-                }
-                _ => {
+                    let base_path = if cfg!(target_os = "windows") {
+                        "C:\\Temp\\ServerMedia"
+                    } else {
+                        "/tmp/ServerMedia"
+                    };
                     Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
@@ -171,6 +159,24 @@ impl NetworkInitializer {
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::MediaServer,
+                        )),
+                        Some(base_path.to_string()),
+                    )
+                }
+                _ => {
+                    let base_path = if cfg!(target_os = "windows") {
+                        "C:\\Temp\\ServerTxt"
+                        } else {
+                        "/tmp/ServerTxt"
+                    };
+                    Self::prepare_files(base_path);
+                    server::Server::new(
+                        server_config.id,
+                        packet_receiver.clone(),
+                        neighbor_senders,
+                        Box::new(server::file_system::ContentServer::new(
+                        base_path,
+                        server::file_system::ServerType::TextServer,
                         )),
                         Some(base_path.to_string()),
                     )
