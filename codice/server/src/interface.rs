@@ -19,7 +19,10 @@ pub mod interface {
         thread,
         time::Duration,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use once_cell::sync::Lazy;
+    use rand::prelude::SliceRandom;
+    use ratatui::widgets::GraphType;
     use wg_2024::network::NodeId;
 
     /* ──────────────────────────────────────────────────────────
@@ -41,6 +44,7 @@ pub mod interface {
     enum Mode {
         Chat,
         FileList,
+        Graph
     }
 
     // alias utili (non cambiano)
@@ -114,6 +118,8 @@ pub mod interface {
         let mut global_mode = Mode::Chat;          // Chat/File per il server selezionato
         let mut current_srv = 0usize;              // indice del tab/server attivo
         let mut auto_scroll = true;                // vale per il server corrente
+        let mut  ALREADY_OPENED: bool = false;
+
 
         loop {
             /* ─────── Disegno ─────── */
@@ -150,6 +156,103 @@ pub mod interface {
                 let srv = &servers_guard[current_srv];
 
                 match global_mode {
+
+
+
+
+                    Mode::Graph => {
+                        use std::fs::write;
+                        use std::process::{Command, Stdio};
+                        use std::sync::atomic::{AtomicBool, Ordering};
+                        use once_cell::sync::Lazy;
+                        use ratatui::widgets::{Paragraph, Block, Borders};
+                        use ratatui::style::{Style, Color};
+
+                        // Flag globale condiviso
+
+                        let mut info = String::new();
+
+                        if !ALREADY_OPENED {
+                            // genera DOT e PNG
+                            let dot = r#"
+
+graph Topologia {
+    node [style=filled, fontname=Helvetica];
+
+    A [label="API Gateway", shape=box, fillcolor=lightblue, color=blue, penwidth=2];
+    B [label="Auth Service", shape=ellipse, fillcolor=lightyellow, color=orange, penwidth=2];
+    C [label="DB Master", shape=cylinder, fillcolor=mistyrose, color=red];
+    D [label="DB Replica", shape=cylinder, fillcolor=lemonchiffon, color=green];
+    E [label="Cache", shape=box, fillcolor=khaki, color=darkgoldenrod];
+    F [label="Worker 1", shape=box, fillcolor=lightgreen, color=green];
+    G [label="Worker 2", shape=box, fillcolor=lightgreen, color=green];
+    H [label="Logger", shape=ellipse, fillcolor=lavender, color=purple];
+    I [label="Metrics", shape=hexagon, fillcolor=lightcyan, color=deepskyblue];
+    J [label="External API", shape=parallelogram, fillcolor=white, color=black];
+
+    // Connessioni principali
+    A -- B;
+    A -- E;
+    B -- C;
+    B -- D;
+    B -- E;
+    E -- F;
+    E -- G;
+    F -- H;
+    G -- H;
+    H -- I;
+    A -- J;
+
+    // Connessioni extra per densità
+    F -- C;
+    G -- D;
+    I -- J;
+    C -- D;
+}
+"#;
+                            let _ = write("grafo.dot", dot);
+                            let _ = Command::new("dot")
+                                .args(["-Tpng", "grafo.dot", "-o", "grafo.png"])
+                                .status();
+                            let _ = Command::new("yad")
+                                .args([
+                                    "--window-icon=dialog-information",
+                                    "--title=Topologia di Rete",
+                                    "--image=grafo.png",
+                                    "--image-on-top",
+                                    "--no-buttons",
+                                    "--width=500",
+                                    "--height=500",
+                                ])
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
+                                .spawn();
+
+                            ALREADY_OPENED = true;
+                            info = "🖼️ Finestra YAD aperta.".into();
+                        } else {
+                            info = "✅ YAD già aperto. Cambia modalità per riaprirla.".into();
+                        }
+
+                        let paragraph = Paragraph::new(info)
+                            .block(Block::default().title("Grafo").borders(Borders::ALL))
+                            .style(Style::default().fg(Color::LightCyan));
+
+                        f.render_widget(paragraph, layout[1]);
+                    }
+
+
+
+
+
+
+
+
+
+
+
+
+
                     Mode::Chat => {
                         let mut items: Vec<ListItem> = {
                             let locked = srv.messages.lock().unwrap();
@@ -209,7 +312,7 @@ pub mod interface {
 
                 /* ---- Footer ---- */
                 let footer = Paragraph::new(
-                    "←/→ cambia server  |  1 Chat  2 File  |  ↑↓ scroll  |  q quit",
+                    "←/→ cambia server  |  1 Chat - 2 File - 3 Graph  |  ↑↓ scroll  |  q quit",
                 )
                     .style(Style::default().fg(Color::Green))
                     .block(Block::default().borders(Borders::ALL));
@@ -236,8 +339,18 @@ pub mod interface {
                         }
 
                         /* ---- Cambio modalità ---- */
-                        KeyCode::Char('1') => global_mode = Mode::Chat,
-                        KeyCode::Char('2') => global_mode = Mode::FileList,
+                        KeyCode::Char('1') => {
+                            
+                            ALREADY_OPENED= false; // resetta!
+                            global_mode = Mode::Chat;
+                        },
+                        KeyCode::Char('2') => {
+                            ALREADY_OPENED= false; // resetta!
+                            global_mode = Mode::FileList;
+                        },
+
+
+                        KeyCode::Char('3') => global_mode = Mode::Graph,
 
                         /* ---- Scroll messaggi (solo modalità Chat) ---- */
                         KeyCode::Up => {
