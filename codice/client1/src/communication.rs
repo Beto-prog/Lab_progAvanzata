@@ -68,13 +68,12 @@ impl Client1 {
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
-        //println!("CLIENT4 DEBUG {dest_id}");
-        //println!("CLIENT4 DEBUG {:?}",path.as_ref().expect("Failed to get path"));
+
         match path{
             Some(p) =>{
                 let first_hop = p[1].clone();
                 for fragment in fragments {
-                    //println!("{:?}",fragment);
+
                     let sender = self.sender_channels.get(&first_hop).expect("Failed to get sender");
                     let packet_sent = Packet {
                         routing_header: SourceRoutingHeader::with_first_hop(p.clone()),
@@ -141,11 +140,11 @@ impl Client1 {
                             "error_requested_not_found!",
                             "error_unsupported_request!"
         ];
-        //println!("DEBUG {received_msg}");
+
         match received_msg{
 
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") =>{
-                //println!("DEBUG {msg}");
+
                 match msg.strip_prefix("server_type!(").and_then(|s|s.strip_suffix(")")){
                     Some(serverType) =>{
                         self.servers.lock().expect("Failed to lock").insert(src_id,serverType.to_string().clone());

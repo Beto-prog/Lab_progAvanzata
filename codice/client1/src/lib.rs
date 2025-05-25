@@ -193,7 +193,7 @@ impl Client1 {
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
 
-                write_log(&format !("{:?}",fragment.data));
+                //write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to add fragment"){
@@ -244,6 +244,7 @@ impl Client1 {
                                 let mut file_path = path;
                                 let path = self.selected_file_name.clone();
                                 file_path.push(path.as_str());
+                                write_log(file_path.as_path().to_str().unwrap());
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
