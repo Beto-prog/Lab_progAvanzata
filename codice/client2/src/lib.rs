@@ -80,7 +80,6 @@ impl Client2 {
         for (node_id, node_type) in flood_request.path_trace.iter().rev() {
             hops.push(*node_id);
         }
-        hops.reverse();
         let response = FloodResponse {
             flood_id: flood_request.flood_id,
             path_trace: flood_request.path_trace,
