@@ -299,10 +299,10 @@ message_for?(client_id, message)->NodeId");
     }
 
     // Handle received packet (Ack, Nack, etc.)
-    pub fn handle_packet(&mut self, packet: Packet) {
+    pub fn handle_packet(&mut self, packet: Packet, msg_snd: &Sender<String>) {
         match packet.pack_type {
             PacketType::MsgFragment(ref fragment) => {
-                self.handle_msg_fragment(fragment.clone(), packet.clone());
+                self.handle_msg_fragment(fragment.clone(), packet.clone(), msg_snd);
                 self.forward_packet(Packet::new_ack(SourceRoutingHeader::with_first_hop(Self::bfs_shortest_path(self.network_graph.clone(), self.node_id, packet.routing_header.source().unwrap()).unwrap()), packet.session_id, fragment.fragment_index))
             }
             PacketType::FloodRequest(request) => self.handle_flood_request(request, packet.session_id),
@@ -313,6 +313,7 @@ message_for?(client_id, message)->NodeId");
             PacketType::Nack(nack) => {
                 //Check again all nodes, servers and connections
                 self.servers = Arc::new(Mutex::new(HashMap::new()));
+                self.other_client_ids = Arc::new(Mutex::new(Vec::new()));
                 self.discovered_drones = HashMap::new();
                 self.network_graph = HashMap::new();
                 self.discover_network();
@@ -330,7 +331,7 @@ message_for?(client_id, message)->NodeId");
         }
     }
 
-    pub fn handle_msg_fragment(&mut self, fragment: Fragment, packet: Packet) {
+    pub fn handle_msg_fragment(&mut self, fragment: Fragment, packet: Packet, msg_snd: &Sender<String>) {
         // Call process_fragment to handle the incoming fragment
         let session_id = self.generate_session_id(); // Assuming you have access to session_id
         let src_id = self.node_id as u64; // Assuming src_id is the node_id of the client
@@ -340,6 +341,7 @@ message_for?(client_id, message)->NodeId");
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
                 //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
+                msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
                 self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap());
             }
             Ok(None) => {
@@ -446,7 +448,7 @@ message_for?(client_id, message)->NodeId");
                     recv(receiver_channel) -> packet =>{
                         match packet{
                                 Ok(packet) => {
-                                        self.handle_packet(packet); //, &msg_snd
+                                        self.handle_packet(packet, &msg_snd); //, &msg_snd
                                 },
                                 Err(e) => ()//println!("Err2: {e}")
                         }
