@@ -80,7 +80,6 @@ impl Client2 {
         for (node_id, node_type) in flood_request.path_trace.iter().rev() {
             hops.push(*node_id);
         }
-        hops.reverse();
         let response = FloodResponse {
             flood_id: flood_request.flood_id,
             path_trace: flood_request.path_trace,
@@ -97,25 +96,35 @@ impl Client2 {
         }
 
         // Create and send the flood response back
-        let response_packet = self.create_flood_response(session_id, flood_request);
-        self.forward_packet(response_packet);
+        let response_packet = self.create_flood_response(session_id, flood_request.clone());
+        self.forward_packet(response_packet.clone());
+        println!("CLIENT2: CLIENT{}: Recieve flood request: {:?}", self.node_id, flood_request);
+        println!("CLIENT2: CLIENT{}: Sent flood response: {:?}", self.node_id, response_packet);
     }
 
     // Handle a received FloodResponse and build the network graph
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
         let mut discovered_drones = &mut self.discovered_drones;
         let mut network_graph = &mut self.network_graph;
+        let mut other_client_ids = &mut self.other_client_ids;
+        //println!("CLIENT2: CLIENT{}: Received flood response: {:?}", self.node_id, response);
 
         // Update the discovered drones list
         for (node_id, node_type) in &response.path_trace {
+            if node_id == &self.node_id {continue}
             if node_type == &NodeType::Drone {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
-            }
-            if node_type == &NodeType::Server {
+                println!("DISCOVERED DRONES: {:?}", discovered_drones);
+            } else if node_type == &NodeType::Server {
                 self.servers
                     .lock()
                     .expect("Failed to lock the servers map")
-                    .insert(self.node_id, "Unknown".to_string());
+                    .insert(*node_id, "Unknown".to_string());
+                println!("SERVERS FOUND: {:?}", self.servers);
+            } else if node_type == &NodeType::Client {
+                if !other_client_ids.lock().unwrap().contains(node_id) {
+                    other_client_ids.lock().unwrap().push(*node_id);
+                }
             }
         }
         // Update the network graph (adjacency list)
@@ -127,6 +136,7 @@ impl Client2 {
             network_graph.entry(*node_a_id).or_insert_with(HashSet::new).insert(*node_b_id);
             network_graph.entry(*node_b_id).or_insert_with(HashSet::new).insert(*node_a_id);
         }
+        //println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
     }
 
     // Send a message to a server through drones
@@ -379,60 +389,60 @@ message_for?(client_id, message)->NodeId");
         rand::random()
     }
 
-//     pub fn run(&mut self) {
-//         self.discover_network();
-//         let mut input = "files_list?->6";
-//         let mut executed = false;
-//         loop {
-//             select_biased! {
-//                 recv(self.receiver_channel) -> packet => {
-//                     match packet {
-//                         Ok(packet) => {
-//                             //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
-//                             self.handle_packet(packet);
-//                         },
-//                         Err(e) => {
-//                             eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
-//                         }
-//                     }
-//                 }
-//
-//             }
-//             if !self.servers.is_empty() {
-//                 // if(!executed) {
-//                 //     //self.handle_command("server_type?->6");
-//                 //     //self.handle_command("files_list?->6");
-//                 //     //self.handle_command("registration_to_chat->6");
-//                 //     // self.handle_command("client_list->6");
-//                 //     //self.handle_command("message_for?(10, hahaha)->6");
-//                 //     self.handle_command("server_list");
-//                 //     executed = true;
-//                 // }
-//             }
-//         }
-//     }
-pub fn run(&mut self){
-    init_logger();
-    self.discover_network();
-    let (cmd_snd,cmd_rcv) = unbounded::<String>();
-    let (msg_snd,msg_rcv) = unbounded::<String>();
-    let receiver_channel = self.receiver_channel.clone();
+    //     pub fn run(&mut self) {
+    //         self.discover_network();
+    //         let mut input = "files_list?->6";
+    //         let mut executed = false;
+    //         loop {
+    //             select_biased! {
+    //                 recv(self.receiver_channel) -> packet => {
+    //                     match packet {
+    //                         Ok(packet) => {
+    //                             //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
+    //                             self.handle_packet(packet);
+    //                         },
+    //                         Err(e) => {
+    //                             eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
+    //                         }
+    //                     }
+    //                 }
+    //
+    //             }
+    //             if !self.servers.is_empty() {
+    //                 // if(!executed) {
+    //                 //     //self.handle_command("server_type?->6");
+    //                 //     //self.handle_command("files_list?->6");
+    //                 //     //self.handle_command("registration_to_chat->6");
+    //                 //     // self.handle_command("client_list->6");
+    //                 //     //self.handle_command("message_for?(10, hahaha)->6");
+    //                 //     self.handle_command("server_list");
+    //                 //     executed = true;
+    //                 // }
+    //             }
+    //         }
+    //     }
+    pub fn run(&mut self){
+        init_logger();
+        self.discover_network();
+        let (cmd_snd,cmd_rcv) = unbounded::<String>();
+        let (msg_snd,msg_rcv) = unbounded::<String>();
+        let receiver_channel = self.receiver_channel.clone();
 
-    let cl2_ui = Client2_UI::new(
-        self.node_id.clone(),
-        Arc::clone(&self.other_client_ids),
-        Arc::clone(&self.servers),
-        Arc::clone(&self.files_names),
-        cmd_snd,
-        msg_rcv
-    );
-    if let Some(ui_snd) = self.ui_snd.take(){
-        ui_snd.send(cl2_ui).expect("Failed to send");
-    }
+        let cl2_ui = Client2_UI::new(
+            self.node_id.clone(),
+            Arc::clone(&self.other_client_ids),
+            Arc::clone(&self.servers),
+            Arc::clone(&self.files_names),
+            cmd_snd,
+            msg_rcv
+        );
+        if let Some(ui_snd) = self.ui_snd.take(){
+            ui_snd.send(cl2_ui).expect("Failed to send");
+        }
 
-    //Packet handle part
-    loop {
-        select_biased! {
+        //Packet handle part
+        loop {
+            select_biased! {
                 // Handle packets in the meantime
                     recv(receiver_channel) -> packet =>{
                         match packet{
@@ -454,8 +464,8 @@ pub fn run(&mut self){
                         }
                     }
                 }
+        }
     }
-}
 
 }
 
