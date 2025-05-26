@@ -14,6 +14,7 @@ use wg_2024::packet::*;
 use wg_2024::network::*;
 use crossbeam_channel::{Sender, Receiver, select_biased, unbounded};
 use std::io::{BufRead, BufReader};
+use egui::debug_text::print;
 use crate::client2_ui::Client2_UI;
 use crate::repackager::Repackager;
 use crate::logger::logger::{init_logger, write_log};
@@ -98,8 +99,6 @@ impl Client2 {
         // Create and send the flood response back
         let response_packet = self.create_flood_response(session_id, flood_request.clone());
         self.forward_packet(response_packet.clone());
-        println!("CLIENT2: CLIENT{}: Recieve flood request: {:?}", self.node_id, flood_request);
-        println!("CLIENT2: CLIENT{}: Sent flood response: {:?}", self.node_id, response_packet);
     }
 
     // Handle a received FloodResponse and build the network graph
@@ -114,18 +113,17 @@ impl Client2 {
             if node_id == &self.node_id {continue}
             if node_type == &NodeType::Drone {
                 discovered_drones.entry(*node_id).or_insert(*node_type);
-                println!("DISCOVERED DRONES: {:?}", discovered_drones);
             } else if node_type == &NodeType::Server {
                 self.servers
                     .lock()
                     .expect("Failed to lock the servers map")
                     .insert(*node_id, "Unknown".to_string());
-                println!("SERVERS FOUND: {:?}", self.servers);
             } else if node_type == &NodeType::Client {
                 if !other_client_ids.lock().unwrap().contains(node_id) {
                     other_client_ids.lock().unwrap().push(*node_id);
                 }
             }
+            //println!("DISCOVERED GRAPH:{:?}", network_graph)
         }
         // Update the network graph (adjacency list)
         for i in 0..response.path_trace.len() - 1 {
@@ -141,7 +139,6 @@ impl Client2 {
 
     // Send a message to a server through drones
     pub fn send_message(&mut self, server_id: NodeId, message: &str, file_path: Option<&str>) {
-        println!("sending message {}", message);
         // Create fragments using the Repackager
         let fragments = Repackager::create_fragments(message, file_path).expect("CLIENT2: Failed to create fragments");
 
@@ -234,12 +231,15 @@ message_for?(client_id, message)->NodeId");
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
                 let svtype = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
-                self.servers
+                let mut servers = self.servers
                     .lock()
-                    .expect("Failed to lock the servers map")
-                    .entry(sender)
-                    .or_insert_with(|| svtype.unwrap().to_string());
-                println!("SERVERS: {:?}", self.servers);
+                    .expect("Failed to lock the servers map");
+
+                let entry = servers.entry(sender).or_insert_with(|| svtype.as_ref().unwrap().to_string());
+
+                if entry == "Unknown" {
+                    *entry = svtype.unwrap().to_string();
+                }
             }
             msg if msg.starts_with("files_list!(") && msg.ends_with(")") => {
                 //files_list!(list_of_file_ids)
@@ -309,7 +309,7 @@ message_for?(client_id, message)->NodeId");
             PacketType::FloodResponse(response) => {
                 self.handle_flood_response(response);
             }
-            PacketType::Ack(ack) => {println!("I RECEIVED ACK: {:?}", ack);}
+            PacketType::Ack(ack) => {}
             PacketType::Nack(nack) => {
                 //Check again all nodes, servers and connections
                 self.servers = Arc::new(Mutex::new(HashMap::new()));
@@ -339,7 +339,8 @@ message_for?(client_id, message)->NodeId");
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
-                println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
+                //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
+                self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap());
             }
             Ok(None) => {
                 println!("CLIENT2: CLIENT{}: Not all fragments received yet for message ID {}", self.node_id, packet.session_id);
@@ -354,7 +355,6 @@ message_for?(client_id, message)->NodeId");
     fn bfs_shortest_path(graph: HashMap<NodeId, HashSet<NodeId>>, start: NodeId, goal: NodeId) -> Option<Vec<NodeId>> {
         let mut visited: HashSet<NodeId> = HashSet::new();  // Track visited nodes
         let mut queue: VecDeque<Vec<NodeId>> = VecDeque::new();  // Queue to store paths
-
         queue.push_back(vec![start]);  // Initialize queue with the starting node
         visited.insert(start);
 
@@ -439,7 +439,6 @@ message_for?(client_id, message)->NodeId");
         if let Some(ui_snd) = self.ui_snd.take(){
             ui_snd.send(cl2_ui).expect("Failed to send");
         }
-
         //Packet handle part
         loop {
             select_biased! {
@@ -463,7 +462,7 @@ message_for?(client_id, message)->NodeId");
                             Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
                         }
                     }
-                }
+            }
         }
     }
 

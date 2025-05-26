@@ -91,6 +91,9 @@ impl Client2_UI {
                             .cloned()
                             .expect("Failed to get value")
                             ;
+                        if server_type == "Unknown" {
+                            self.cmd_snd.as_ref().expect("Failed to get value").send("server_type?->7".to_string()).expect("Failed to send");
+                        }
                         ui.label("of type");
                         ui.add_space(5.0);
                         ui.label(RichText::new(format!("{}",server_type)).color(Color32::RED));
