@@ -105,36 +105,59 @@ impl Client2 {
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
         let mut discovered_drones = &mut self.discovered_drones;
         let mut network_graph = &mut self.network_graph;
-        let mut other_client_ids = &mut self.other_client_ids;
-        //println!("CLIENT2: CLIENT{}: Received flood response: {:?}", self.node_id, response);
 
-        // Update the discovered drones list
+        // Collect node IDs that require handle_command
+        let mut commands_to_send = Vec::new();
+
         for (node_id, node_type) in &response.path_trace {
-            if node_id == &self.node_id {continue}
-            if node_type == &NodeType::Drone {
-                discovered_drones.entry(*node_id).or_insert(*node_type);
-            } else if node_type == &NodeType::Server {
-                self.servers
-                    .lock()
-                    .expect("Failed to lock the servers map")
-                    .insert(*node_id, "Unknown".to_string());
-            } else if node_type == &NodeType::Client {
-                if !other_client_ids.lock().unwrap().contains(node_id) {
-                    other_client_ids.lock().unwrap().push(*node_id);
-                }
+            if node_id == &self.node_id {
+                continue;
             }
-            //println!("DISCOVERED GRAPH:{:?}", network_graph)
+
+            match node_type {
+                NodeType::Drone => {
+                    discovered_drones.entry(*node_id).or_insert(*node_type);
+                }
+                NodeType::Server => {
+                    let mut servers = self.servers.lock().expect("Failed to lock the servers map");
+                    if !servers.contains_key(node_id) {
+                        servers.insert(*node_id, "Unknown".to_string());
+                        commands_to_send.push(*node_id);  // Defer handle_command call
+                    }
+                }
+                // Uncomment and adjust if you want to handle clients here:
+                // NodeType::Client => {
+                //     let mut other_client_ids = self.other_client_ids.lock().unwrap();
+                //     if !other_client_ids.contains(node_id) {
+                //         other_client_ids.push(*node_id);
+                //     }
+                // }
+                _ => {}
+            }
         }
+
         // Update the network graph (adjacency list)
         for i in 0..response.path_trace.len() - 1 {
             let (node_a_id, _) = &response.path_trace[i];
             let (node_b_id, _) = &response.path_trace[i + 1];
 
-            // Add an edge between node_a and node_b
-            network_graph.entry(*node_a_id).or_insert_with(HashSet::new).insert(*node_b_id);
-            network_graph.entry(*node_b_id).or_insert_with(HashSet::new).insert(*node_a_id);
+            network_graph
+                .entry(*node_a_id)
+                .or_insert_with(std::collections::HashSet::new)
+                .insert(*node_b_id);
+            network_graph
+                .entry(*node_b_id)
+                .or_insert_with(std::collections::HashSet::new)
+                .insert(*node_a_id);
         }
-        //println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
+
+        // Now safely call handle_command for each server node_id
+        for node_id in commands_to_send {
+            self.handle_command(format!("server_type?->{}", node_id));
+        }
+
+        // Optionally debug:
+        // println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
     }
 
     // Send a message to a server through drones
@@ -265,10 +288,21 @@ message_for?(client_id, message)->NodeId");
                 //error_wrong_client_id!
                 //TODO send to view
             }
-            msg if msg.starts_with("client_list!(") && msg.ends_with(")") => {
-                //client_list!(list_of_client_ids)
-                let txt = msg.strip_prefix("client_list!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split(", ").map(|s| s.to_string()).collect::<Vec<String>>();
+            msg if msg.starts_with("client_list!([") && msg.ends_with("])") => {
+                //client_list!([list_of_client_ids])
+                let txt = msg.strip_prefix("client_list!([").and_then(|s| s.strip_suffix("])"));
+                if let Some(txt) = txt {
+                    let values = txt
+                        .split(", ")
+                        .filter_map(|s| s.parse::<u8>().ok())
+                        .filter(|id| *id != self.node_id) // exclude your own ID// convert to u8 (NodeId)
+                        .collect::<Vec<NodeId>>();
+                    for id in values {
+                        if !self.other_client_ids.lock().unwrap().contains(&id) {
+                            self.other_client_ids.lock().unwrap().push(id);
+                        }
+                    }
+                }
             }
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") => {
                 //message_from!(client_id, message)
