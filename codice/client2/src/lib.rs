@@ -150,16 +150,17 @@ impl Client2 {
                 .insert(*node_a_id);
         }
 
+        //println!("CLIENT2: Discovered graph: {:?}", network_graph);
+
         for node_id in commands_to_send {
             self.handle_command(format!("server_type?->{}", node_id));
         }
 
-        // println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
     }
 
     // Send a message to a server through drones
     pub fn send_message(&mut self, server_id: NodeId, message: &str, file_path: Option<&str>) {
-        println!("sending message {}", message);
+        //println!("sending message {}", message);
         // Create fragments using the Repackager
         let fragments = Repackager::create_fragments(message, file_path).expect("CLIENT2: Failed to create fragments");
 
@@ -371,7 +372,7 @@ message_for?(client_id, message)->NodeId");
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
-                println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
+                //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
                 msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
                 self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap());
             }
