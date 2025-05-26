@@ -142,7 +142,7 @@ impl Client1_UI {
                                                 let binding = self.clients.lock().expect("Failed to lock");
                                                 let clients = binding.iter().clone();
                                                 for cl in clients {
-                                                    ui.selectable_value(&mut self.selected_client_id, *cl, cl.to_string());
+                                                    ui.selectable_value(&mut self.selected_client_id, (*cl).clone(), cl.to_string());
                                                 }
                                             });
                                     });
