@@ -40,6 +40,7 @@ impl Client1 {
                         if id.is_empty() {
                             "Error: invalid media_id".to_string()
                         } else {
+                            self.selected_file_name.lock().expect("Failed to lock").replace_with(id);
                             self.send_message(dest_id, cmd);
                             "CLIENT1: OK".to_string()
                         }

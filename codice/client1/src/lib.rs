@@ -32,6 +32,7 @@ use fragment_reassembler::*;
 use std::collections::{HashMap,VecDeque};
 use std::env;
 use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use wg_2024::packet::*;
@@ -242,10 +243,10 @@ impl Client1 {
                             Err(_) => {
                                 let path= env::current_dir().expect("Failed to get current_dir value");
                                 let mut file_path = path;
-                                let path = self.selected_file_name.lock().expect("Failed to lock").clone();
-                                file_path.push(path.as_str());
-                                write_log(file_path.as_path().to_str().unwrap());
-                                let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");
+                                //write_log(&self.selected_file_name.lock().expect("Failed to lock"));
+                                let final_path = file_path.join(Path::new(&self.selected_file_name.lock().expect("Failed to lock").clone()));
+                                //write_log(final_path.as_path().to_str().unwrap());
+                                let msg = FragmentReassembler::assemble_file(message,final_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();

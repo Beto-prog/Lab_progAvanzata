@@ -98,9 +98,6 @@ impl FragmentReassembler {
             Err(e) => Err(format!("Failed to convert data to string: {}", e)),
         }
     }
-    pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
-        Ok(general_purpose::STANDARD.encode(data))
-    }
     pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {          //Attenzione gli mp3 non hanno problemi ma le immagini e i video sono molto sensibil. Basta un byte fuori posto e non va piu 
         // 1. dopo la prima '('
         let after_paren = data.iter()
