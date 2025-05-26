@@ -56,7 +56,7 @@ pub struct Client1 {
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
     packet_sent: AckMap,
     ui_snd: Option<Sender<Client1_UI>>,
-    selected_file_name: String,
+    selected_file_name: Arc<Mutex<String>>,
     selected_server: NodeId
 }
 
@@ -80,7 +80,7 @@ impl Client1 {
             servers: Arc::new(Mutex::new(HashMap::new())),
             packet_sent: Arc::new(Mutex::new(HashMap::new())),
             ui_snd: Some(ui_snd.expect("Failed to get value")),
-            selected_file_name: String::new(),
+            selected_file_name: Arc::new(Mutex::new(String::new())),
             selected_server: NodeId::default()
         }
     }
@@ -242,7 +242,7 @@ impl Client1 {
                             Err(_) => {
                                 let path= env::current_dir().expect("Failed to get current_dir value");
                                 let mut file_path = path;
-                                let path = self.selected_file_name.clone();
+                                let path = self.selected_file_name.lock().expect("Failed to lock").clone();
                                 file_path.push(path.as_str());
                                 write_log(file_path.as_path().to_str().unwrap());
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");

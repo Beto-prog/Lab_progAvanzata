@@ -1,6 +1,7 @@
 use std::collections::{HashMap};
 use std::fs;
 use crossbeam_channel::unbounded;
+use egui::TextBuffer;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
 use crate::Client1;
@@ -24,7 +25,7 @@ impl Client1 {
                 cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                     if let Some(name) = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
                         if self.files_names.lock().expect("Failed to lock").contains(&name.parse::<String>().ok().expect("Failed to get files names")) {
-                            self.selected_file_name = name.to_string();
+                            self.selected_file_name.lock().expect("Failed to lock").replace_with(name);
                             self.send_message(dest_id, cmd);
                             "CLIENT1: OK".to_string()
                         } else {
