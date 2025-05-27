@@ -225,6 +225,7 @@ message_for?(client_id, message)->NodeId");
             }
             cmd if cmd.starts_with("message_for?(") && cmd.ends_with(")") => {
                 //message_for?(client_id, message)
+                //println!("CLIENT2: CLIENT{}: {})", self.node_id, cmd);
                 let text = cmd.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")"));
                 let mut val = text.unwrap().split_once(", ");
                 self.send_message(server_id, cmd, None);
@@ -314,8 +315,8 @@ message_for?(client_id, message)->NodeId");
             }
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") => {
                 //message_from!(client_id, message)
-                let txt = msg.strip_prefix("media!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
+                let txt = msg.strip_prefix("message_from!(").and_then(|s| s.strip_suffix(")"));
+                //let values = txt.unwrap().split_once(",");
                 //TODO show message
             }
 
