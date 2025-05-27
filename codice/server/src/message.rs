@@ -591,6 +591,7 @@ pub mod file_system {
                     let serv_type = self.serv.to_string();
                     //println!("{}",format!("server_type!({})",self.serv.to_string()));
                     //println!("{:?}",Repackager::create_fragments(&format!("server_type!({})",self.serv.to_string()), None).unwrap());
+                    self.add_client(source_id);
                     Repackager::create_fragments(
                         &format!("server_type!({})", self.serv.to_string()),
                         None,
@@ -610,8 +611,10 @@ pub mod file_system {
                         if parts.len() == 2 {
                             let id = parts[0];
                             let message = parts[1];
+                            
 
-                            if let Ok(client_id) = message.parse::<u32>() {
+                            if let Ok(client_id) = id.parse::<u32>() {
+                                *flag = 1;
                                 if (self.list_of_client.contains(&client_id)) {
                                     let response =
                                         format!("message_from!({},{})", source_id, message);
@@ -619,8 +622,9 @@ pub mod file_system {
                                         &*response.to_string(),
                                         None,
                                     );
+                                    
                                 } else {
-                                    *flag = 1;
+                                    
                                     let response = format!("error_wrong_client_id!");
                                     return Repackager::create_fragments(
                                         &*response.to_string(),
@@ -630,13 +634,13 @@ pub mod file_system {
                             } else {
                                 //println!("Server --> Error in the string conversion from u32");
                                 Repackager::create_fragments(
-                                    &*"error_unsupported_request!".to_string(),
+                                    &*"error_unsupported_request!(I was not able to parse the id of the destination client)".to_string(),
                                     None,
                                 )
                             }
                         } else {
                             Repackager::create_fragments(
-                                &*"error_unsupported_request!".to_string(),
+                                &*"error_unsupported_request!(The payload needs to contain the client id and the message separated by a , )".to_string(),
                                 None,
                             )
                         }

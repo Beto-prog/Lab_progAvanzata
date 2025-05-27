@@ -198,7 +198,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 //Process the request
                                 let result =self.server_type.process_request(message.unwrap(),source_id as u32,&mut flag);
 
-                                if flag==0
+                                if flag==1
                                 {
                                     /*
                           Here there is an exception if the message start with messageFor?(...)
