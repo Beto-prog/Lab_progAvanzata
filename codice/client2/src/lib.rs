@@ -103,6 +103,7 @@ impl Client2 {
 
     // Handle a received FloodResponse and build the network graph
     pub fn handle_flood_response(&mut self, response: FloodResponse) {
+        //println!("CLIENT2: CLIENT{}: Received flood response: {:?}", self.node_id, response);
         let mut discovered_drones = &mut self.discovered_drones;
         let mut network_graph = &mut self.network_graph;
 
@@ -151,7 +152,7 @@ impl Client2 {
                 .insert(*node_a_id);
         }
 
-        println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
+        //println!("CLIENT2: CLIENT{}: Discovered graph: {:?}", self.node_id, network_graph);
 
         // Now safely call handle_command for each server node_id
         for node_id in commands_to_send {
@@ -249,7 +250,7 @@ message_for?(client_id, message)->NodeId");
     }
 
     //Function that handles messages from the server
-    pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId) {
+    pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId, msg_snd: &Sender<String>) {
         match message {
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
@@ -264,11 +265,18 @@ message_for?(client_id, message)->NodeId");
                     *entry = svtype.unwrap().to_string();
                 }
             }
-            msg if msg.starts_with("files_list!(") && msg.ends_with(")") => {
+            msg if msg.starts_with("files_list!([") && msg.ends_with("])") => {
                 //files_list!(list_of_file_ids)
-                let files = msg.strip_prefix("files_list!(").and_then(|s| s.strip_suffix(")"));
-                let ff = files.unwrap().split(",").map(|s| s.to_string()).collect::<Vec<String>>();
-                //TODO SHOW FILES
+                let files = msg.strip_prefix("files_list!([").and_then(|s| s.strip_suffix("])"));
+                let new_files = files
+                    .unwrap()
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('"').to_string())
+                    .collect::<Vec<String>>();
+
+                if let Ok(mut files_lock) = self.files_names.lock() {
+                    *files_lock = new_files;
+                }
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") => {
                 //file!(file_size, file)
@@ -375,8 +383,10 @@ message_for?(client_id, message)->NodeId");
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
                 //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
-                msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
-                self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap());
+                if !msg.clone().unwrap().starts_with("server_type!") && !msg.clone().unwrap().starts_with("files_list!") {
+                    msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
+                }
+                self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap(), msg_snd);
             }
             Ok(None) => {
                 println!("CLIENT2: CLIENT{}: Not all fragments received yet for message ID {}", self.node_id, packet.session_id);
@@ -425,38 +435,6 @@ message_for?(client_id, message)->NodeId");
         rand::random()
     }
 
-    //     pub fn run(&mut self) {
-    //         self.discover_network();
-    //         let mut input = "files_list?->6";
-    //         let mut executed = false;
-    //         loop {
-    //             select_biased! {
-    //                 recv(self.receiver_channel) -> packet => {
-    //                     match packet {
-    //                         Ok(packet) => {
-    //                             //println!("CLIENT2: CLIENT{}: Received packet: {:?}", self.node_id, packet);
-    //                             self.handle_packet(packet);
-    //                         },
-    //                         Err(e) => {
-    //                             eprintln!("Server {} error processing RECIEVED PACKET: {}", self.node_id, e);
-    //                         }
-    //                     }
-    //                 }
-    //
-    //             }
-    //             if !self.servers.is_empty() {
-    //                 // if(!executed) {
-    //                 //     //self.handle_command("server_type?->6");
-    //                 //     //self.handle_command("files_list?->6");
-    //                 //     //self.handle_command("registration_to_chat->6");
-    //                 //     // self.handle_command("client_list->6");
-    //                 //     //self.handle_command("message_for?(10, hahaha)->6");
-    //                 //     self.handle_command("server_list");
-    //                 //     executed = true;
-    //                 // }
-    //             }
-    //         }
-    //     }
     pub fn run(&mut self){
         init_logger();
         self.discover_network();
@@ -501,18 +479,4 @@ message_for?(client_id, message)->NodeId");
             }
         }
     }
-
 }
-
-/*#[test]
-fn test_discovery(){
-    let (snd, rcv) = unbounded::<Packet>();
-    let mut cl = Client2::new(1, HashMap::new(), rcv);
-    cl.neighbor_senders.insert(10, snd);
-    cl.network_graph.lock().unwrap().insert(1, HashSet::from_iter(vec![2, 3]));
-    cl.network_graph.lock().unwrap().insert(2, HashSet::from_iter(vec![3]));
-    cl.network_graph.lock().unwrap().insert(3, HashSet::from_iter(vec![2]));
-    cl.network_graph.lock().unwrap().insert(4, HashSet::from_iter(vec![2, 3]));
-    cl.discover_network();
-    println!("The graph is {:?}", cl.network_graph.lock().unwrap());
-}*/
