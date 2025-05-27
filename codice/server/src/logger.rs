@@ -41,7 +41,7 @@ pub mod logger
             }
         }
     }
-/*
+
 
     pub fn write_log_from_bytes(data: &[u8]) {
         unsafe {
@@ -52,9 +52,9 @@ pub mod logger
                 let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
                 let valid_slice = &data[..end];
 
-                let decoded: String = match str::from_utf8(valid_slice) {
-                    Ok(text) => text,
-                    Err(_) => "<invalid UTF-8>",
+                let decoded: String = match std::str::from_utf8(valid_slice) {
+                    Ok(text) => text.to_string(),
+                    Err(_) => "<invalid UTF-8>".to_string(),
                 };
 
                 let mut file = OpenOptions::new()
@@ -74,7 +74,7 @@ pub mod logger
             }
         }
     }
-    */
+    
     
     
 

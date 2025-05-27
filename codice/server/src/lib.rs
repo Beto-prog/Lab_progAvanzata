@@ -25,7 +25,7 @@ use ratatui::style::Color;
 
 pub use message::file_system;
 use crate::file_system::ServerType;
-use crate::logger::logger::init_logger;
+use crate::logger::logger::{init_logger, write_log_from_bytes};
 use crate::logger::logger::write_log;
 use rand::seq::SliceRandom;
 
@@ -251,6 +251,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                         match response.pack_type.clone() {
                                             MsgFragment( log_value) => {
                                                 write_log(&format!("Message to {} {:?}",source_id, log_value));
+                                                write_log_from_bytes(&log_value.data[..])
                                             }
                                             PacketType::Ack(_) => {}
                                             PacketType::Nack(_) => {}
