@@ -280,8 +280,8 @@ message_for?(client_id, message)->NodeId");
             }
             msg if msg.starts_with("file!(") && msg.ends_with(")") => {
                 //file!(file_size, file)
-                let txt = msg.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
+                let txt = msg.strip_prefix("file!(").and_then(|s| s.strip_suffix(")"));
+                let values = txt.unwrap().split_once(",");
                 self.saved_files.insert(values.unwrap().1.to_string());
             }
             msg if msg.starts_with("media!(") && msg.ends_with(")") => {
@@ -383,7 +383,7 @@ message_for?(client_id, message)->NodeId");
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
                 //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
-                if !msg.clone().unwrap().starts_with("server_type!") && !msg.clone().unwrap().starts_with("files_list!") {
+                if !msg.clone().unwrap().starts_with("server_type!") && !msg.clone().unwrap().starts_with("files_list!") && !msg.clone().unwrap().starts_with("client_list!") {
                     msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
                 }
                 self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap(), msg_snd);
