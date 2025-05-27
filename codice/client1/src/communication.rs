@@ -5,6 +5,7 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet, PacketType};
 use crate::Client1;
 use crate::fragment_reassembler::FragmentReassembler;
+use crate::logger::logger::write_log;
 
 //Communication part related to the Client
 impl Client1 {
@@ -64,7 +65,7 @@ impl Client1 {
     }
     // Send message (fragmented data) to a dest_id using bfs to compute the path
     pub fn send_message(&mut self, dest_id: NodeId, data: &str) {
-
+        //write_log(&format!("{}",data.clone()));
         let fragments = FragmentReassembler::generate_fragments(data).expect("Error while creating fragments");
         let session_id =  Self::generate_session_id();
         let path = Self::bfs_compute_path(&self.network,self.node_id,dest_id);
@@ -173,28 +174,6 @@ impl Client1 {
                 match Client1::get_file_values(msg){
                     Some(res) =>{
                         if !res.is_empty(){
-                            let hops = Self::bfs_compute_path(&self.network, self.node_id, src_id).expect("Failed to create path");
-                            let first_hop = hops[1].clone();
-                            let new_pack = Packet::new_ack(
-                                SourceRoutingHeader::with_first_hop(hops), session_id, frag_index);
-
-                            match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
-                                Ok(_) => (),
-                                Err(_) =>{ // Error: the first node is crashed
-
-                                    self.sender_channels.remove(&first_hop);
-                                    self.discover_network();
-
-                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
-                                    let first_hop = new_path[1];
-
-                                    let packet_sent = Packet::new_ack(
-                                        SourceRoutingHeader::with_first_hop(new_path),session_id,frag_index);
-                                    if let Some(sender) = self.sender_channels.get(&first_hop){
-                                        sender.send(packet_sent).expect("CLIENT1: failed to send message");
-                                    }
-                                }
-                            }
                             res
                         }
                         else{ "Error: no file".to_string() }
@@ -207,27 +186,6 @@ impl Client1 {
                 match msg.strip_prefix("media!(").and_then(|s|s.strip_suffix(")")){
                     Some(clean_data) =>{
                         if !clean_data.is_empty(){
-                            let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
-                            let first_hop = hops[1].clone();
-                            let new_pack = Packet::new_ack(
-                                SourceRoutingHeader::with_first_hop(hops),session_id,0);
-                            match self.sender_channels.get(&first_hop).expect("CLIENT1: Didn't find neighbor").send(new_pack){
-                                Ok(_) => (),
-                                Err(_) =>{ // Error: the first node is crashed
-
-                                    self.sender_channels.remove(&first_hop);
-                                    self.discover_network();
-
-                                    let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
-                                    let first_hop = new_path[1];
-
-                                    let packet_sent = Packet::new_ack(
-                                        SourceRoutingHeader::with_first_hop(new_path),session_id,frag_index);
-                                    if let Some(sender) = self.sender_channels.get(&first_hop){
-                                        sender.send(packet_sent).expect("CLIENT1: failed to send message");
-                                    }
-                                }
-                            }
                             clean_data.to_string()
                         }
                         else{ "Error: no media".to_string() }
@@ -256,28 +214,6 @@ impl Client1 {
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") =>{
                 match Self::get_values(&msg){
                     Some(values) =>{
-                        let src_id = values.0;
-                        let hops = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
-                        let neighbor = hops[1];
-                        let new_pack = Packet::new_ack(
-                            SourceRoutingHeader::with_first_hop(hops),session_id,0);
-                        match self.sender_channels.get(&neighbor).expect("CLIENT1: Didn't find neighbor").send(new_pack){
-                            Ok(_) => (),
-                            Err(_) =>{ // Error: the first node is crashed
-
-                                self.sender_channels.remove(&neighbor);
-                                self.discover_network();
-
-                                let new_path = Self::bfs_compute_path(&self.network,self.node_id,src_id).expect("Failed to create path");
-                                let first_hop = new_path[1];
-
-                                let packet_sent = Packet::new_ack(
-                                    SourceRoutingHeader::with_first_hop(new_path),session_id,0);
-                                if let Some(sender) = self.sender_channels.get(&first_hop){
-                                    sender.send(packet_sent).expect("CLIENT1: failed to send message");
-                                }
-                            }
-                        }
                         values.1.to_string()
                     }
                     None => "Failed to get message content".to_string()
