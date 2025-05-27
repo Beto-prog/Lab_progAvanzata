@@ -19,15 +19,17 @@ pub mod interface {
         thread,
         time::Duration,
     };
+    use std::collections::{HashMap, HashSet};
+    use std::ops::Mul;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use once_cell::sync::Lazy;
     use rand::prelude::SliceRandom;
     use ratatui::widgets::GraphType;
     use wg_2024::network::NodeId;
-
+    use wg_2024::packet::NodeType;
     /* ──────────────────────────────────────────────────────────
-       ───────  DATI CONDIVISI TRA TUTTI I THREAD / SERVER  ─────
-       ────────────────────────────────────────────────────────── */
+           ───────  DATI CONDIVISI TRA TUTTI I THREAD / SERVER  ─────
+           ────────────────────────────────────────────────────────── */
     pub type AllServersUi = Arc<Mutex<Vec<ServerUiState>>>;
 
     #[derive(Clone)]
@@ -36,7 +38,8 @@ pub mod interface {
         pub name: String,
         pub path: String,
         pub messages: Arc<Mutex<Vec<(String, Color, String, Color)>>>,
-        pub clients: Arc<Mutex<Vec<(NodeId, bool)>>>,
+        pub chat_for_client: Arc<Mutex<Vec<(NodeId, Color,NodeId, Color,String, Color)>>>,      //id1 -> id2 : messagge  
+        pub graph : Arc<Mutex<HashMap<NodeId, (HashSet<NodeId>, NodeType)>>>,
         pub selected_index: Arc<AtomicUsize>,   // <── cambiato!
     }
 
@@ -47,9 +50,10 @@ pub mod interface {
         Graph
     }
 
-    // alias utili (non cambiano)
+    // alias utili (non )
+    type Graph = Arc<Mutex<HashMap<NodeId, (HashSet<NodeId>, NodeType)>>>;
     type Messages = Arc<Mutex<Vec<(String, Color, String, Color)>>>;
-    type UserList = Arc<Mutex<Vec<(NodeId, bool)>>>;
+    type Chatlist = Arc<Mutex<Vec<(NodeId, Color,NodeId, Color,String, Color)>>>;
 
     /* ──────────────────────────────────────────────────────────
        ───────────── FUNZIONI CHIAMATE DAI SERVER ───────────────
@@ -65,19 +69,63 @@ pub mod interface {
         locked.push((name.to_string(), name_color, msg.to_string(), msg_color));
     }
 
-    pub fn add_client_to_interface(users: &UserList, client_id: NodeId) {
-        let mut locked = users.lock().unwrap();
-        if !locked.iter().any(|(id, _)| *id == client_id) {
-            locked.push((client_id, true));
+
+    pub fn add_message_for_chat(        // message exchange between client (communication server)
+        chat: &Chatlist,
+        source_id: NodeId, 
+                                        source_color: Color,
+                                        destination: NodeId,
+
+                                        destion_color: Color,
+                                        message: &str,
+                                        message_color: Color
+    ) {
+        
+        let mut locked = chat.lock().unwrap();
+        locked.push((source_id, source_color,destination, destion_color,message.to_string(),message_color));
+    }    
+    
+
+    pub fn recive_flood_interface(
+        grafo: &Graph,
+        path_trace: Vec<(NodeId, NodeType)>,
+    ) {
+        let mut grafo = grafo.lock().unwrap();
+
+        for window in path_trace.windows(2) {
+            if let [(a_id, a_type), (b_id, b_type)] = window {
+                // Nodo A
+                grafo
+                    .entry(*a_id)
+                    .and_modify(|(vicini, tipo)| {
+                        vicini.insert(*b_id);
+                        *tipo = *a_type;
+                    })
+                    .or_insert_with(|| {
+                        let mut vicini = HashSet::new();
+                        vicini.insert(*b_id);
+                        (vicini, *a_type)
+                    });
+
+                // Nodo B
+                grafo
+                    .entry(*b_id)
+                    .and_modify(|(vicini, tipo)| {
+                        vicini.insert(*a_id);
+                        *tipo = *b_type;
+                    })
+                    .or_insert_with(|| {
+                        let mut vicini = HashSet::new();
+                        vicini.insert(*a_id);
+                        (vicini, *b_type)
+                    });
+            }
         }
     }
 
-    pub fn unreachable(users: &UserList, client_id: NodeId) {
-        let mut locked = users.lock().unwrap();
-        if let Some((_, reachable)) = locked.iter_mut().find(|(id, _)| *id == client_id) {
-            *reachable = false;
-        }
-    }
+
+
+
 
     /* ──────────────────────────────────────────────────────────
        ────────────────────  AVVIO DELLA UI  ────────────────────
@@ -173,43 +221,83 @@ pub mod interface {
                         let mut info = String::new();
 
                         if !ALREADY_OPENED {
-                            // genera DOT e PNG
-                            let dot = r#"
 
-graph Topologia {
-    node [style=filled, fontname=Helvetica];
 
-    A [label="API Gateway", shape=box, fillcolor=lightblue, color=blue, penwidth=2];
-    B [label="Auth Service", shape=ellipse, fillcolor=lightyellow, color=orange, penwidth=2];
-    C [label="DB Master", shape=cylinder, fillcolor=mistyrose, color=red];
-    D [label="DB Replica", shape=cylinder, fillcolor=lemonchiffon, color=green];
-    E [label="Cache", shape=box, fillcolor=khaki, color=darkgoldenrod];
-    F [label="Worker 1", shape=box, fillcolor=lightgreen, color=green];
-    G [label="Worker 2", shape=box, fillcolor=lightgreen, color=green];
-    H [label="Logger", shape=ellipse, fillcolor=lavender, color=purple];
-    I [label="Metrics", shape=hexagon, fillcolor=lightcyan, color=deepskyblue];
-    J [label="External API", shape=parallelogram, fillcolor=white, color=black];
+                            
+                            //generate immage
 
-    // Connessioni principali
-    A -- B;
-    A -- E;
-    B -- C;
-    B -- D;
-    B -- E;
-    E -- F;
-    E -- G;
-    F -- H;
-    G -- H;
-    H -- I;
-    A -- J;
 
-    // Connessioni extra per densità
-    F -- C;
-    G -- D;
-    I -- J;
-    C -- D;
-}
-"#;
+
+                            let grafo = srv.graph.lock().unwrap();
+
+                            let mut dot = String::from("graph G {\n");
+                            dot.push_str("    node [fontname=Helvetica];\n");
+
+                            // 1. NODI personalizzati
+                            for (node_id, (_, node_type)) in grafo.iter() {
+                                let (label, fillcolor, shape, penwidth, fontcolor) = match node_type {
+                                    NodeType::Drone => (
+                                        format!("Drone {}", node_id),
+                                        "deepskyblue",
+                                        "ellipse",
+                                        "1",
+                                        "black",
+                                    ),
+                                    NodeType::Client => (
+                                        format!("Client {}", node_id),
+                                        "lightgreen",
+                                        "oval",
+                                        "1",
+                                        "black",
+                                    ),
+                                    NodeType::Server => {
+                                        let label = format!("Server {}", node_id);
+                                        if *node_id as usize == srv.id  {
+                                            // server corrente
+                                            (
+                                                format!("curr: Server {}", node_id),
+                                                "red",
+                                                "box",
+                                                "3",
+                                                "white",
+                                            )
+                                        } else {
+                                            // altro server
+                                            (
+                                                label,
+                                                "darkorange",
+                                                "cylinder",
+                                                "1",
+                                                "black",
+                                            )
+                                        }
+                                    }
+                                };
+
+                                dot.push_str(&format!(
+                                    "    {} [label=\"{}\", fillcolor={}, shape={}, style=filled, penwidth={}, fontcolor={}];\n",
+                                    node_id, label, fillcolor, shape, penwidth, fontcolor
+                                ));
+                            }
+
+                            // 2. ARCHI
+                            let mut seen = HashSet::new();
+                            for (a, (vicini, _)) in grafo.iter() {
+                                for b in vicini {
+                                    let (min, max) = if a < b { (a, b) } else { (b, a) };
+                                    if seen.insert((min, max)) {
+                                        dot.push_str(&format!("    {} -- {};\n", min, max));
+                                    }
+                                }
+                            }
+
+                            dot.push_str("}\n");
+
+
+                        
+                            
+                            
+                
                             let _ = write("grafo.dot", dot);
                             let _ = Command::new("dot")
                                 .args(["-Tpng", "grafo.dot", "-o", "grafo.png"])
@@ -228,11 +316,119 @@ graph Topologia {
                                 .stderr(Stdio::null())
                                 .spawn();
 
+                            
+                            
+                            
+                            
+                            
+
+                            
+                            
+                            
+                            
+                            
                             ALREADY_OPENED = true;
-                            info = "🖼️ Finestra YAD aperta.".into();
-                        } else {
-                            info = "✅ YAD già aperto. Cambia modalità per riaprirla.".into();
+                        } 
+                        
+                        else
+                        {
+
+                            //generate text
+
+
+                            let grafo = &srv.graph.lock().unwrap();
+                            
+
+
+                            // Header
+                            info.push_str(&format!("Current id: {}\n", srv.id));
+
+                            // Neighbours
+                            let neighbours: Vec<_> = grafo
+                                .get(&(srv.id as NodeId))
+                                .map(|(ns, _)| {
+                                    let mut v: Vec<_> = ns.iter().cloned().collect();
+                                    v.sort();
+                                    v
+                                })
+                                .unwrap_or_default();
+                            info.push_str("Current neighbours: ");
+                            if neighbours.is_empty() {
+                                info.push_str("-\n");
+                            } else {
+                                info.push_str(&neighbours.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", "));
+                                info.push('\n');
+                            }
+
+                            // Liste client/server
+                            let mut clienti = vec![];
+                            let mut server = vec![];
+
+                            for (id, (_, tipo)) in grafo.iter() {
+                                match tipo {
+                                    NodeType::Client => clienti.push(*id),
+                                    NodeType::Server => {
+                                        if *id as usize != srv.id {
+                                            server.push(format!("{} (io stesso)", id));
+                                        } else {
+                                            server.push(id.to_string());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            clienti.sort();
+                            server.sort();
+
+                            info.push_str(&format!(
+                                "Clienti trovati: {}\n",
+                                if clienti.is_empty() {
+                                    "-".into()
+                                } else {
+                                    clienti
+                                        .iter()
+                                        .map(|x| x.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                }
+                            ));
+
+                            info.push_str(&format!(
+                                "Server trovati: {}\n",
+                                if server.is_empty() {
+                                    "-".into()
+                                } else {
+                                    server.join(", ")
+                                }
+                            ));
+
+                            // Topologia
+                            info.push_str("\nGraph topology:\n");
+                            let mut ids: Vec<_> = grafo.keys().cloned().collect();
+                            ids.sort();
+
+                            for id in ids {
+                                let mut vicini: Vec<_> = grafo.get(&id).unwrap().0.iter().cloned().collect();
+                                vicini.sort();
+                                info.push_str(&format!(
+                                    "{} → {}\n",
+                                    id,
+                                    if vicini.is_empty() {
+                                        "-".into()
+                                    } else {
+                                        vicini
+                                            .iter()
+                                            .map(|x| x.to_string())
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    }
+                                ));
+                            }
+
                         }
+                        
+                     
 
                         let paragraph = Paragraph::new(info)
                             .block(Block::default().title("Grafo").borders(Borders::ALL))
@@ -294,25 +490,76 @@ graph Topologia {
                         f.render_stateful_widget(list, layout[1], &mut state);
                     }
                     Mode::FileList => {
-                        let files = fs::read_dir(&srv.path)
-                            .unwrap_or_else(|_| fs::read_dir(".").unwrap())
-                            .filter_map(|e| e.ok())
-                            .map(|e| e.file_name().to_string_lossy().to_string())
-                            .collect::<Vec<_>>();
-                        let items: Vec<_> = files.iter().map(|f| ListItem::new(f.as_str())).collect();
-                        let list = List::new(items)
-                            .block(
-                                Block::default()
-                                    .borders(Borders::ALL)
-                                    .title("File nella cartella corrente"),
-                            );
-                        f.render_widget(list, layout[1]);
+                        if &srv.path=="."
+                        {
+
+                            let chat = &srv.chat_for_client.lock().unwrap();
+
+                            let messages: Vec<ListItem> = chat
+                                .iter()
+                                .map(|(from, color_from, to, color_to, text, color_msg)| {
+                                    let line = Line::from(vec![
+                                        Span::styled(
+                                            format!("{} ", from),
+                                            Style::default().fg(*color_from),
+                                        ),
+                                        Span::raw("→ "),
+                                        Span::styled(
+                                            format!("{}: ", to),
+                                            Style::default().fg(*color_to),
+                                        ),
+                                        Span::styled(
+                                            text.clone(),
+                                            Style::default().fg(*color_msg),
+                                        ),
+                                    ]);
+                                    ListItem::new(line)
+                                })
+                                .collect();
+
+                            let chat_list = List::new(messages)
+                                .block(Block::default().borders(Borders::ALL).title("Chat"))
+                                .highlight_symbol(">>");
+
+                            f.render_widget(chat_list, layout[1]);
+                            
+                            
+                        }
+                        else
+                        {
+                            let files = fs::read_dir(&srv.path)
+                                .unwrap_or_else(|_| fs::read_dir(".").unwrap())
+                                .filter_map(|e| e.ok())
+                                .map(|e| e.file_name().to_string_lossy().to_string())
+                                .collect::<Vec<_>>();
+                            let items: Vec<_> = files.iter().map(|f| ListItem::new(f.as_str())).collect();
+                            let list = List::new(items)
+                                .block(
+                                    Block::default()
+                                        .borders(Borders::ALL)
+                                        .title("File nella cartella corrente"),
+                                );
+                            f.render_widget(list, layout[1]);    
+                        }
+    
                     }
                 }
 
                 /* ---- Footer ---- */
+
+                let footer_text = {
+                    let server_name = &srv.name;
+                    if server_name.starts_with("Communication") {
+                        "←/→ cambia server  |  1 Messages - 2 Chat - 3 Graph  |  ↑↓ scroll  |  q quit"
+                    } else {
+                        "←/→ cambia server  |  1 Messages - 2 File - 3 Graph  |  ↑↓ scroll  |  q quit"
+                    }
+                };
+                
                 let footer = Paragraph::new(
-                    "←/→ cambia server  |  1 Chat - 2 File - 3 Graph  |  ↑↓ scroll  |  q quit",
+
+                    footer_text
+                    
                 )
                     .style(Style::default().fg(Color::Green))
                     .block(Block::default().borders(Borders::ALL));
@@ -380,7 +627,9 @@ graph Topologia {
                         /* ---- Uscita ---- */
                         KeyCode::Char('q') => return Ok(()),
 
-                        _ => {}
+                        _ => {
+                            
+                        }
                     }
                 }
             }

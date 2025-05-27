@@ -164,6 +164,19 @@ impl NetworkInitializer {
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
+                        Box::new(server::file_system::ChatServer::new()),
+                        None,
+                        InterfaceHub.clone()
+                    )
+                }
+                _ => {
+
+
+                    Self::prepare_files(base_path);
+                    server::Server::new(
+                        server_config.id,
+                        packet_receiver.clone(),
+                        neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::TextServer,
@@ -171,21 +184,11 @@ impl NetworkInitializer {
                         Some(base_path.to_string()),
                         InterfaceHub.clone()
                     )
-                }
-                _ => {
-                    Self::prepare_files(base_path);
-                    server::Server::new(
-             
-
-
-
-                        server_config.id,
-                        packet_receiver.clone(),
-                        neighbor_senders,
-                        Box::new(server::file_system::ChatServer::new()),
-                        None,
-                        InterfaceHub.clone()
-                    )
+                    
+                    
+                    
+                    
+     
                 }
             };
 

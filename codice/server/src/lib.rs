@@ -79,7 +79,9 @@ impl Server{
         },
             path: path.clone().unwrap_or_else(|| ".".to_string()),
             messages : Arc::new(Mutex::new(vec![])),
-            clients: Arc::new(Mutex::new(Vec::new())),
+            chat_for_client: Arc::new(Mutex::new(Vec::new())),
+            graph : Arc::new(Mutex::new(HashMap::new())),
+
             selected_index: Arc::new(AtomicUsize::new(0)),
         };
 
@@ -180,7 +182,6 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     }
                 }
                 Some(x) => {source_id =*x;
-                    add_client_to_interface(&self.myInterface.clients, source_id);
                 }    
             }
         
@@ -402,6 +403,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     
                     PacketType::FloodResponse(path) => {
                         add_message(&self.myInterface.messages, "Server", "Received FloodResponse", Color::White, Color::White);
+                        recive_flood_interface(&self.myInterface.graph,path.path_trace.clone());
                         NewWork::recive_flood_response(&mut self.graph, path.path_trace);            //It's not the job of the server to propagate the message is not a drone
                     }
                     
@@ -501,7 +503,6 @@ Start by sending a flood request to all the neighbour to fill up the graph
                 }
             },
             None => {
-                unreachable(&self.myInterface.clients, dest_id);
                 add_message(&self.myInterface.messages, "Server", "Error not found a valid path to follow", Color::White, Color::Red);
             
             }
