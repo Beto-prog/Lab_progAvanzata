@@ -207,10 +207,9 @@ impl Client1 {
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                //write_log(msg.as_str());
+                                write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
-                                    //println!("DEBUG msg: {:?}",msg);
                                     self.handle_msg(msg,packet.session_id,dest_id,frag_index);
                                 }
                                 else{

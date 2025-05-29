@@ -5,6 +5,7 @@ use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
 use egui::{Color32, Context, Frame, RichText, TextEdit, TextStyle};
 use wg_2024::network::NodeId;
+use crate::logger::logger::init_logger;
 
 pub struct Client1_UI {
     self_id: NodeId,                    // Node ID for the client
@@ -54,6 +55,7 @@ impl Client1_UI {
     }
     pub fn client1_stats(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         ui.separator();
+        init_logger();
         ui.columns(2, |columns| {
             columns[0].set_max_width(250.0);
             columns[1].set_max_width(250.0);
@@ -142,7 +144,7 @@ impl Client1_UI {
                                                 let binding = self.clients.lock().expect("Failed to lock");
                                                 let clients = binding.iter().clone();
                                                 for cl in clients {
-                                                    ui.selectable_value(&mut self.selected_client_id, *cl, cl.to_string());
+                                                    ui.selectable_value(&mut self.selected_client_id, cl.clone(), cl.clone().to_string());
                                                 }
                                             });
                                     });
@@ -332,7 +334,7 @@ impl Client1_UI {
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
-            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").recv() {
+            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
                 self.can_show_response = true;
                 self.response = response;
             }
