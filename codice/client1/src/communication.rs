@@ -40,6 +40,7 @@ impl Client1 {
                         if id.is_empty() {
                             "Error: invalid media_id".to_string()
                         } else {
+                            self.selected_file_name = id.to_string();
                             self.send_message(dest_id, cmd);
                             "CLIENT1: OK".to_string()
                         }
