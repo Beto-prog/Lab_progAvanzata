@@ -79,10 +79,13 @@ impl Server{
         },
             path: path.clone().unwrap_or_else(|| ".".to_string()),
             messages : Arc::new(Mutex::new(vec![])),
-            chat_for_client: Arc::new(Mutex::new(Vec::new())),
+            chat_for_client: Arc::new(Mutex::new(HashMap::new())),
             graph : Arc::new(Mutex::new(HashMap::new())),
+            list_of_files: Arc::new(Mutex::new(HashMap::new())),
 
             selected_index: Arc::new(AtomicUsize::new(0)),
+            selected_chat_index: Arc::new(AtomicUsize::new(0)),
+
         };
 
         let mut ui_lock = interface_hub.lock().unwrap();
@@ -219,14 +222,14 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     }
                                 }
 
-                               
+
                                 let mut  flag:i32 = 0;  //1 = client not found
                                 let msg_work = message.clone().unwrap();        //temp value
-                                
+
                                 //Process the request
                                 let result =self.server_type.process_request(message.unwrap(),source_id as u32,&mut flag);
 
-                                if flag==0
+                                if flag==1
                                 {
                                     /*
                           Here there is an exception if the message start with messageFor?(...)
@@ -235,8 +238,23 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     if let Some(content) = msg_work.strip_prefix("message_for?(").and_then(|s| s.strip_suffix(")")) {
                                         let parts: Vec<&str> = content.splitn(2, ',').collect();
                                         if parts.len() == 2 {
-                                            source_id = parts[0].parse::<NodeId>().unwrap();
+                                            
+                                            let destination_id = parts[0].parse::<NodeId>().unwrap();
+                                            
+                                            add_message_for_chat(&self.myInterface.chat_for_client,source_id,destination_id,parts[1].to_string() );
+                                            source_id = destination_id
                                         }
+                                    }
+                                }
+                                
+                                else if flag==2
+                                {
+                                    if let Some(content) = msg_work.strip_prefix("file?(").and_then(|s| s.strip_suffix(")")) {
+                                        increese_file_nrequest(&self.myInterface.list_of_files,content.to_string());
+                                    }
+
+                                    if let Some(content) = msg_work.strip_prefix("media?(").and_then(|s| s.strip_suffix(")")) {
+                                        increese_file_nrequest(&self.myInterface.list_of_files,content.to_string());
                                     }
                                 }
                  
@@ -409,6 +427,29 @@ Start by sending a flood request to all the neighbour to fill up the graph
                     
                     PacketType::FloodRequest(mut flood_packet) =>
                         {
+                            
+                            add_message_for_chat(&self.myInterface.chat_for_client,4,5,"Ciao".to_string());
+                            add_message_for_chat(&self.myInterface.chat_for_client,5,4,"Ciao2".to_string());
+
+
+
+                            let mut rng = rand::thread_rng();
+
+                            for _ in 0..5 {
+                                let a = rng.gen_range(1..=10);
+                                let b = rng.gen_range(1..=10);
+                                let msg_num = rng.gen_range(1..=100);
+
+                                let  message= format!("Messaggio #{}", msg_num);
+
+                                add_message_for_chat(&self.myInterface.chat_for_client,a,b,message.to_string());
+                                
+                                
+                          
+                            }
+                            
+                            
+                            
                             add_message(&self.myInterface.messages, "Server", "Received FloodRequest", Color::White, Color::White);
                             let mut previous_neighbour = 0;
                             if let Some(last) = flood_packet.path_trace.last()
@@ -491,7 +532,9 @@ Start by sending a flood request to all the neighbour to fill up the graph
        // let sender = self.packet_send.get(&dest_id);
         
         match NewWork::bfs_shortest_path(&self.graph, self.id, dest_id) {       
-            Some(path) => { 
+            Some(path) => {
+                add_message(&self.myInterface.messages, "Server", &format!("path: {}",path ), Color::White, Color::White);
+                
                 packet.routing_header = path;
                 let c =self.packet_send.get(&packet.routing_header.hops[1]);    //take the first node to which you need to send the messages
                 match c {

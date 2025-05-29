@@ -19,7 +19,7 @@ pub mod interface {
         thread,
         time::Duration,
     };
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeSet, HashMap, HashSet};
     use std::ops::Mul;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use once_cell::sync::Lazy;
@@ -38,9 +38,12 @@ pub mod interface {
         pub name: String,
         pub path: String,
         pub messages: Arc<Mutex<Vec<(String, Color, String, Color)>>>,
-        pub chat_for_client: Arc<Mutex<Vec<(NodeId, Color,NodeId, Color,String, Color)>>>,      //id1 -> id2 : messagge  
+        pub chat_for_client: Arc<Mutex<HashMap<BTreeSet<NodeId>,Vec<(NodeId,String)>>>>,      //I had to use this BTree because when I used .key on the hashmap rust gave me problem
+        pub list_of_files: Arc<Mutex<HashMap<String,usize>>>,
         pub graph : Arc<Mutex<HashMap<NodeId, (HashSet<NodeId>, NodeType)>>>,
         pub selected_index: Arc<AtomicUsize>,   // <── cambiato!
+        pub selected_chat_index: Arc<AtomicUsize>,
+
     }
 
     /* ────────────────────────────────────────────────────────── */
@@ -50,10 +53,12 @@ pub mod interface {
         Graph
     }
 
-    // alias utili (non )
+    // useful alias (non )
     type Graph = Arc<Mutex<HashMap<NodeId, (HashSet<NodeId>, NodeType)>>>;
     type Messages = Arc<Mutex<Vec<(String, Color, String, Color)>>>;
-    type Chatlist = Arc<Mutex<Vec<(NodeId, Color,NodeId, Color,String, Color)>>>;
+    type Chatlist = Arc<Mutex<HashMap<BTreeSet<NodeId>,Vec<(NodeId,String)>>>>;
+    
+    type FileList = Arc<Mutex<HashMap<String,usize>>>;
 
     /* ──────────────────────────────────────────────────────────
        ───────────── FUNZIONI CHIAMATE DAI SERVER ───────────────
@@ -68,22 +73,38 @@ pub mod interface {
         let mut locked = messages.lock().unwrap();
         locked.push((name.to_string(), name_color, msg.to_string(), msg_color));
     }
-
+    
+    pub fn refresh(list : &FileList, files : Vec<String>)      //Some file could be added when the program is working
+    {
+        let mut locked = list.lock().unwrap();
+     
+        for name in files {
+            if !locked.contains_key(&name) {
+                locked.insert(name.clone(), 0);
+            }
+        }
+    }
+    
+    pub fn increese_file_nrequest(list : &FileList, name : String)
+    {
+        let mut locked = list.lock().unwrap();
+        *locked.entry(name).or_insert(0) += 1;
+        
+    }
+    
 
     pub fn add_message_for_chat(        // message exchange between client (communication server)
         chat: &Chatlist,
-        source_id: NodeId, 
-                                        source_color: Color,
-                                        destination: NodeId,
-
-                                        destion_color: Color,
-                                        message: &str,
-                                        message_color: Color
-    ) {
+        source_id: NodeId,
+        destination_id: NodeId,
+        message : String)
+    {
         
         let mut locked = chat.lock().unwrap();
-        locked.push((source_id, source_color,destination, destion_color,message.to_string(),message_color));
-    }    
+        let key: BTreeSet<NodeId> = [source_id, destination_id].into_iter().collect();
+        locked.entry(key)
+            .or_insert_with(Vec::new)
+            .push((source_id, message));    }
     
 
     pub fn recive_flood_interface(
@@ -490,58 +511,152 @@ pub mod interface {
                         f.render_stateful_widget(list, layout[1], &mut state);
                     }
                     Mode::FileList => {
-                        if &srv.path=="."
+
+
+
+
+                        if srv.path == "."
+
+
+
+
+                        /* ─────────────────────────  CHAT VIEW con sidebar  ───────────────────────── */
                         {
+                            // 1. prendo le chat presenti e le ordino
+                            let chat_map_guard = srv.chat_for_client.lock().unwrap();
+                            let mut chat_keys: Vec<_> = chat_map_guard
+                                .keys()
+                                .filter(|k| k.len() == 2)          // solo coppie vere
+                                .cloned()
+                                .collect();
+                            chat_keys.sort();
 
-                            let chat = &srv.chat_for_client.lock().unwrap();
+                            /*── layout interno: 30 col per la lista, resto per i messaggi ──*/
+                            let chunks = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([Constraint::Length(30), Constraint::Min(0)].as_ref())
+                                .split(layout[1]);
 
-                            let messages: Vec<ListItem> = chat
+                            /*──────────────── 1A. Sidebar con le chat ────────────────*/
+                            let items: Vec<ListItem> = chat_keys
                                 .iter()
-                                .map(|(from, color_from, to, color_to, text, color_msg)| {
-                                    let line = Line::from(vec![
-                                        Span::styled(
-                                            format!("{} ", from),
-                                            Style::default().fg(*color_from),
-                                        ),
-                                        Span::raw("→ "),
-                                        Span::styled(
-                                            format!("{}: ", to),
-                                            Style::default().fg(*color_to),
-                                        ),
-                                        Span::styled(
-                                            text.clone(),
-                                            Style::default().fg(*color_msg),
-                                        ),
-                                    ]);
-                                    ListItem::new(line)
+                                .map(|key| {
+                                    let mut it = key.iter();
+                                    let a = it.next().unwrap();
+                                    let b = it.next().unwrap();
+                                    ListItem::new(Line::from(format!("{} ⇄ {}", a, b)))
                                 })
                                 .collect();
 
-                            let chat_list = List::new(messages)
-                                .block(Block::default().borders(Borders::ALL).title("Chat"))
-                                .highlight_symbol(">>");
+                            // indice selezionato (clamp sicuro)
+                            let list_len = chat_keys.len();
+                            let mut idx = srv.selected_chat_index.load(Ordering::Relaxed);
+                            if idx >= list_len {
+                                idx = idx.saturating_sub(1);
+                                srv.selected_chat_index.store(idx, Ordering::Relaxed);
+                            }
 
-                            f.render_widget(chat_list, layout[1]);
-                            
-                            
+                            let mut sidebar_state = ListState::default();
+                            if list_len > 0 {
+                                sidebar_state.select(Some(idx));
+                            }
+
+                            let sidebar = List::new(items)
+                                .block(Block::default().title("Chat").borders(Borders::ALL))
+                                .highlight_style(Style::default().fg(Color::Green));
+
+                            f.render_stateful_widget(sidebar, chunks[0], &mut sidebar_state);
+
+                            /*──────────────── 1B. Pannello messaggi ────────────────*/
+                            let content: Vec<Line> = if list_len == 0 {
+                                vec![Line::from("📭 Nessuna conversazione.")]
+                            } else {
+                                let key = &chat_keys[idx];
+                                let mut it = key.iter();
+                                let a = it.next().unwrap();
+                                let b = it.next().unwrap();
+
+                                let msgs = chat_map_guard.get(key).unwrap();   // esiste di sicuro
+
+                                let mut lines = vec![
+                                    Line::from(format!("💬 Chat tra {} ⇄ {}", a, b)),
+                                    Line::from("-------------------------------"),
+                                ];
+
+                                for (sender, text) in msgs {
+                                    if *sender == *a {
+                                        lines.push(Line::from(vec![
+                                            Span::styled(format!("{}: ", sender), Style::default().fg(Color::Yellow)),
+                                            Span::raw(text),
+                                        ]));
+                                    } else {
+                                        let pad = " ".repeat(40usize.saturating_sub(text.len().min(40)));
+                                        lines.push(Line::from(vec![
+                                            Span::raw(pad),
+                                            Span::styled(format!("{} :{}", text, sender), Style::default().fg(Color::Cyan)),
+                                        ]));
+                                    }
+                                }
+                                lines
+                            };
+
+                            let paragraph = Paragraph::new(content)
+                                .block(Block::default().borders(Borders::ALL))
+                                .style(Style::default().fg(Color::White));
+
+                            f.render_widget(paragraph, chunks[1]);
                         }
-                        else
-                        {
+                        /* ─────────────────────────────────────────────────────────────────────────── */
+
+
+
+
+
+
+
+
+
+                        else {
+                            // ───────────────────────────── FILE-LIST VIEW ─────────────────────────────
                             let files = fs::read_dir(&srv.path)
                                 .unwrap_or_else(|_| fs::read_dir(".").unwrap())
                                 .filter_map(|e| e.ok())
                                 .map(|e| e.file_name().to_string_lossy().to_string())
                                 .collect::<Vec<_>>();
-                            let items: Vec<_> = files.iter().map(|f| ListItem::new(f.as_str())).collect();
-                            let list = List::new(items)
-                                .block(
-                                    Block::default()
-                                        .borders(Borders::ALL)
-                                        .title("File nella cartella corrente"),
-                                );
-                            f.render_widget(list, layout[1]);    
+
+                            refresh(&srv.list_of_files, files.clone());
+
+                            let file_map = srv.list_of_files.lock().unwrap();
+                            let mut files: Vec<_> = file_map.iter().collect();
+                            files.sort_by(|a, b| b.1.cmp(a.1));                 // per occorrenze decrescente
+
+                            let mut lines = vec![
+                                Line::from(vec![
+                                    Span::styled("📁 Nome File", Style::default().fg(Color::Yellow)),
+                                    Span::raw("  |  "),
+                                    Span::styled("📊 Occorrenze", Style::default().fg(Color::Yellow)),
+                                ]),
+                                Line::from("------------------------------"),
+                            ];
+
+                            for (name, count) in files {
+                                lines.push(Line::from(format!("{:<20} |  {}", name, count)));
+                            }
+
+                            let paragraph = Paragraph::new(lines)
+                                .block(Block::default().title("File disponibili").borders(Borders::ALL))
+                                .style(Style::default().fg(Color::White));
+
+                            f.render_widget(paragraph, layout[1]);
                         }
-    
+
+
+
+
+
+
+
+
                     }
                 }
 
@@ -609,6 +724,21 @@ pub mod interface {
                                 }
                                 auto_scroll = false;
                             }
+
+                            if matches!(global_mode, Mode::FileList) {
+                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let cur = srv.selected_chat_index.load(Ordering::Relaxed);
+                                
+                                if (srv.path==".")
+                                {
+                                    if cur > 0 {
+                                        srv.selected_chat_index.store(cur - 1, Ordering::Relaxed);
+                                    }
+                                }
+
+                            }
+                            
+                            
                         }
                         KeyCode::Down => {
                             if matches!(global_mode, Mode::Chat) {
@@ -622,11 +752,29 @@ pub mod interface {
                                     auto_scroll = true;
                                 }
                             }
+
+
+                            if matches!(global_mode, Mode::FileList) {
+                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let len = srv.chat_for_client.lock().unwrap().len();
+                                let cur = srv.selected_chat_index.load(Ordering::Relaxed);
+
+                                if (srv.path==".")
+                                {
+                                    if cur + 1 < len{
+                                        srv.selected_chat_index.store(cur + 1, Ordering::Relaxed);
+                                    }
+                                }
+
+                            }
                         }
 
                         /* ---- Uscita ---- */
-                        KeyCode::Char('q') => return Ok(()),
-
+                        KeyCode::Char('q') =>
+                            {
+                                //std::process::exit(0);
+                                return Ok(())
+                            }
                         _ => {
                             
                         }
