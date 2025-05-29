@@ -56,6 +56,10 @@ impl Client1_UI {
     pub fn client1_stats(&mut self, ui: &mut egui::Ui, ctx: &Context) {
         ui.separator();
         init_logger();
+        if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
+            self.can_show_response = true;
+            self.response = response;
+        }
         ui.columns(2, |columns| {
             columns[0].set_max_width(250.0);
             columns[1].set_max_width(250.0);
@@ -351,7 +355,8 @@ impl Client1_UI {
                         .inner_margin(egui::Margin::same(20.0))
                         .show(ui, |ui| {
                             ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                            ui.colored_label(Color32::LIGHT_GREEN, format!("Message from client {} : {}", self.selected_client_id, self.response));
+                            let values = self.response.split_once(",").expect("Failed to split");
+                            ui.colored_label(Color32::LIGHT_GREEN, format!("Message from client {}: {}", values.0, values.1));
                             ui.add_space(10.0);
                             if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
                                 self.can_show_response = false;

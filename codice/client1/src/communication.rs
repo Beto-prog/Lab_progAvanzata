@@ -214,7 +214,10 @@ impl Client1 {
             msg if msg.starts_with("message_from!(") && msg.ends_with(")") =>{
                 match Self::get_values(&msg){
                     Some(values) =>{
-                        values.1.to_string()
+                        let mut res = values.0.to_string();
+                        res.push_str(",");
+                        res.push_str(values.1);
+                        res
                     }
                     None => "Failed to get message content".to_string()
                 }
