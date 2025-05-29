@@ -356,7 +356,7 @@ impl Client2_UI {
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
-            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").recv() {
+            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
                 self.can_show_response = true;
                 self.response = response;
             }
