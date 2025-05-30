@@ -136,15 +136,14 @@ impl SimulationController {
                 let node_id: NodeId;
                 match packet.pack_type {
                     PacketType::MsgFragment(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
+                        node_id = packet.routing_header.previous_hop().expect(&format!(
+                            "Recieved MsgFragment packet {:?}, there should always be a previous hop",
+                            packet
+                        ));
+                        if *self.node_types.get(&node_id).expect(&format!(
+                            "MsgFragment, Node id: {}, Previous hops node type should always exist. Packet: {}",
+                            node_id, packet
+                        )) == NodeType::Drone
                         {
                             self.drone_stats
                                 .lock()
@@ -155,16 +154,15 @@ impl SimulationController {
                         }
                     }
                     PacketType::Ack(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
+                        node_id = packet.routing_header.previous_hop().expect(&format!(
+                            "Recieved Ack packet {:?}, there should always be a previous hop",
+                            packet
+                        ));
 
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
+                        if *self.node_types.get(&node_id).expect(&format!(
+                            "Ack, Node id: {}, Previous hops node type should always exist",
+                            node_id
+                        )) == NodeType::Drone
                         {
                             self.drone_stats
                                 .lock()
@@ -175,15 +173,14 @@ impl SimulationController {
                         }
                     }
                     PacketType::Nack(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
+                        node_id = packet.routing_header.previous_hop().expect(&format!(
+                            "Recieved Nack packet {:?}, there should always be a previous hop",
+                            packet
+                        ));
+                        if *self.node_types.get(&node_id).expect(&format!(
+                            "Nack, Node id: {}, Previous hops node type should always exist, packet: {}",
+                            node_id, packet
+                        )) == NodeType::Drone
                         {
                             self.drone_stats
                                 .lock()
@@ -355,7 +352,7 @@ impl SimulationController {
         self.node_command_senders.remove(&drone_id);
         self.node_packet_senders.remove(&drone_id);
         self.network_topology.remove(&drone_id);
-        self.node_types.remove(&drone_id);
+        //self.node_types.remove(&drone_id);
 
         // Notify neighbors to remove the crashed drone from their connections
         if let Some(neighbors) = self.network_topology.get(&drone_id) {
