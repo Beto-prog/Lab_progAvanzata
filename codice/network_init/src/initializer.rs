@@ -113,7 +113,7 @@ impl NetworkInitializer {
                 );
                 thread::spawn(move || client.run());
             }
-            
+
             else
             {
                 let mut client = Client2::new(
@@ -121,19 +121,24 @@ impl NetworkInitializer {
                     neighbor_senders.clone(),
                     client_receiver,
                     Some(ui_snd2.clone()),
-                 
+
                 );
                 thread::spawn(move || client.run());
             }
         }
 
         // Server initialization
+
+        let InterfaceHub : server::interface::interface::AllServersUi =  Arc::new(Mutex::new(Vec::new()));
+
+
         for (index, server_config) in config.server.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &server_config.connected_drone_ids {
                 neighbor_senders
                     .insert(*neighbor_id, node_senders.get(neighbor_id).unwrap().clone());
             }
+
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
 
@@ -143,7 +148,8 @@ impl NetworkInitializer {
                     packet_receiver.clone(),
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()),
-                    None
+                    None,
+                    InterfaceHub.clone()
                 ),
                 1 => {
                     let base_path = if cfg!(target_os = "windows") {
@@ -151,7 +157,6 @@ impl NetworkInitializer {
                     } else {
                         "/tmp/ServerMedia"
                     };
-                    Self::prepare_files(base_path);
                     server::Server::new(
                         server_config.id,
                         packet_receiver.clone(),
@@ -161,6 +166,7 @@ impl NetworkInitializer {
                             server::file_system::ServerType::MediaServer,
                         )),
                         Some(base_path.to_string()),
+                        InterfaceHub.clone()
                     )
                 }
                 _ => {
@@ -175,16 +181,20 @@ impl NetworkInitializer {
                         packet_receiver.clone(),
                         neighbor_senders,
                         Box::new(server::file_system::ContentServer::new(
-                        base_path,
-                        server::file_system::ServerType::TextServer,
+                            base_path,
+                            server::file_system::ServerType::TextServer,
                         )),
                         Some(base_path.to_string()),
+                        InterfaceHub.clone()
                     )
                 }
             };
 
             thread::spawn(move || server.run());
         }
+
+        server::interface::interface::start_ui(InterfaceHub);
+
 
         let network_topology = Self::get_network_topology(config);
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));

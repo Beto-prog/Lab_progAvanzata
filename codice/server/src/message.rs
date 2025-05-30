@@ -510,6 +510,7 @@ pub mod file_system {
                                     None,
                                 ),
                                 Some(x) => {
+                                    *flag=2;
                                     let response = format!("file!({},", x);
                                     Repackager::create_fragments(
                                         &*response,
@@ -540,6 +541,7 @@ pub mod file_system {
                     {
                         let path = Path::new(&self.path).join(media_id);
                         if path.exists() && path.is_file() {
+                            *flag=2;
                             Repackager::create_fragments(
                                 &*"media!(",
                                 Some(path.to_str().unwrap()),
@@ -611,7 +613,7 @@ pub mod file_system {
                         if parts.len() == 2 {
                             let id = parts[0];
                             let message = parts[1];
-                            
+
 
                             if let Ok(client_id) = id.parse::<u32>() {
                                 *flag = 1;
@@ -622,9 +624,9 @@ pub mod file_system {
                                         &*response.to_string(),
                                         None,
                                     );
-                                    
+
                                 } else {
-                                    
+
                                     let response = format!("error_wrong_client_id!");
                                     return Repackager::create_fragments(
                                         &*response.to_string(),
