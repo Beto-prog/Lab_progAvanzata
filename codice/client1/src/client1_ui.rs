@@ -264,19 +264,90 @@ impl Client1_UI {
                 ui.add_space(10.0);
                 if !self.error.0 {
                     if self.can_show_clients {
-                        self.show_response(ui, Some("Clients".to_string()), ctx);
+                        let content = self.retrieve_content("Clients");
+                        self.show_response(ui, content);
                     }
                     if self.can_show_response {
-                        self.show_response(ui, Some("Response".to_string()), ctx);
+                        let content = self.retrieve_content("Response");
+                        self.show_response(ui, content);
                     }
                     if self.can_show_file_list {
-                        self.show_response(ui, Some("Files".to_string()), ctx);
+                        let content = self.retrieve_content("Files");
+                        self.show_response(ui, content);
                     }
                 } else {
-                    self.show_response(ui, Some(self.error.1.clone()), ctx);
+                    let content = self.retrieve_content("Error");
+                    self.show_response(ui, content);
                 }
             });
         });
+    }
+
+    pub fn handle_response_show(&mut self, cmd: String) {
+        if self.selected_command.eq("client_list?") {
+            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
+            self.can_show_clients = true;
+            self.can_show_response = false;
+            self.can_show_file_list = false;
+        } else if self.selected_command.eq("files_list?") {
+            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
+            self.can_show_clients = false;
+            self.can_show_response = false;
+            self.can_show_file_list = true;
+        } else if self.error.0 {
+            self.can_show_clients = false;
+            self.can_show_response = false;
+            self.can_show_file_list = false;
+        } else {
+            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
+            self.can_show_clients = false;
+            self.can_show_file_list = false;
+            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
+                self.can_show_response = true;
+                self.response = response;
+            }
+        }
+    }
+    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String) {
+
+        Frame::none()
+            .fill(Color32::BLACK)
+            .rounding(egui::Rounding::same(3.0))
+            .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+            .inner_margin(egui::Margin::same(20.0))
+            .show(ui, |ui| {
+                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                let color = if self.error.0 {Color32::RED} else{Color32::LIGHT_GREEN};
+                ui.colored_label(color,content);
+                ui.add_space(10.0);
+                if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
+
+                    self.error.0 = false;
+                    self.error.1 = String::new();
+                    self.can_show_clients = false;
+                    self.can_show_file_list = false;
+                    self.can_show_response = false;
+                    self.response = String::new();
+
+                }
+            });
+    }
+    pub fn retrieve_content(&self, content_type : &str) -> String{
+        match content_type{
+            "Clients" =>{
+                format!("Clients: {:?}",self.clients.lock().expect("Failed to lock"))
+            },
+            "Files" =>{
+                format!("Files: {:?}",self.files_names.lock().expect("Failed to lock"))
+            },
+            "Response" =>{
+                format!("{}",self.response)
+            },
+            "Error" =>{
+                format!("Error: {}",self.error.1)
+            },
+            _ =>{ "Error: not a valid content type".to_string() }
+        }
     }
     pub fn create_command(&mut self) -> String {
         if self.communication_server_commands.contains(&self.selected_command) {
@@ -319,116 +390,5 @@ impl Client1_UI {
         r.push_str(selected_s.to_string().as_str());
         r
     }
-    pub fn handle_response_show(&mut self, cmd: String) {
-        if self.selected_command.eq("client_list?") {
-            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
-            self.can_show_clients = true;
-            self.can_show_response = false;
-            self.can_show_file_list = false;
-        } else if self.selected_command.eq("files_list?") {
-            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
-            self.can_show_clients = false;
-            self.can_show_response = false;
-            self.can_show_file_list = true;
-        } else if self.error.0 {
-            self.can_show_clients = false;
-            self.can_show_response = false;
-            self.can_show_file_list = false;
-        } else {
-            self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
-            self.can_show_clients = false;
-            self.can_show_file_list = false;
-            if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
-                self.can_show_response = true;
-                self.response = response;
-            }
-        }
-    }
-    pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>, ctx: &Context) {
-        match message.expect("Failed to get value").as_str() {
-            "Response" => {
-                if self.selected_server.1.eq("CommunicationServer") {
-                    Frame::none()
-                        .fill(Color32::BLACK)
-                        .rounding(egui::Rounding::same(3.0))
-                        .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                        .inner_margin(egui::Margin::same(20.0))
-                        .show(ui, |ui| {
-                            ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                            let values = self.response.split_once(",").expect("Failed to split");
-                            ui.colored_label(Color32::LIGHT_GREEN, format!("Message from client {}: {}", values.0, values.1));
-                            ui.add_space(10.0);
-                            if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                                self.can_show_response = false;
-                                self.response = String::new();
-                            }
-                        });
-                } else {
-                    Frame::none()
-                        .fill(Color32::BLACK)
-                        .rounding(egui::Rounding::same(3.0))
-                        .stroke(Stroke::new(1.0, Color32::DARK_GRAY))
-                        .inner_margin(egui::Margin::same(20.0))
-                        .show(ui, |ui| {
-                            ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                            ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}", self.response));
-                            ui.add_space(10.0);
-                            if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                                self.can_show_response = false;
-                                self.response = String::new();
-                            }
-                        });
-                }
-            },
-            "Clients" => {
-                Frame::none()
-                    .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
-                    .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
-                    .show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                        ui.colored_label(Color32::LIGHT_GREEN, format!("Clients: {:?}", self.clients.lock().expect("Failed to lock")));
-                        ui.add_space(10.0);
-                        if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                            self.can_show_clients = false;
-                        }
-                    });
-            },
-            "Files" => {
-                Frame::none()
-                    .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
-                    .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
-                    .show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                        ui.colored_label(Color32::LIGHT_GREEN, format!("Files: {:?}", self.files_names.lock().expect("Failed to lock")));
-                        ui.add_space(10.0);
-                        if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                            self.can_show_file_list = false;
-                        }
-                    });
-            },
-            _ => {
-                Frame::none()
-                    .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
-                    .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
-                    .show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                        ui.colored_label(Color32::RED, format!("{}", self.error.1));
-                        ui.add_space(10.0);
-                        if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                            self.error.0 = false;
-                            self.error.1 = String::new();
-                            //self.selected_command = String::new();
-                        }
-                    });
-            }
-        }
-    }
 }
 
-//TODO check with other client the send message part.
