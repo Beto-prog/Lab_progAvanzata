@@ -228,7 +228,7 @@ impl eframe::App for SimulationControllerUI {
             let now = ctx.input(|i| i.time);
 
             if self.client1_selected{
-                self.client1_ui.client1_stats(ui,ctx);
+                self.client1_ui.client1_stats(ui);
             }
             else if self.client2_selected{
                 self.client2_ui.client2_stats(ui,ctx);

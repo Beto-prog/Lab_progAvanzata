@@ -12,6 +12,7 @@ egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
 base64 = "0.22.1"
 image = "0.25.6"
+chrono = "0.4.41"
 [lib]
 name = "client1"
 path = "src/lib.rs"
