@@ -1,21 +1,12 @@
 #[allow(warnings)]
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
 use egui::{Color32, Context, Frame, RichText, TextEdit, TextStyle};
 use wg_2024::network::NodeId;
 use crate::logger::logger::init_logger;
-use chrono::Local;
-#[derive(Clone)]
-pub struct Response{
-    response_index: u64,
-    pub response_error_state: bool,
-    response_time: String,
-    response_content: String
-}
-type ResponseList = Vec<Response>;
+
 pub struct Client1_UI {
     self_id: NodeId,                    // Node ID for the client
     clients: Arc<Mutex<Vec<NodeId>>>,               // List of clients
@@ -36,9 +27,6 @@ pub struct Client1_UI {
     communication_server_commands: Vec<String>,     //Commands
     text_server_commands: Vec<String>,              //Commands
     media_server_commands: Vec<String>,             //Commands
-    resp_vec: ResponseList,
-    resp_index: u64,
-    current_resp_index: usize
 }
 
 impl Client1_UI {
@@ -62,10 +50,7 @@ impl Client1_UI {
             error: (false, String::new()),
             text_server_commands: vec!["file?".to_string(), "files_list?".to_string()],
             media_server_commands: vec!["media?".to_string(), "files_list?".to_string()],
-            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()],
-            resp_vec: Vec::new(),
-            resp_index: 0,
-            current_resp_index: 0
+            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()]
         }
     }
     pub fn client1_stats(&mut self, ui: &mut egui::Ui) {
@@ -266,7 +251,7 @@ impl Client1_UI {
                     });
                     ui.add_space(20.0);
                     let cmd = self.create_command();
-                    if !self.selected_command.eq("Select command") {
+                    if !self.error.0 && !self.selected_command.eq("Select command") { // TODO check what is the best choice to do
                         if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("SEND")).clicked() {
                             self.handle_response_show(cmd);
                         }
@@ -277,33 +262,23 @@ impl Client1_UI {
             columns[1].group(|ui| {
                 ui.heading(RichText::new(format!("Responses")).color(Color32::GREEN));
                 ui.add_space(10.0);
-                if !self.error.0{
+                if !self.error.0 {
                     if self.can_show_clients {
                         let content = self.retrieve_content("Clients");
-                        let time = Local::now().format("%H:%M:%S").to_string();
-                        self.resp_vec.push(Client1_UI::create_response_struct(self.resp_index,time,content,false));
-                        self.resp_index+=1;
+                        self.show_response(ui, content);
                     }
                     if self.can_show_response {
                         let content = self.retrieve_content("Response");
-                        let time = Local::now().format("%H:%M:%S").to_string();
-                        self.resp_vec.push(Client1_UI::create_response_struct(self.resp_index,time,content,false));
-                        self.resp_index+=1;
+                        self.show_response(ui, content);
                     }
                     if self.can_show_file_list {
                         let content = self.retrieve_content("Files");
-                        let time = Local::now().format("%H:%M:%S").to_string();
-                        self.resp_vec.push(Client1_UI::create_response_struct(self.resp_index,time,content,false));
-                        self.resp_index+=1;
+                        self.show_response(ui, content);
                     }
                 } else {
                     let content = self.retrieve_content("Error");
-                    let time = Local::now().format("%H:%M:%S").to_string();
-                    self.resp_vec.push(Client1_UI::create_response_struct(self.resp_index,time,content,true));
-                    self.resp_index+=1;
+                    self.show_response(ui, content);
                 }
-                self.clear_show_states();
-                self.show_response(ui);
             });
         });
     }
@@ -333,66 +308,29 @@ impl Client1_UI {
             }
         }
     }
-    pub fn show_response(&mut self, ui: &mut egui::Ui) {
+    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String) {
 
-        if !self.resp_vec.is_empty(){
-            if let Some(r) = self.resp_vec.get((self.resp_vec.len()-1) - self.current_resp_index).cloned(){
-                Frame::none()
-                    .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
-                    .stroke(Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
-                    .show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                        let color = if r.response_error_state {Color32::RED} else {Color32::LIGHT_GREEN};
-                        ui.colored_label(color,r.to_string());
-                        ui.add_space(10.0);
-                        ui.horizontal(|ui|{
+        Frame::none()
+            .fill(Color32::BLACK)
+            .rounding(egui::Rounding::same(3.0))
+            .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+            .inner_margin(egui::Margin::same(20.0))
+            .show(ui, |ui| {
+                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                let color = if self.error.0 {Color32::RED} else{Color32::LIGHT_GREEN};
+                ui.colored_label(color,content);
+                ui.add_space(10.0);
+                if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
 
-                            if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("<- Prev")).clicked(){
-                                if self.current_resp_index + 1 < self.resp_vec.len(){
-                                    self.current_resp_index += 1;
-                                }
-                            }
-                            if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Next ->")).clicked(){
-                                if self.current_resp_index > 0{
-                                    self.current_resp_index -= 1;
-                                }
-                            }
-                        });
-                        if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                            self.clear_show_states();
-                        }
-                    });
-            }
-            else{
-                Frame::none()
-                    .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
-                    .stroke(Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
-                    .show(ui, |ui| {
-                        ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                        let r = self.resp_vec.get(0).cloned().expect("Failed to get value");
-                        let color = if r.response_error_state {Color32::RED} else {Color32::LIGHT_GREEN};
-                        ui.colored_label(color,r.to_string());
-                        ui.add_space(10.0);
-                        if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
-                            self.clear_show_states();
-                        }
-                    });
-            }
-        }
-    }
-    pub fn clear_show_states(&mut self){
-        self.resp_vec.clear();
-        self.error.0 = false;
-        self.error.1 = String::new();
-        self.can_show_clients = false;
-        self.can_show_file_list = false;
-        self.can_show_response = false;
-        self.response = String::new();
-        self.current_resp_index = 0;
+                    self.error.0 = false;
+                    self.error.1 = String::new();
+                    self.can_show_clients = false;
+                    self.can_show_file_list = false;
+                    self.can_show_response = false;
+                    self.response = String::new();
+
+                }
+            });
     }
     pub fn retrieve_content(&self, content_type : &str) -> String{
         match content_type{
@@ -452,13 +390,4 @@ impl Client1_UI {
         r.push_str(selected_s.to_string().as_str());
         r
     }
-    pub fn create_response_struct(response_index: u64,response_time: String, response_content: String,response_error_state: bool) -> Response{
-        Response{response_index,response_time,response_content,response_error_state}
-    }
 }
-impl Display for Response{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f,"[{}]: {}",self.response_time,self.response_content)
-    }
-}
-
