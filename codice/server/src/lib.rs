@@ -427,27 +427,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
             PacketType::FloodRequest(mut flood_packet) =>
                 {
-
-                    add_message_for_chat(&self.myInterface.chat_for_client,4,5,"Ciao".to_string());
-                    add_message_for_chat(&self.myInterface.chat_for_client,5,4,"Ciao2".to_string());
-
-
-
-                    let mut rng = rand::thread_rng();
-
-                    for _ in 0..5 {
-                        let a = rng.gen_range(1..=10);
-                        let b = rng.gen_range(1..=10);
-                        let msg_num = rng.gen_range(1..=100);
-
-                        let  message= format!("Messaggio #{}", msg_num);
-
-                        add_message_for_chat(&self.myInterface.chat_for_client,a,b,message.to_string());
-
-
-
-                    }
-
+                    
 
 
                     add_message(&self.myInterface.messages, "Server", "Received FloodRequest", Color::White, Color::White);
