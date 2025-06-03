@@ -30,6 +30,7 @@ pub struct Client2_UI {
     communication_server_commands: Vec<String>,     //Commands
     text_server_commands: Vec<String>,              //Commands
     media_server_commands: Vec<String>,             //Commands
+    log_messages: Vec<(String, bool)>, // (message, is_outgoing)
 }
 
 impl Client2_UI {
@@ -54,11 +55,23 @@ impl Client2_UI {
             error: (false,String::new()),
             text_server_commands: vec!["file?".to_string(),"files_list?".to_string()],
             media_server_commands: vec!["media?".to_string(), "files_list?".to_string()],
-            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()]
+            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()],
+            log_messages: Vec::new(),
 
         }
     }
+
+    fn add_log_message(&mut self, message: String, is_outgoing: bool) {
+        self.log_messages.push((message, is_outgoing));
+    }
+
     pub fn client2_stats(&mut self, ui: &mut egui::Ui, ctx: &Context){
+        // Check for any incoming messages (e.g., from reassembly)
+        while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
+            self.add_log_message(format!("received {}", msg), false);
+            self.can_show_response = true;
+            self.response = msg;
+        }
 
         ui.separator();
         ui.columns(2,|columns|{
@@ -288,6 +301,30 @@ impl Client2_UI {
                 }
             });
         });
+
+        ui.separator();
+        ui.heading(RichText::new("Log Console").color(Color32::YELLOW));
+        Frame::none()
+            .fill(Color32::from_rgb(30, 30, 30))
+            .inner_margin(egui::Margin::same(8.0))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        for (message, is_outgoing) in &self.log_messages {
+                            let color = if *is_outgoing {
+                                Color32::LIGHT_BLUE  // Outgoing messages in blue
+                            } else {
+                                Color32::LIGHT_GREEN // Incoming messages in green
+                            };
+                            ui.colored_label(color, message);
+                        }
+                    });
+                if ui.button("Clear Log").clicked() {
+                    self.log_messages.clear();
+                }
+            });
+
     }
     pub fn create_command(&mut self) -> String {
 
@@ -334,34 +371,42 @@ impl Client2_UI {
         r.push_str(selected_s.to_string().as_str());
         r
     }
-    pub fn handle_response_show(&mut self,cmd: String){
-        if self.selected_command.eq("client_list?"){
+
+    pub fn handle_response_show(&mut self, cmd: String) {
+        if !cmd.starts_with("server_type!(") {
+            self.add_log_message(format!("sent {}", cmd), true);
+        }
+
+        if self.selected_command.eq("client_list?") {
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = true;
             self.can_show_response = false;
             self.can_show_file_list = false;
         }
-        else if self.selected_command.eq("files_list?"){
+        else if self.selected_command.eq("files_list?") {
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_response = false;
             self.can_show_file_list = true;
         }
-        else if self.error.0{
+        else if self.error.0 {
+            self.add_log_message(format!("error {}", self.error.1), false);
             self.can_show_clients = false;
             self.can_show_response = false;
             self.can_show_file_list = false;
         }
-        else{
+        else {
             self.cmd_snd.as_ref().expect("Failed to get value").send(cmd).expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
             if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
+                self.add_log_message(format!("received {}", response), false);
                 self.can_show_response = true;
                 self.response = response;
             }
         }
     }
+
     pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>, ctx: &Context){
 
         match message.expect("Failed to get value").as_str() {

@@ -252,6 +252,8 @@ message_for?(client_id, message)->NodeId");
 
     //Function that handles messages from the server
     pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId, msg_snd: &Sender<String>) {
+        msg_snd.send(message.clone()).expect("Failed to send message");
+
         match message {
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
@@ -375,25 +377,26 @@ message_for?(client_id, message)->NodeId");
     }
 
     pub fn handle_msg_fragment(&mut self, fragment: Fragment, packet: Packet, msg_snd: &Sender<String>) {
-        // Call process_fragment to handle the incoming fragment
-        let session_id = self.generate_session_id(); // Assuming you have access to session_id
-        let src_id = self.node_id as u64; // Assuming src_id is the node_id of the client
+        let session_id = self.generate_session_id();
+        let src_id = self.node_id as u64;
 
         match self.repackager.process_fragment(session_id, src_id, fragment) {
             Ok(Some(reassembled_message)) => {
                 // Process the complete message
                 let msg = Repackager::assemble_string(reassembled_message);
-                //println!("CLIENT2: CLIENT{}: Converted fragments into message: {:?}", self.node_id, msg);
-                if !msg.clone().unwrap().starts_with("server_type!") && !msg.clone().unwrap().starts_with("files_list!") && !msg.clone().unwrap().starts_with("client_list!") {
-                    msg_snd.send(msg.clone().unwrap().to_string()).expect("Failed to send message");
+                if let Ok(message) = msg.clone() {
+                    // Send to UI for logging only when message is completely assembled
+                    msg_snd.send(message.clone()).expect("Failed to send message");
+                    self.handle_messages(message, packet.session_id, *packet.routing_header.hops.first().unwrap(), msg_snd);
                 }
-                self.handle_messages(msg.unwrap().to_string(), packet.session_id, *packet.routing_header.hops.first().unwrap(), msg_snd);
             }
             Ok(None) => {
-                println!("CLIENT2: CLIENT{}: Not all fragments received yet for message ID {}", self.node_id, packet.session_id);
+                // Still waiting for more fragments, do nothing
             }
             Err(error_code) => {
-                println!("CLIENT2: CLIENT{}: Error processing fragment: {}", self.node_id, error_code);
+                // Log error in assembling fragments
+                msg_snd.send(format!("Error processing fragment: {}", error_code))
+                    .expect("Failed to send message");
             }
         }
     }
