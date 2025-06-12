@@ -239,11 +239,11 @@ impl Client1 {
                             },
                             // assemble_string_file encountered an error: the file is big --> it needs to be processed in a different way
                             Err(_) => {
-                                let path= env::current_dir().expect("Failed to get current_dir value");
+                                let path = env::current_dir().expect("Failed to get current_dir value");
                                 let mut file_path = path;
                                 let path = self.selected_file_name.clone();
                                 file_path.push(path.as_str());
-                                write_log(file_path.as_path().to_str().unwrap());
+                                //write_log(file_path.as_path().to_str().unwrap());
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");
                                 //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();

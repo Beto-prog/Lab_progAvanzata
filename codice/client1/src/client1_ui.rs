@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{env, thread};
 use std::time::Duration;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
@@ -332,16 +332,19 @@ impl Client1_UI {
                     ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                     if self.selected_content_id.ends_with(".mp3"){
                         ui.colored_label(Color32::LIGHT_GREEN,"Playing audio");
-                        let selected_content = self.selected_content_id.clone();
-                        let mut path = "./".to_string();
-                        path.push_str(selected_content.as_str());
+
+                        let path = env::current_dir().expect("Failed to get current_dir value");
+                        let mut file_path = path;
+                        let path = self.selected_content_id.clone();
+                        file_path.push(path.as_str());
+
 
                         let audio_on = Arc::clone(&self.audio);
                         thread::spawn(move ||{
                             let (_stream, stream_handle) = OutputStream::try_default()
                                 .expect("Failed to get the default audio output stream");
 
-                            let audio = File::open(path).expect("Failed to open audio file");
+                            let audio = File::open(file_path.as_path().to_str().expect("Failed to convert")).expect("Failed to open audio file");
                             let reader = BufReader::new(audio);
                             let src = Decoder::new(reader).expect("Failed to decode audio file");
 
@@ -446,9 +449,13 @@ impl Client1_UI {
         }
     }
     pub fn load_image(&mut self,ctx: &egui::Context){
-        let mut path = "./".to_string();
-        path.push_str(self.selected_content_id.as_str());
-        match std::fs::read(path){
+
+        let path = env::current_dir().expect("Failed to get current_dir value");
+        let mut file_path = path;
+        let path = self.selected_content_id.clone();
+        file_path.push(path.as_str());
+
+        match std::fs::read(file_path.as_path().to_str().expect("Failed to convert")){
             Ok(bytes) =>{
                 if let Ok(image) = image::load_from_memory(&bytes){
                     let size = image.dimensions();
