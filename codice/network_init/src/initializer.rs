@@ -143,7 +143,7 @@ impl NetworkInitializer {
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
 
             let mut server = match index % 3 {
-                0 => server::Server::new(
+                1 => server::Server::new(
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
@@ -151,7 +151,7 @@ impl NetworkInitializer {
                     None,
                     InterfaceHub.clone()
                 ),
-                1 => {
+                0 => {
                     let base_path = if cfg!(target_os = "windows") {
                         "C:\\Temp\\ServerMedia"
                     } else {

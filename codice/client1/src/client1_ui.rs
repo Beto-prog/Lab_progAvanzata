@@ -1,9 +1,15 @@
 #[allow(warnings)]
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
-use egui::{Color32, Context, Frame, RichText, TextEdit, TextStyle};
+use egui::{Color32, ColorImage, Frame, RichText, TextEdit, TextStyle, TextureHandle};
+use image::GenericImageView;
+use rodio::{Decoder, OutputStream, Sink, Source};
 use wg_2024::network::NodeId;
 use crate::logger::logger::init_logger;
 
@@ -11,7 +17,7 @@ pub struct Client1_UI {
     self_id: NodeId,                    // Node ID for the client
     clients: Arc<Mutex<Vec<NodeId>>>,               // List of clients
     servers: Arc<Mutex<HashMap<NodeId,String>>>,    // List of server names
-    files_names: Arc<Mutex<Vec<String>>>,           //Storage of the file names
+    files_names: Arc<Mutex<HashMap<NodeId, Vec<String>>>>,           //Storage of the file names
     selected_server: (NodeId,String),    // Selected server name
     selected_client_id: NodeId, // Selected client ID
     selected_command: String,  // Selected command
@@ -27,10 +33,12 @@ pub struct Client1_UI {
     communication_server_commands: Vec<String>,     //Commands
     text_server_commands: Vec<String>,              //Commands
     media_server_commands: Vec<String>,             //Commands
+    image_response: Option<TextureHandle>,
+    audio : Arc<Mutex<bool>>
 }
 
 impl Client1_UI {
-    pub fn new(self_id: NodeId, clients: Arc<Mutex<Vec<NodeId>>>, servers: Arc<Mutex<HashMap<NodeId, String>>>, files_names: Arc<Mutex<Vec<String>>>, cmd_snd: Sender<String>, msg_rcv: Receiver<String>) -> Self {
+    pub fn new(self_id: NodeId, clients: Arc<Mutex<Vec<NodeId>>>, servers: Arc<Mutex<HashMap<NodeId, String>>>, files_names: Arc<Mutex<HashMap<NodeId, Vec<String>>>>, cmd_snd: Sender<String>, msg_rcv: Receiver<String>) -> Self {
         Self {
             self_id,
             clients,
@@ -50,10 +58,13 @@ impl Client1_UI {
             error: (false, String::new()),
             text_server_commands: vec!["file?".to_string(), "files_list?".to_string()],
             media_server_commands: vec!["media?".to_string(), "files_list?".to_string()],
-            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()]
+            communication_server_commands: vec!["message_for?".to_string(), "client_list?".to_string()],
+            image_response: None,
+            audio: Arc::new(Mutex::new(true))
+
         }
     }
-    pub fn client1_stats(&mut self, ui: &mut egui::Ui) {
+    pub fn client1_stats(&mut self, ui: &mut egui::Ui,ctx: &egui::Context) {
         ui.separator();
         init_logger();
         if let Ok(response) = self.msg_rcv.as_ref().expect("Failed to get value").try_recv() {
@@ -158,7 +169,8 @@ impl Client1_UI {
                             }
                             "file?" => {
                                 if !self.files_names.lock().expect("Failed to lock").is_empty() {
-                                    let binding = self.files_names.lock().expect("Failed to lock");
+                                    let files = self.files_names.lock().expect("Failed to lock");
+                                    let binding = files.get(&self.selected_server.0).expect("Failed to get files_id");
                                     let ids = binding.iter().clone();
                                     ui.horizontal(|ui| {
                                         ui.label("File");
@@ -177,7 +189,8 @@ impl Client1_UI {
                             },
                             "media?" => {
                                 if !self.files_names.lock().expect("Failed to lock").is_empty() {
-                                    let binding = self.files_names.lock().expect("Failed to lock");
+                                    let files = self.files_names.lock().expect("Failed to lock");
+                                    let binding = files.get(&self.selected_server.0).expect("Failed to get files_id");
                                     let ids = binding.iter().clone();
                                     ui.horizontal(|ui| {
                                         ui.label("Media");
@@ -264,20 +277,20 @@ impl Client1_UI {
                 ui.add_space(10.0);
                 if !self.error.0 {
                     if self.can_show_clients {
-                        let content = self.retrieve_content("Clients");
-                        self.show_response(ui, content);
+                        let content = self.retrieve_content("Clients",self.selected_server.0);
+                        self.show_response(ui, content,ctx);
                     }
                     if self.can_show_response {
-                        let content = self.retrieve_content("Response");
-                        self.show_response(ui, content);
+                        let content = self.retrieve_content("Response",self.selected_server.0);
+                        self.show_response(ui, content,ctx);
                     }
                     if self.can_show_file_list {
-                        let content = self.retrieve_content("Files");
-                        self.show_response(ui, content);
+                        let content = self.retrieve_content("Files",self.selected_server.0);
+                        self.show_response(ui, content,ctx);
                     }
                 } else {
-                    let content = self.retrieve_content("Error");
-                    self.show_response(ui, content);
+                    let content = self.retrieve_content("Error",self.selected_server.0);
+                    self.show_response(ui, content,ctx);
                 }
             });
         });
@@ -308,37 +321,105 @@ impl Client1_UI {
             }
         }
     }
-    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String) {
+    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String,ctx: &egui::Context) {
+        if self.selected_server.1.eq("MediaServer") && self.selected_command.eq("media?"){
+            Frame::none()
+                .fill(Color32::BLACK)
+                .rounding(egui::Rounding::same(3.0))
+                .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+                .inner_margin(egui::Margin::same(20.0))
+                .show(ui, |ui| {
+                    ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                    if self.selected_content_id.ends_with(".mp3"){
+                        ui.colored_label(Color32::LIGHT_GREEN,"Playing audio");
+                        let selected_content = self.selected_content_id.clone();
+                        let mut path = "./".to_string();
+                        path.push_str(selected_content.as_str());
 
-        Frame::none()
-            .fill(Color32::BLACK)
-            .rounding(egui::Rounding::same(3.0))
-            .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-            .inner_margin(egui::Margin::same(20.0))
-            .show(ui, |ui| {
-                ui.style_mut().override_text_style = Some(TextStyle::Monospace);
-                let color = if self.error.0 {Color32::RED} else{Color32::LIGHT_GREEN};
-                ui.colored_label(color,content);
-                ui.add_space(10.0);
-                if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
+                        let audio_on = Arc::clone(&self.audio);
+                        thread::spawn(move ||{
+                            let (_stream, stream_handle) = OutputStream::try_default()
+                                .expect("Failed to get the default audio output stream");
 
-                    self.error.0 = false;
-                    self.error.1 = String::new();
-                    self.can_show_clients = false;
-                    self.can_show_file_list = false;
-                    self.can_show_response = false;
-                    self.response = String::new();
+                            let audio = File::open(path).expect("Failed to open audio file");
+                            let reader = BufReader::new(audio);
+                            let src = Decoder::new(reader).expect("Failed to decode audio file");
 
-                }
-            });
+                            let sink = Sink::try_new(&stream_handle).expect("Failed to create audio sink");
+                            sink.append(src.convert_samples::<f32>());
+
+                            loop {
+                                // If the flag is false, stop the sink.
+                                if !*audio_on.lock().expect("Failed to lock") {
+                                    sink.stop();
+                                    break;
+                                }
+
+                                // Exit loop if playback is finished.
+                                if sink.empty() {
+                                    break;
+                                }
+
+                                thread::sleep(Duration::from_millis(100));
+                            }
+                        });
+                    }
+                    else{
+                        self.load_image(ctx);
+                        if let Some(image) = &self.image_response{
+                            ui.image(image);
+                        }
+                    }
+                    if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
+                        let mut audio = self.audio.lock().expect("Failed to lock");
+                        *audio = false;
+                        self.error.0 = false;
+                        self.error.1 = String::new();
+                        self.can_show_clients = false;
+                        self.can_show_file_list = false;
+                        self.can_show_response = false;
+                        self.response = String::new();
+
+                    }
+                });
+
+        }
+        else{
+            Frame::none()
+                .fill(Color32::BLACK)
+                .rounding(egui::Rounding::same(3.0))
+                .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
+                .inner_margin(egui::Margin::same(20.0))
+                .show(ui, |ui| {
+                    ui.style_mut().override_text_style = Some(TextStyle::Monospace);
+                    let color = if self.error.0 {Color32::RED} else{Color32::LIGHT_GREEN};
+                    ui.colored_label(color,content);
+                    ui.add_space(10.0);
+                    if ui.add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear")).clicked() {
+                        self.error.0 = false;
+                        self.error.1 = String::new();
+                        self.can_show_clients = false;
+                        self.can_show_file_list = false;
+                        self.can_show_response = false;
+                        self.response = String::new();
+
+                    }
+                });
+        }
+
     }
-    pub fn retrieve_content(&self, content_type : &str) -> String{
+    pub fn retrieve_content(&self, content_type : &str, id: NodeId) -> String{
         match content_type{
             "Clients" =>{
                 format!("Clients: {:?}",self.clients.lock().expect("Failed to lock"))
             },
             "Files" =>{
-                format!("Files: {:?}",self.files_names.lock().expect("Failed to lock"))
+                if let Some(value) = self.files_names.lock().expect("Failed to lock").get(&id){
+                    format!("Files: {:?}",value)
+                }
+                else{
+                    format!("")
+                }
             },
             "Response" =>{
                 format!("{}",self.response)
@@ -362,6 +443,23 @@ impl Client1_UI {
             } else {
                 Client1_UI::create_complex_command(&self.selected_command, &self.selected_content_id, self.selected_server.0)
             }
+        }
+    }
+    pub fn load_image(&mut self,ctx: &egui::Context){
+        let mut path = "./".to_string();
+        path.push_str(self.selected_content_id.as_str());
+        match std::fs::read(path){
+            Ok(bytes) =>{
+                if let Ok(image) = image::load_from_memory(&bytes){
+                    let size = image.dimensions();
+                    let rgba = image.to_rgba8();
+                    let pixels = rgba.as_flat_samples();
+                    let color_img = ColorImage::from_rgba_unmultiplied([size.0 as usize,size.1 as usize],pixels.as_slice());
+                    let texture_handle = ctx.load_texture("image",color_img,egui::TextureOptions::default());
+                    self.image_response = Some(texture_handle);
+                }
+            }
+            Err(_) => ()
         }
     }
     pub fn create_simple_command(selected_c: &String, selected_s: NodeId) -> String {

@@ -52,7 +52,7 @@ pub struct Client1 {
     fragment_reassembler: FragmentReassembler, // Used to handle fragments
     received_files: Vec<String>,   // Path where to save files received
     other_client_ids: Arc<Mutex<Vec<NodeId>>>, // Storage other client IDs
-    files_names: Arc<Mutex<Vec<String>>>,   // Storage of file names
+    files_names: Arc<Mutex<HashMap<NodeId,Vec<String>>>>,   // Storage of file names
     servers: Arc<Mutex<HashMap<NodeId,String>>>, // map of servers ID and relative type
     packet_sent: AckMap,
     ui_snd: Option<Sender<Client1_UI>>,
@@ -76,7 +76,7 @@ impl Client1 {
             fragment_reassembler: FragmentReassembler::new(),
             received_files: vec![],
             other_client_ids: Arc::new(Mutex::new(vec![])),
-            files_names: Arc::new(Mutex::new(vec![])),
+            files_names: Arc::new(Mutex::new(HashMap::new())),
             servers: Arc::new(Mutex::new(HashMap::new())),
             packet_sent: Arc::new(Mutex::new(HashMap::new())),
             ui_snd: Some(ui_snd.expect("Failed to get value")),
@@ -210,10 +210,10 @@ impl Client1 {
                                 write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(") || msg.starts_with("client_list!(") || msg.starts_with("files_list!("){
-                                    self.handle_msg(msg,packet.session_id,dest_id,frag_index);
+                                    self.handle_msg(msg,dest_id);
                                 }
                                 else{
-                                    msg_snd.send(self.handle_msg(msg,packet.session_id,dest_id,frag_index)).expect("Failed to send message");
+                                    msg_snd.send(self.handle_msg(msg,dest_id)).expect("Failed to send message");
                                 }
                                 // A message is reconstructed: create and send back an Ack
                                 let new_pack = Packet::new_ack(
