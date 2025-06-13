@@ -11,7 +11,7 @@ use egui::{Color32, ColorImage, Frame, RichText, TextEdit, TextStyle, TextureHan
 use image::GenericImageView;
 use rodio::{Decoder, OutputStream, Sink, Source};
 use wg_2024::network::NodeId;
-use crate::logger::logger::init_logger;
+use crate::logger::logger::{init_logger, write_log};
 
 pub struct Client1_UI {
     self_id: NodeId,                    // Node ID for the client
@@ -335,15 +335,15 @@ impl Client1_UI {
 
                         let path = env::current_dir().expect("Failed to get current_dir value");
                         let mut file_path = path;
-                        let path = self.selected_content_id.clone();
-                        file_path.push(path.as_str());
+                        let path2 = self.selected_content_id.clone();
+                        file_path.push(path2.as_str());
 
 
                         let audio_on = Arc::clone(&self.audio);
                         thread::spawn(move ||{
                             let (_stream, stream_handle) = OutputStream::try_default()
                                 .expect("Failed to get the default audio output stream");
-
+                            write_log(file_path.as_path().to_str().expect("Failed to convert"));
                             let audio = File::open(file_path.as_path().to_str().expect("Failed to convert")).expect("Failed to open audio file");
                             let reader = BufReader::new(audio);
                             let src = Decoder::new(reader).expect("Failed to decode audio file");

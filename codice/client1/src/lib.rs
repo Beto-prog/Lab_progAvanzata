@@ -159,30 +159,18 @@ impl Client1 {
     }
     // Handle received packets of type FloodResponse. Update knowledge of the network
     pub fn handle_flood_response(&mut self, packet: Packet) {
-        //println!("CLIENT1: arrived FloodResponse");
 
         match packet.pack_type{
             PacketType::FloodResponse(response) =>{
                 self.update_graph(response.clone());
-                //println!("DEBUG PATH TRACE {:?}",&response.path_trace);
                 for node in &response.path_trace{
                     if node.1.eq(&NodeType::Server){
                         self.servers.lock().expect("Failed to lock").entry(node.0).or_insert("".to_string());
                         // Check for the server type immediately after receiving a response
                         let mut t = "server_type?->".to_string();
                         t.push_str(node.0.to_string().as_str());
-                        //println!("{t}");
                         self.handle_command(t.clone());
                     }
-                        /*
-                    else if node.1.eq(&NodeType::Client) && (node.0 != self.node_id){
-                        let mut clients = self.other_client_ids.lock().expect("Failed to lock");
-                        if !clients.contains(&node.0){
-                            clients.push(node.0);
-                        }
-                    }
-
-                         */
                 }
             }
             _ => {println!("CLIENT1: Wrong packet type received")}
@@ -193,16 +181,13 @@ impl Client1 {
         match packet.pack_type{
             PacketType::MsgFragment(fragment)=>{
 
-                //write_log(&format !("{:?}",fragment.data));
                 let frag_index = fragment.fragment_index;
                 // Check if a fragment with the same (session_id,src_id) has already been received
                 match self.fragment_reassembler.add_fragment(packet.session_id,packet.routing_header.hops[0], fragment).expect("Failed to add fragment"){
                     Some(message) =>{
-                        //write_log(&format!("{:?}",message));
                         match FragmentReassembler::assemble_string_file(message.clone()){
                             // Check FragmentReassembler output and behave accordingly
                             Ok(msg) => {
-                                //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
@@ -243,9 +228,7 @@ impl Client1 {
                                 let mut file_path = path;
                                 let path = self.selected_file_name.clone();
                                 file_path.push(path.as_str());
-                                //write_log(file_path.as_path().to_str().unwrap());
                                 let msg = FragmentReassembler::assemble_file(message,file_path.as_path().to_str().expect("Failed to convert to Path")).expect("Failed to assemble file ");
-                                //write_log(&format!("{:?}",msg));
                                 let mut new_hops = packet.routing_header.hops.clone();
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
