@@ -36,7 +36,7 @@ impl eframe::App for App {
                 |child_ctx, class| {
                     assert!(class == egui::ViewportClass::Immediate);
                     egui::CentralPanel::default().show(child_ctx, |ui| {
-                        client_ui.show_ui(ctx, _frame, ui);
+                        client_ui.show_ui(child_ctx, _frame, ui);
                     });
                 },
             );
