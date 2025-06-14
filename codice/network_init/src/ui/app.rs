@@ -31,7 +31,7 @@ impl eframe::App for App {
             ctx.show_viewport_immediate(
                 ViewportId::from_hash_of(client_ui.get_viewport_id()),
                 ViewportBuilder::default()
-                    .with_title("Immediate Viewport")
+                    .with_title(format!("Client {}", client_ui.get_viewport_id()))
                     .with_inner_size([250.0, 150.0]),
                 |child_ctx, class| {
                     assert!(class == egui::ViewportClass::Immediate);
@@ -41,5 +41,6 @@ impl eframe::App for App {
                 },
             );
         }
+        ctx.request_repaint();
     }
 }

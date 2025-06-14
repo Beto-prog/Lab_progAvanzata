@@ -1,0 +1,5 @@
+   Compiling network_init v0.1.0 (/home/mattia/Documents/programming/Lab_progAvanzata/codice/network_init)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.46s
+     Running `target/debug/network_init`
+libEGL warning: egl: failed to create dri2 screen
+libEGL warning: egl: failed to create dri2 screen
