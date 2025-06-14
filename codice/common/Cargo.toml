@@ -1,0 +1,27 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egui = "0.30"
+eframe = { version = "0.30", features = ["default"] }
+
+wg_2024 = { git = "https://github.com/WGL-2024/WGL_repo_2024.git", features = [
+    "serialize",
+    "debug",
+] }
+
+crossbeam-channel = "0.5.13"
+
+bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git", default-features = false }
+lockheedrustin-drone = { git = "https://github.com/Lockheed-Rustin/drone.git" }
+null-pointer-drone = { git = "https://github.com/The-Null-Pointer-Patrol/null-pointer-drone.git" }
+rustafarian-drone = { git = "https://github.com/Rustafarian-Unitn/rustafarian-drone" }
+rustastic-drone = { git = "https://github.com/Rustastic/RustasticDrone.git" }
+getdroned = { git = "https://github.com/GetDroned/Drone.git" }
+rusty_drones = { git = "https://github.com/rusty-drone-2024/rusty-drone.git" }
+rust-roveri = { git = "https://git@github.com/RustRoveri/rust-roveri.git" }
+rust_do_it = { git = "https://github.com/RustDoIt/Drone.git" }
+krusty_drone = { git = "https://github.com/Danylo37/krusty_drone.git" }
+

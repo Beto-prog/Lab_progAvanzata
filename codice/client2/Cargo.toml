@@ -14,6 +14,7 @@ egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
 base64 = "0.22.1"
 image = "0.25.6"
+common = { path = "../common" }
 
 [lib]
 name = "client2"

@@ -9,16 +9,12 @@ use egui::Id;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use wg_2024::network::NodeId;
-use client1::client1_ui::Client1_UI;
-use client2::client2_ui::Client2_UI;
 
 pub struct SimulationControllerUI {
     drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
     selected_tab: usize,
     ui_command_sender: Sender<UICommand>,
     ui_response_receiver: Receiver<UIResponse>,
-    client1_ui: Client1_UI,
-    client2_ui: Client2_UI,
     new_pdr: HashMap<NodeId, f32>,
     selected_add_neighbour: HashMap<NodeId, NodeId>,
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
@@ -31,12 +27,9 @@ pub struct SimulationControllerUI {
 impl SimulationControllerUI {
     /// # Panics
     pub fn new(
-        _cc: &eframe::CreationContext<'_>,
         drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
         ui_command_sender: Sender<UICommand>,
         ui_response_receiver: Receiver<UIResponse>,
-        ui_rcv: Receiver<Client1_UI>,
-        ui_rcv2: Receiver<Client2_UI>,
     ) -> Self {
         env_logger::init();
         let selected_tab = *drone_stats
@@ -60,15 +53,11 @@ impl SimulationControllerUI {
         for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
-        let client1_ui = ui_rcv.recv().expect("Failed to get value");
-        let client2_ui = ui_rcv2.recv().expect("Failed to get value");
         Self {
             selected_tab,
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
-            client1_ui,
-            client2_ui,
             new_pdr,
             selected_add_neighbour,
             selected_remove_neighbour,
@@ -197,10 +186,8 @@ impl SimulationControllerUI {
             }
         });
     }
-}
 
-impl eframe::App for SimulationControllerUI {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Simulation Controller");
             ui.separator();
@@ -217,29 +204,15 @@ impl eframe::App for SimulationControllerUI {
                         self.client2_selected = false;
                     }
                 }
-                if ui.button(format!("Client1")).clicked(){
-                    self.client1_selected = true;
-                }
-                if ui.button("Client2").clicked(){
-                    self.client2_selected = true;
-                }
             });
 
             let now = ctx.input(|i| i.time);
 
-            if self.client1_selected{
-                self.client1_ui.client1_stats(ui,ctx);
-            }
-            else if self.client2_selected{
-                self.client2_ui.client2_stats(ui,ctx);
-            }
-            else{
-                self.drone_stats_ui(
-                    ui,
-                    NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
-                    now,
-                );
-            }
+            self.drone_stats_ui(
+                ui,
+                NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
+                now,
+            );
             if let Some((ref message, expires)) = self.snackbar {
                 if now < expires {
                     // Draw the snackbar at the bottom center of the window.

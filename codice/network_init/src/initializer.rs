@@ -3,8 +3,9 @@ use super::config::NetworkConfig;
 use super::validation::validate_config;
 use client1::client1_ui::Client1_UI;
 use client1::Client1;
-use client2::Client2;
 use client2::client2_ui::Client2_UI;
+use client2::Client2;
+use common::client_ui::ClientUI;
 use crossbeam_channel::unbounded;
 use simulation_controller::node_stats::DroneStats;
 use simulation_controller::SimulationController;
@@ -15,7 +16,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use wg_2024::network::NodeId;
 
-use std::fs::{ File};
+use crate::ui::App;
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
@@ -35,6 +37,8 @@ impl NetworkInitializer {
         let mut drone_command_senders = HashMap::new();
         let mut drone_command_receivers = HashMap::new();
         let mut drone_stats = HashMap::new();
+
+        let mut client_uis = Vec::<Box<dyn ClientUI>>::new();
 
         // Initialize drones
         for drone_config in &config.drone {
@@ -76,7 +80,7 @@ impl NetworkInitializer {
                 ),
             );
 
-            let mut drone = simulation_controller::get_drone_impl::get_drone_impl(
+            let mut drone = common::get_drone_impl::get_drone_impl(
                 u8::try_from(index).unwrap(),
                 drone_config.id,
                 event_sender.clone(),
@@ -92,9 +96,6 @@ impl NetworkInitializer {
             thread::spawn(move || drone.run());
         }
 
-        // Client initialization
-        let (ui_snd, ui_rcv) = unbounded::<Client1_UI>();
-        let (ui_snd2, ui_rcv2) = unbounded::<Client2_UI>();
         for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &client_config.connected_drone_ids {
@@ -105,32 +106,22 @@ impl NetworkInitializer {
             let client_receiver = node_receivers.get(&client_config.id).unwrap().clone();
 
             if index % 2 == 0 {
-                let mut client = Client1::new(
-                    client_config.id,
-                    neighbor_senders.clone(),
-                    client_receiver,
-                    Some(ui_snd.clone()),
-                );
+                let (mut client, client_ui) =
+                    Client1::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
-            }
-
-            else
-            {
-                let mut client = Client2::new(
-                    client_config.id,
-                    neighbor_senders.clone(),
-                    client_receiver,
-                    Some(ui_snd2.clone()),
-
-                );
+            } else {
+                let (mut client, client_ui) =
+                    Client2::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
             }
         }
 
         // Server initialization
 
-        let InterfaceHub : server::interface::interface::AllServersUi =  Arc::new(Mutex::new(Vec::new()));
-
+        let InterfaceHub: server::interface::interface::AllServersUi =
+            Arc::new(Mutex::new(Vec::new()));
 
         for (index, server_config) in config.server.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
@@ -138,7 +129,6 @@ impl NetworkInitializer {
                 neighbor_senders
                     .insert(*neighbor_id, node_senders.get(neighbor_id).unwrap().clone());
             }
-
 
             let packet_receiver = node_receivers.get(&server_config.id).unwrap();
 
@@ -149,7 +139,7 @@ impl NetworkInitializer {
                     neighbor_senders,
                     Box::new(server::file_system::ChatServer::new()),
                     None,
-                    InterfaceHub.clone()
+                    InterfaceHub.clone(),
                 ),
                 0 => {
                     let base_path = if cfg!(target_os = "windows") {
@@ -166,13 +156,13 @@ impl NetworkInitializer {
                             server::file_system::ServerType::MediaServer,
                         )),
                         Some(base_path.to_string()),
-                        InterfaceHub.clone()
+                        InterfaceHub.clone(),
                     )
                 }
                 _ => {
                     let base_path = if cfg!(target_os = "windows") {
                         "C:\\Temp\\ServerTxt"
-                        } else {
+                    } else {
                         "/tmp/ServerTxt"
                     };
                     Self::prepare_files(base_path);
@@ -185,7 +175,7 @@ impl NetworkInitializer {
                             server::file_system::ServerType::TextServer,
                         )),
                         Some(base_path.to_string()),
-                        InterfaceHub.clone()
+                        InterfaceHub.clone(),
                     )
                 }
             };
@@ -194,7 +184,6 @@ impl NetworkInitializer {
         }
 
         server::interface::interface::start_ui(InterfaceHub);
-
 
         let network_topology = Self::get_network_topology(config);
         let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
@@ -218,28 +207,25 @@ impl NetworkInitializer {
 
         thread::spawn(move || simulation_controller.run());
 
-        let native_options = eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([1024.0, 768.0]),
-            ..Default::default()
-        };
-
         if let Err(error) = eframe::run_native(
-            "Simulation Controller",
-            native_options,
+            "Network simulation",
+            eframe::NativeOptions::default(),
             Box::new(|cc| {
-                Ok(Box::new(SimulationControllerUI::new(
+                Ok(Box::new(App::new(
                     cc,
-                    drone_stats_arc.clone(),
-                    ui_command_sender,
-                    ui_response_receiver,
-                    ui_rcv,
-                    ui_rcv2,
+                    SimulationControllerUI::new(
+                        drone_stats_arc.clone(),
+                        ui_command_sender,
+                        ui_response_receiver,
+                    ),
+                    client_uis,
                 )))
             }),
         ) {
             println!("Error: {}", error);
         }
     }
+
     fn prepare_files(base_path: &str) -> std::io::Result<()> {
         // Crea la directory se non esiste
         if !Path::new(base_path).exists() {

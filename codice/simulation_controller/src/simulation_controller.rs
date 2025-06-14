@@ -2,7 +2,7 @@
 #![allow(clippy::used_underscore_binding)]
 #![allow(clippy::too_many_arguments)]
 
-use crate::get_drone_impl;
+use common::get_drone_impl;
 
 use crate::node_stats::DroneStats;
 use crate::ui_commands::{UICommand, UIResponse};
