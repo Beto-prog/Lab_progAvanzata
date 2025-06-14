@@ -355,7 +355,7 @@ impl SimulationController {
         self.node_command_senders.remove(&drone_id);
         self.node_packet_senders.remove(&drone_id);
         self.network_topology.remove(&drone_id);
-        self.node_types.remove(&drone_id);
+        //self.node_types.remove(&drone_id);
 
         // Notify neighbors to remove the crashed drone from their connections
         if let Some(neighbors) = self.network_topology.get(&drone_id) {
