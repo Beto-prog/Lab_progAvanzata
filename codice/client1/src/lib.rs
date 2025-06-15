@@ -542,7 +542,7 @@ impl Client1 {
                                 e => () //println!("Err2: {e}")
                             }
                         }
-                        Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
+                        Err(_) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
                     }
                 }
             }
@@ -558,50 +558,50 @@ mod test {
     #[test]
     fn test_bfs_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv, None);
-        cl.sender_channels.insert(19, snd);
-        cl.network.insert(1, vec![2, 3]);
-        cl.other_client_ids.lock().expect("Failed to lock").push(2);
-        cl.network.insert(2, vec![1, 4]);
-        cl.network.insert(3, vec![1, 4]);
-        cl.network.insert(4, vec![2, 3, 6]);
-        cl.network.insert(5, vec![1, 4]);
-        cl.network.insert(6, vec![5, 8, 10]);
-        cl.network.insert(7, vec![2, 3]);
-        cl.network.insert(8, vec![7, 9]);
-        cl.network.insert(9, vec![2, 3]);
-        cl.network.insert(10, vec![3, 6, 14]);
-        cl.network.insert(14, vec![10]);
-        let test_res1 = Client1::bfs_compute_path(&cl.network, 1, 9).unwrap();
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        cl.0.sender_channels.insert(19, snd);
+        cl.0.network.insert(1, vec![2, 3]);
+        cl.0.other_client_ids.lock().expect("Failed to lock").push(2);
+        cl.0.network.insert(2, vec![1, 4]);
+        cl.0.network.insert(3, vec![1, 4]);
+        cl.0.network.insert(4, vec![2, 3, 6]);
+        cl.0.network.insert(5, vec![1, 4]);
+        cl.0.network.insert(6, vec![5, 8, 10]);
+        cl.0.network.insert(7, vec![2, 3]);
+        cl.0.network.insert(8, vec![7, 9]);
+        cl.0.network.insert(9, vec![2, 3]);
+        cl.0.network.insert(10, vec![3, 6, 14]);
+        cl.0.network.insert(14, vec![10]);
+        let test_res1 = Client1::bfs_compute_path(&cl.0.network, 1, 9).unwrap();
         assert_eq!(test_res1, vec![1, 2, 4, 6, 8, 9]);
 
-        let test_res2 = Client1::bfs_compute_path(&cl.network, 1, 14).unwrap();
+        let test_res2 = Client1::bfs_compute_path(&cl.0.network, 1, 14).unwrap();
         assert_eq!(test_res2, vec![1, 2, 4, 6, 10, 14]);
     }
     #[test]
     fn test_bfs_no_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv, None);
-        cl.sender_channels.insert(2, snd);
-        cl.network.insert(1, vec![2, 3]);
-        cl.other_client_ids.lock().expect("Failed to lock").push(2);
-        cl.network.insert(2, vec![1, 4]);
-        cl.network.insert(3, vec![1, 4]);
-        cl.network.insert(4, vec![2, 3]);
-        cl.network.insert(5, vec![1, 4]);
-        cl.network.insert(6, vec![5, 8]);
-        cl.network.insert(7, vec![2, 3]);
-        cl.network.insert(8, vec![7, 9]);
-        cl.network.insert(9, vec![2, 3]);
-        let test_res = Client1::bfs_compute_path(&cl.network, 1, 9);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        cl.0.sender_channels.insert(2, snd);
+        cl.0.network.insert(1, vec![2, 3]);
+        cl.0.other_client_ids.lock().expect("Failed to lock").push(2);
+        cl.0.network.insert(2, vec![1, 4]);
+        cl.0.network.insert(3, vec![1, 4]);
+        cl.0.network.insert(4, vec![2, 3]);
+        cl.0.network.insert(5, vec![1, 4]);
+        cl.0.network.insert(6, vec![5, 8]);
+        cl.0.network.insert(7, vec![2, 3]);
+        cl.0.network.insert(8, vec![7, 9]);
+        cl.0.network.insert(9, vec![2, 3]);
+        let test_res = Client1::bfs_compute_path(&cl.0.network, 1, 9);
         assert!(test_res.is_none());
     }
     #[test]
     fn test_update_graph() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv, None);
-        cl.sender_channels.insert(2, snd);
-        cl.network.insert(1, vec![2]);
+        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        cl.0.sender_channels.insert(2, snd);
+        cl.0.network.insert(1, vec![2]);
         let mut f_req = FloodRequest::new(1234, 1);
         f_req.path_trace.push((2, NodeType::Drone));
         f_req.path_trace.push((3, NodeType::Drone));
@@ -609,14 +609,14 @@ mod test {
         f_req.path_trace.push((5, NodeType::Drone));
         f_req.path_trace.push((6, NodeType::Server));
 
-        let resp = cl.create_flood_response(1234, f_req);
+        let resp = cl.0.create_flood_response(1234, f_req);
         match resp.pack_type {
             PacketType::FloodResponse(fr) => {
-                cl.update_graph(fr);
+                cl.0.update_graph(fr);
             }
             _ => (),
         }
-        let test_res = Client1::bfs_compute_path(&cl.network, 1, 6).unwrap();
+        let test_res = Client1::bfs_compute_path(&cl.0.network, 1, 6).unwrap();
         assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
     }
 }
