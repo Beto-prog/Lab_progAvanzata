@@ -36,8 +36,8 @@ pub struct Client2_UI {
 }
 
 impl ClientUI for Client2_UI {
-    fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
-        self.client2_stats(ui, ctx);
+    fn show_ui(&mut self, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+        self.client2_stats(ui);
     }
 
     fn get_viewport_id(&self) -> u64 {
@@ -86,7 +86,7 @@ impl Client2_UI {
         self.log_messages.push((message, is_outgoing));
     }
 
-    pub fn client2_stats(&mut self, ui: &mut egui::Ui, ctx: &Context) {
+    pub fn client2_stats(&mut self, ui: &mut egui::Ui) {
         // Check for any incoming messages (e.g., from reassembly)
         while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
             self.add_log_message(format!("received {}", msg), false);
@@ -374,16 +374,16 @@ impl Client2_UI {
                 ui.add_space(10.0);
                 if !self.error.0 {
                     if self.can_show_clients {
-                        self.show_response(ui, Some("Clients".to_string()), ctx);
+                        self.show_response(ui, Some("Clients".to_string()));
                     }
                     if self.can_show_response {
-                        self.show_response(ui, Some("Response".to_string()), ctx);
+                        self.show_response(ui, Some("Response".to_string()));
                     }
                     if self.can_show_file_list {
-                        self.show_response(ui, Some("Files".to_string()), ctx);
+                        self.show_response(ui, Some("Files".to_string()));
                     }
                 } else {
-                    self.show_response(ui, Some(self.error.1.clone()), ctx);
+                    self.show_response(ui, Some(self.error.1.clone()));
                 }
             });
         });
@@ -523,7 +523,7 @@ impl Client2_UI {
         }
     }
 
-    pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>, ctx: &Context) {
+    pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>) {
         match message.expect("Failed to get value").as_str() {
             "Response" => {
                 if self.selected_server.1.eq("CommunicationServer") {

@@ -3,6 +3,7 @@ use common::client_ui::ClientUI;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
 use egui::{Color32, ColorImage, Frame, RichText, TextEdit, TextStyle, TextureHandle};
+use egui_extras::RetainedImage;
 use image::GenericImageView;
 use rodio::{Decoder, OutputStream, Sink, Source};
 #[allow(warnings)]
@@ -34,13 +35,13 @@ pub struct Client1_UI {
     communication_server_commands: Vec<String>, //Commands
     text_server_commands: Vec<String>, //Commands
     media_server_commands: Vec<String>, //Commands
-    image_response: Option<TextureHandle>,
+    image_response: Option<Result<RetainedImage, String>>,
     audio: Arc<Mutex<bool>>,
 }
 
 impl ClientUI for Client1_UI {
-    fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
-        self.client1_stats(ui, ctx);
+    fn show_ui(&mut self, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+        self.client1_stats(ui);
     }
 
     fn get_viewport_id(&self) -> u64 {
@@ -84,7 +85,7 @@ impl Client1_UI {
             audio: Arc::new(Mutex::new(true)),
         }
     }
-    pub fn client1_stats(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub fn client1_stats(&mut self, ui: &mut egui::Ui) {
         ui.separator();
         init_logger();
         if let Ok(response) = self
@@ -382,19 +383,19 @@ impl Client1_UI {
                 if !self.error.0 {
                     if self.can_show_clients {
                         let content = self.retrieve_content("Clients", self.selected_server.0);
-                        self.show_response(ui, content, ctx);
+                        self.show_response(ui, content);
                     }
                     if self.can_show_response {
                         let content = self.retrieve_content("Response", self.selected_server.0);
-                        self.show_response(ui, content, ctx);
+                        self.show_response(ui, content);
                     }
                     if self.can_show_file_list {
                         let content = self.retrieve_content("Files", self.selected_server.0);
-                        self.show_response(ui, content, ctx);
+                        self.show_response(ui, content);
                     }
                 } else {
                     let content = self.retrieve_content("Error", self.selected_server.0);
-                    self.show_response(ui, content, ctx);
+                    self.show_response(ui, content);
                 }
             });
         });
@@ -442,7 +443,7 @@ impl Client1_UI {
             }
         }
     }
-    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String, ctx: &egui::Context) {
+    pub fn show_response(&mut self, ui: &mut egui::Ui, content: String) {
         if self.selected_server.1.eq("MediaServer") && self.selected_command.eq("media?") {
             Frame::none()
                 .fill(Color32::BLACK)
@@ -491,9 +492,18 @@ impl Client1_UI {
                             }
                         });
                     } else {
-                        self.load_image(ctx);
-                        if let Some(image) = &self.image_response {
-                            ui.image(image);
+                        self.load_image();
+                        if let Some(image_result) = &self.image_response {
+                            match image_result {
+                                Ok(retained_image) => {
+                                    // Happy path: The image was loaded and parsed successfully.
+                                    retained_image.show_size(ui, ui.available_size());
+                                }
+                                Err(error_message) => {
+                                    // Error path: Display the error message in the UI.
+                                    ui.colored_label(ui.visuals().error_fg_color, error_message);
+                                }
+                            }
                         }
                     }
                     if ui
@@ -590,29 +600,27 @@ impl Client1_UI {
             }
         }
     }
-    pub fn load_image(&mut self, ctx: &egui::Context) {
+    pub fn load_image(&mut self) {
         let path = env::current_dir().expect("Failed to get current_dir value");
         let mut file_path = path;
         let path = self.selected_content_id.clone();
         file_path.push(path.as_str());
 
-        match std::fs::read(file_path.as_path().to_str().expect("Failed to convert")) {
-            Ok(bytes) => {
-                if let Ok(image) = image::load_from_memory(&bytes) {
-                    let size = image.dimensions();
-                    let rgba = image.to_rgba8();
-                    let pixels = rgba.as_flat_samples();
-                    let color_img = ColorImage::from_rgba_unmultiplied(
-                        [size.0 as usize, size.1 as usize],
-                        pixels.as_slice(),
-                    );
-                    let texture_handle =
-                        ctx.load_texture("image", color_img, egui::TextureOptions::default());
-                    self.image_response = Some(texture_handle);
+        let image_result =
+            match std::fs::read(file_path.as_path().to_str().expect("Failed to convert")) {
+                Ok(bytes) => {
+                    RetainedImage::from_image_bytes(file_path.to_string_lossy().to_string(), &bytes)
                 }
-            }
-            Err(_) => (),
-        }
+
+                Err(e) => {
+                    // Failed to read the file.
+                    let error_message = format!("Failed to read file: {}", e);
+                    // Log the error to the console for easier debugging.
+                    eprintln!("{}", error_message);
+                    Err(error_message)
+                }
+            };
+        self.image_response = Some(image_result);
     }
     pub fn create_simple_command(selected_c: &String, selected_s: NodeId) -> String {
         let mut r = String::from(selected_c);
