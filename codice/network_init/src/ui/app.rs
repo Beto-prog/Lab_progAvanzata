@@ -32,7 +32,7 @@ impl eframe::App for App {
                 ViewportId::from_hash_of(client_ui.get_viewport_id()),
                 ViewportBuilder::default()
                     .with_title(format!("Client {}", client_ui.get_viewport_id()))
-                    .with_inner_size([250.0, 150.0]),
+                    .with_inner_size([400.0, 400.0]),
                 |child_ctx, class| {
                     assert!(class == egui::ViewportClass::Immediate);
                     egui::CentralPanel::default().show(child_ctx, |ui| {
