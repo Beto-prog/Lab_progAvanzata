@@ -512,6 +512,15 @@ impl Client1 {
             PacketType::MsgFragment(_) => {
                 self.handle_msg_fragment(packet);
             }
+            PacketType::Nack(nack) =>{
+                match nack.nack_type{
+                    NackType::ErrorInRouting(_) =>{
+                        self.network = HashMap::new();
+                        self.discover_network();
+                    }
+                    _ => ()
+                }
+            }
             _ => (),
         }
     }
@@ -620,8 +629,3 @@ mod test {
         assert_eq!(test_res, vec![1, 2, 3, 4, 5, 6]);
     }
 }
-
-//TODO list
-// 1) Read about the ui part (functions, commands, etc) and think about a possible visual appearance of the client interface
-// 2) Create the ui
-// 3) Check about the logic of the program with the ui (e.g. the routing function, what happens when a packet is lost etc)
