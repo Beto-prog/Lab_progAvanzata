@@ -20,8 +20,6 @@ pub struct SimulationControllerUI {
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
-    client1_selected: bool,
-    client2_selected: bool,
 }
 
 impl SimulationControllerUI {
@@ -63,8 +61,6 @@ impl SimulationControllerUI {
             selected_remove_neighbour,
             snackbar: None,
             snackbar_duration: 2.0,
-            client1_selected: false,
-            client2_selected: false,
         }
     }
 
@@ -187,59 +183,54 @@ impl SimulationControllerUI {
         });
     }
 
-    pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Simulation Controller");
-            ui.separator();
-            ui.horizontal(|ui| {
-                for drone in self
-                    .drone_stats
-                    .lock()
-                    .expect("Should be able to unlock")
-                    .keys()
-                {
-                    if ui.button(format!("Drone {drone}")).clicked() {
-                        self.selected_tab = *drone as usize;
-                        self.client1_selected = false;
-                        self.client2_selected = false;
-                    }
-                }
-            });
-
-            let now = ctx.input(|i| i.time);
-
-            self.drone_stats_ui(
-                ui,
-                NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
-                now,
-            );
-            if let Some((ref message, expires)) = self.snackbar {
-                if now < expires {
-                    // Draw the snackbar at the bottom center of the window.
-                    egui::Area::new(Id::new("snackbar"))
-                        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -12.0))
-                        .show(ctx, |ui| {
-                            let frame = egui::Frame::none()
-                                .fill(egui::Color32::from_rgba_unmultiplied(50, 50, 50, 200))
-                                .rounding(egui::Rounding::same(8.0))
-                                .inner_margin(egui::Margin::symmetric(12.0, 8.0));
-                            frame.show(ui, |ui| {
-                                ui.label(egui::RichText::new(message).size(28.0));
-                            });
-                        });
-                } else {
-                    // Remove the snackbar when its time expires.
-                    self.snackbar = None;
-                }
-            }
-
-            if let Ok(response) = self.ui_response_receiver.try_recv() {
-                match response {
-                    UIResponse::Success(message) | UIResponse::Falure(message) => {
-                        self.snackbar = Some((message, self.snackbar_duration + now));
-                    }
+    pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.horizontal(|ui| {
+            for drone in self
+                .drone_stats
+                .lock()
+                .expect("Should be able to unlock")
+                .keys()
+            {
+                if ui.button(format!("Drone {drone}")).clicked() {
+                    self.selected_tab = *drone as usize;
                 }
             }
         });
+
+        let now = ctx.input(|i| i.time);
+
+        self.drone_stats_ui(
+            ui,
+            NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
+            now,
+        );
+        if let Some((ref message, expires)) = self.snackbar {
+            if now < expires {
+                // Draw the snackbar at the bottom center of the window.
+                egui::Area::new(Id::new("snackbar"))
+                    .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -12.0))
+                    .show(ctx, |ui| {
+                        let frame = egui::Frame::none()
+                            .fill(egui::Color32::from_rgba_unmultiplied(50, 50, 50, 200))
+                            .rounding(egui::Rounding::same(8.0))
+                            .inner_margin(egui::Margin::symmetric(12.0, 8.0));
+                        frame.show(ui, |ui| {
+                            ui.label(egui::RichText::new(message).size(28.0));
+                        });
+                    });
+            } else {
+                // Remove the snackbar when its time expires.
+                self.snackbar = None;
+            }
+        }
+
+        if let Ok(response) = self.ui_response_receiver.try_recv() {
+            match response {
+                UIResponse::Success(message) | UIResponse::Falure(message) => {
+                    self.snackbar = Some((message, self.snackbar_duration + now));
+                }
+            }
+        }
     }
 }
