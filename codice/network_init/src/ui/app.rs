@@ -48,5 +48,6 @@ impl eframe::App for App {
                 self.client_uis[self.selected_tab - 1].show_ui(_frame, ui);
             }
         });
+        ctx.request_repaint_after(std::time::Duration::from_secs(1));
     }
 }
