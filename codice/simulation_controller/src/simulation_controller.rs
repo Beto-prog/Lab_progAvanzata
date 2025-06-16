@@ -4,12 +4,13 @@
 
 use common::get_drone_impl;
 
-use crate::node_stats::DroneStats;
+
 use crate::ui_commands::{UICommand, UIResponse};
+use crate::forwarded_event::ForwardedEvent;
 
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+
 use std::thread;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
@@ -40,11 +41,12 @@ pub struct SimulationController {
     // Index of the next drone implementation to use
     _next_drone_impl_index: u8,
 
-    drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
+
 
     ui_command_receiver: Receiver<UICommand>,
 
     ui_response_sender: Sender<UIResponse>,
+    forwarded_event_sender: Sender<ForwardedEvent>,
 }
 
 impl SimulationController {
@@ -59,10 +61,10 @@ impl SimulationController {
         client_nodes: Vec<NodeId>,
         server_nodes: Vec<NodeId>,
         next_drone_impl_index: u8,
-        drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
 
         ui_command_receiver: Receiver<UICommand>,
         ui_response_sender: Sender<UIResponse>,
+        forwarded_event_sender: Sender<ForwardedEvent>,
     ) -> Self {
         let mut node_types = HashMap::new();
 
@@ -86,9 +88,9 @@ impl SimulationController {
             network_topology,
             node_types,
             _next_drone_impl_index: next_drone_impl_index,
-            drone_stats,
             ui_command_receiver,
             ui_response_sender,
+            forwarded_event_sender,
         }
     }
 
@@ -133,121 +135,27 @@ impl SimulationController {
     fn handle_event(&mut self, event: DroneEvent) {
         match event {
             DroneEvent::PacketSent(packet) => {
-                let node_id: NodeId;
-                match packet.pack_type {
-                    PacketType::MsgFragment(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
-                        {
-                            self.drone_stats
-                                .lock()
-                                .expect("Should be able to unlock")
-                                .get_mut(&node_id)
-                                .expect("The node Id should be valid")
-                                .fragments_forwarded += 1;
-                        }
-                    }
-                    PacketType::Ack(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
-
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
-                        {
-                            self.drone_stats
-                                .lock()
-                                .expect("Should be able to unlock")
-                                .get_mut(&node_id)
-                                .expect("Previous hops should always exist")
-                                .acks_forwarded += 1;
-                        }
-                    }
-                    PacketType::Nack(_) => {
-                        node_id = packet
-                            .routing_header
-                            .previous_hop()
-                            .expect("there should always be a previous hop");
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("Previous hops should always exist")
-                            == NodeType::Drone
-                        {
-                            self.drone_stats
-                                .lock()
-                                .expect("Should be able to unlock")
-                                .get_mut(&node_id)
-                                .expect("Previous hops should always exist")
-                                .nacks_forwarded += 1;
-                        }
+                let node_id = match &packet.pack_type {
+                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => {
+                        packet.routing_header.previous_hop().expect("there should always be a previous hop")
                     }
                     PacketType::FloodRequest(flood_request) => {
-                        node_id = flood_request
-                            .path_trace
-                            .last()
-                            .expect("Flood requests should have a last hop")
-                            .0;
-
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("A node inside a flood request should exist")
-                            == NodeType::Drone
-                        {
-                            self.drone_stats
-                                .lock()
-                                .expect("Should be able to unlock")
-                                .get_mut(&node_id)
-                                .expect("The node Id should be valid")
-                                .flood_requests_forwarded += 1;
-                        }
+                        flood_request.path_trace.last().expect("Flood requests should have a last hop").0
                     }
                     PacketType::FloodResponse(flood_response) => {
-                        node_id = flood_response
-                            .path_trace
-                            .last()
-                            .expect("Flood requests should have a last hop")
-                            .0;
-
-                        if *self
-                            .node_types
-                            .get(&node_id)
-                            .expect("A node inside a flood request should exist")
-                            == NodeType::Drone
-                        {
-                            self.drone_stats
-                                .lock()
-                                .expect("Should be able to unlock")
-                                .get_mut(&node_id)
-                                .expect("The node Id should be valid")
-                                .flood_responses_forwarded += 1;
-                        }
+                        flood_response.path_trace.last().expect("Flood requests should have a last hop").0
                     }
-                }
+                };
+
                 if *self
                     .node_types
                     .get(&node_id)
                     .expect("Node id should be valid")
                     == NodeType::Drone
                 {
-                    self.drone_stats
-                        .lock()
-                        .expect("Should be able to unlock")
-                        .get_mut(&node_id)
-                        .expect("The node Id should be valid")
-                        .packets_forwarded += 1;
+                    self.forwarded_event_sender
+                        .send(ForwardedEvent::PacketSent(packet))
+                        .expect("Should be able to send event");
                 }
             }
             DroneEvent::PacketDropped(packet) => {
@@ -255,13 +163,10 @@ impl SimulationController {
                     .routing_header
                     .previous_hop()
                     .expect("Previous hop should always be valid");
-                if let Some(stats) = self
-                    .drone_stats
-                    .lock()
-                    .expect("Should always be able to unlock")
-                    .get_mut(&node_id)
-                {
-                    stats.packets_dropped += 1;
+                if self.node_types.get(&node_id) == Some(&NodeType::Drone) {
+                    self.forwarded_event_sender
+                        .send(ForwardedEvent::PacketDropped(packet))
+                        .expect("Should be able to send event");
                 }
             }
             DroneEvent::ControllerShortcut(packet) => {
@@ -370,12 +275,9 @@ impl SimulationController {
     fn set_packet_drop_rate(&self, drone_id: NodeId, pdr: f32) {
         match self.send_command(drone_id, &DroneCommand::SetPacketDropRate(pdr)) {
             Ok(()) => {
-                self.drone_stats
-                    .lock()
-                    .expect("Should be able to unlock")
-                    .get_mut(&drone_id)
-                    .expect("Should always be able to change pdr")
-                    .pdr = pdr;
+                self.forwarded_event_sender
+                    .send(ForwardedEvent::PDRSet(drone_id, pdr))
+                    .expect("Should be able to send event");
 
                 self.ui_response_sender
                     .send(UIResponse::Success(
@@ -396,12 +298,9 @@ impl SimulationController {
         match self.send_command(drone_id, &DroneCommand::Crash) {
             Ok(()) => {
                 self.remove_drone(drone_id);
-                self.drone_stats
-                    .lock()
-                    .expect("Should be able to unlock")
-                    .get_mut(&drone_id)
-                    .expect("Should always be able to change crashed")
-                    .crashed = true;
+                self.forwarded_event_sender
+                    .send(ForwardedEvent::DroneCrashed(drone_id))
+                    .expect("Should be able to send event");
                 self.ui_response_sender
                     .send(UIResponse::Success(
                         "Drone successfully crashed".to_string(),
@@ -450,21 +349,9 @@ impl SimulationController {
                         .expect("Neighbor sender should be valid");
                 }
 
-                //update the stats
-                self.drone_stats
-                    .lock()
-                    .expect("Should be able to unlock")
-                    .get_mut(&node1)
-                    .expect("The node Id should be valid")
-                    .neigbours
-                    .insert(node2);
-                self.drone_stats
-                    .lock()
-                    .expect("Should be able to unlock")
-                    .get_mut(&node2)
-                    .expect("The node Id should be valid")
-                    .neigbours
-                    .insert(node1);
+                self.forwarded_event_sender
+                    .send(ForwardedEvent::ConnectionAdded(node1, node2))
+                    .expect("Should be able to send event");
 
                 //send response to the UI
                 self.ui_response_sender
@@ -497,25 +384,9 @@ impl SimulationController {
                 let _ = self.send_command(node1, &DroneCommand::RemoveSender(node2));
                 let _ = self.send_command(node2, &DroneCommand::RemoveSender(node1));
 
-                //update drone stats
-                if let Some(NodeType::Drone) = self.node_types.get_mut(&node1) {
-                    self.drone_stats
-                        .lock()
-                        .expect("Should be able to unlock")
-                        .get_mut(&node1)
-                        .expect("The node Id should be valid")
-                        .neigbours
-                        .remove(&node2);
-                }
-                if let Some(NodeType::Drone) = self.node_types.get_mut(&node2) {
-                    self.drone_stats
-                        .lock()
-                        .expect("Should be able to unlock")
-                        .get_mut(&node2)
-                        .expect("The node Id should be valid")
-                        .neigbours
-                        .remove(&node1);
-                }
+                self.forwarded_event_sender
+                    .send(ForwardedEvent::ConnectionRemoved(node1, node2))
+                    .expect("Should be able to send event");
 
                 self.ui_response_sender
                     .send(UIResponse::Success(
@@ -775,13 +646,13 @@ mod tests {
         let mut drone_command_recievers = HashMap::new();
 
         let (event_sender, event_receiver) = unbounded();
+        let (forwarded_event_sender, _) = unbounded();
 
         let (ui_command_sender, ui_command_receiver) = unbounded();
         let (ui_response_sender, ui_response_receiver) = unbounded();
 
         let mut network_topology = HashMap::new();
 
-        let mut drone_stats = HashMap::new();
 
         network_topology.insert(1, HashSet::from([2, 3, 4, 6]));
         network_topology.insert(2, HashSet::from([1, 3, 5, 7]));
@@ -831,16 +702,6 @@ mod tests {
                 );
             }
 
-            drone_stats.insert(
-                i,
-                DroneStats::new(
-                    network_topology
-                        .get(&i)
-                        .expect("Should always be able to get drone")
-                        .clone(),
-                    0.1,
-                ),
-            );
 
             // Create the drone using the `get_drone_impl` function
             let mut drone = get_drone_impl::get_drone_impl(
@@ -891,9 +752,10 @@ mod tests {
             vec![5, 6],
             vec![7],
             0,
-            Arc::new(Mutex::new(drone_stats)),
+
             ui_command_receiver,
             ui_response_sender,
+            forwarded_event_sender,
         )
     }
 

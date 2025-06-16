@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_lines)]
 
+use crate::forwarded_event::ForwardedEvent;
 use crate::node_stats::DroneStats;
 use crate::ui_commands::{UICommand, UIResponse};
 use crossbeam_channel::Receiver;
@@ -7,14 +8,15 @@ use crossbeam_channel::Sender;
 use eframe::egui;
 use egui::Id;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use wg_2024::network::NodeId;
+use wg_2024::packet::PacketType;
 
 pub struct SimulationControllerUI {
-    drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
+    drone_stats: HashMap<NodeId, DroneStats>,
     selected_tab: usize,
     ui_command_sender: Sender<UICommand>,
     ui_response_receiver: Receiver<UIResponse>,
+    forwarded_event_receiver: Receiver<ForwardedEvent>,
     new_pdr: HashMap<NodeId, f32>,
     selected_add_neighbour: HashMap<NodeId, NodeId>,
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
@@ -25,30 +27,29 @@ pub struct SimulationControllerUI {
 impl SimulationControllerUI {
     /// # Panics
     pub fn new(
-        drone_stats: Arc<Mutex<HashMap<NodeId, DroneStats>>>,
+        drone_stats: HashMap<NodeId, DroneStats>,
         ui_command_sender: Sender<UICommand>,
         ui_response_receiver: Receiver<UIResponse>,
+        forwarded_event_receiver: Receiver<ForwardedEvent>,
     ) -> Self {
         env_logger::init();
         let selected_tab = *drone_stats
-            .lock()
-            .expect("Should be able to unlock")
             .keys()
             .next()
             .expect("There should always be at least one drone")
             as usize;
         let mut new_pdr = HashMap::new();
-        for (drone_id, drone) in drone_stats.lock().expect("Should be able to unlock").iter() {
+        for (drone_id, drone) in drone_stats.iter() {
             new_pdr.insert(*drone_id, drone.pdr);
         }
 
         let mut selected_add_neighbour = HashMap::new();
-        for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
+        for drone_id in drone_stats.keys() {
             selected_add_neighbour.insert(*drone_id, 0);
         }
 
         let mut selected_remove_neighbour = HashMap::new();
-        for drone_id in drone_stats.lock().expect("Should be able to unlock").keys() {
+        for drone_id in drone_stats.keys() {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
         Self {
@@ -56,6 +57,7 @@ impl SimulationControllerUI {
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
+            forwarded_event_receiver,
             new_pdr,
             selected_add_neighbour,
             selected_remove_neighbour,
@@ -64,9 +66,81 @@ impl SimulationControllerUI {
         }
     }
 
+    fn handle_forwarded_event(&mut self, event: ForwardedEvent) {
+        match event {
+            ForwardedEvent::PacketSent(packet) => {
+                let node_id = match packet.pack_type {
+                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => packet
+                        .routing_header
+                        .previous_hop()
+                        .expect("there should always be a previous hop"),
+                    PacketType::FloodRequest(ref flood_request) => {
+                        flood_request
+                            .path_trace
+                            .last()
+                            .expect("Flood request should always have a last hop")
+                            .0
+                    }
+                    PacketType::FloodResponse(ref flood_response) => {
+                        flood_response
+                            .path_trace
+                            .last()
+                            .expect("Flood response should always have a last hop")
+                            .0
+                    }
+                };
+                if let Some(stats) = self.drone_stats.get_mut(&node_id) {
+                    stats.packets_forwarded += 1;
+                    match packet.pack_type {
+                        PacketType::MsgFragment(_) => stats.fragments_forwarded += 1,
+                        PacketType::Ack(_) => stats.acks_forwarded += 1,
+                        PacketType::Nack(_) => stats.nacks_forwarded += 1,
+                        PacketType::FloodRequest(_) => stats.flood_requests_forwarded += 1,
+                        PacketType::FloodResponse(_) => stats.flood_responses_forwarded += 1,
+                    }
+                }
+            }
+            ForwardedEvent::PacketDropped(packet) => {
+                let node_id = packet
+                    .routing_header
+                    .previous_hop()
+                    .expect("Previous hop should always be valid");
+                if let Some(stats) = self.drone_stats.get_mut(&node_id) {
+                    stats.packets_dropped += 1;
+                }
+            }
+            ForwardedEvent::PDRSet(node_id, pdr) => {
+                if let Some(stats) = self.drone_stats.get_mut(&node_id) {
+                    stats.pdr = pdr;
+                }
+            }
+            ForwardedEvent::DroneCrashed(node_id) => {
+                if let Some(stats) = self.drone_stats.get_mut(&node_id) {
+                    stats.crashed = true;
+                }
+            }
+            ForwardedEvent::ConnectionAdded(node1, node2) => {
+                if let Some(stats) = self.drone_stats.get_mut(&node1) {
+                    stats.neigbours.insert(node2);
+                }
+                if let Some(stats) = self.drone_stats.get_mut(&node2) {
+                    stats.neigbours.insert(node1);
+                }
+            }
+            ForwardedEvent::ConnectionRemoved(node1, node2) => {
+                if let Some(stats) = self.drone_stats.get_mut(&node1) {
+                    stats.neigbours.remove(&node2);
+                }
+                if let Some(stats) = self.drone_stats.get_mut(&node2) {
+                    stats.neigbours.remove(&node1);
+                }
+            }
+        }
+    }
+
     fn drone_stats_ui(&mut self, ui: &mut egui::Ui, drone_id: NodeId, now: f64) {
-        let general_drone_stats = self.drone_stats.lock().expect("Should be able to unlock");
-        let drone_stats = general_drone_stats
+        let drone_stats = self
+            .drone_stats
             .get(&drone_id)
             .expect("Should be able to get the drone");
 
@@ -149,7 +223,7 @@ impl SimulationControllerUI {
             egui::ComboBox::new(0, "")
                 .selected_text(format!("{selected}"))
                 .show_ui(ui, |ui| {
-                    let mut drones = general_drone_stats.keys().collect::<Vec<_>>();
+                    let mut drones = self.drone_stats.keys().collect::<Vec<_>>();
                     drones.retain(|&e| !drone_stats.neigbours.contains(e) && !e.eq(&drone_id));
                     for drone in drones {
                         ui.selectable_value(selected, *drone, drone.to_string());
@@ -180,7 +254,7 @@ impl SimulationControllerUI {
             egui::ComboBox::new(1, "")
                 .selected_text(format!("{selected}"))
                 .show_ui(ui, |ui| {
-                    let drone_ids = general_drone_stats.keys().collect::<Vec<_>>();
+                    let drone_ids = self.drone_stats.keys().collect::<Vec<_>>();
                     let mut drones = drone_stats.neigbours.iter().collect::<Vec<_>>();
                     drones.retain(|&e| drone_ids.contains(&e) && !e.eq(&drone_id));
 
@@ -205,14 +279,14 @@ impl SimulationControllerUI {
     }
 
     pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
+        // Handle any forwarded events
+        while let Ok(event) = self.forwarded_event_receiver.try_recv() {
+            self.handle_forwarded_event(event);
+        }
+
         ui.separator();
         ui.horizontal(|ui| {
-            for drone in self
-                .drone_stats
-                .lock()
-                .expect("Should be able to unlock")
-                .keys()
-            {
+            for drone in self.drone_stats.keys() {
                 if ui.button(format!("Drone {drone}")).clicked() {
                     self.selected_tab = *drone as usize;
                 }

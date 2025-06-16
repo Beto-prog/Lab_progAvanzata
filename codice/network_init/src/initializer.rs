@@ -186,9 +186,10 @@ impl NetworkInitializer {
         server::interface::interface::start_ui(InterfaceHub);
 
         let network_topology = Self::get_network_topology(config);
-        let drone_stats_arc = Arc::new(Mutex::new(drone_stats));
         let (ui_command_sender, ui_command_receiver) = unbounded();
         let (ui_response_sender, ui_response_receiver) = unbounded();
+        let (forwarded_event_sender, forwarded_event_receiver) = unbounded();
+
 
         let mut simulation_controller = SimulationController::new(
             drone_command_senders,
@@ -200,9 +201,9 @@ impl NetworkInitializer {
             config.client.iter().map(|c| c.id).collect(),
             config.server.iter().map(|c| c.id).collect(),
             u8::try_from(config.drone.len() % 10).unwrap(),
-            drone_stats_arc.clone(),
             ui_command_receiver,
             ui_response_sender,
+            forwarded_event_sender,
         );
 
         thread::spawn(move || simulation_controller.run());
@@ -214,9 +215,10 @@ impl NetworkInitializer {
                 Ok(Box::new(App::new(
                     cc,
                     SimulationControllerUI::new(
-                        drone_stats_arc.clone(),
+                        drone_stats,
                         ui_command_sender,
                         ui_response_receiver,
+                        forwarded_event_receiver,
                     ),
                     client_uis,
                 )))
