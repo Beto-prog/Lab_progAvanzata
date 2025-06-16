@@ -47,16 +47,27 @@ pub fn validate_config(config: &NetworkConfig) -> Result<(), String> {
         }
     }
 
-    if !is_graph_connected(config) {
-        return Err("Network is not bidirectionally connected".to_string());
+    if let Err(e) = is_graph_connected(config) {
+        return Err(e);
     }
 
     Ok(())
 }
 
-fn is_graph_connected(config: &NetworkConfig) -> bool {
+fn is_graph_connected(config: &NetworkConfig) -> Result<(), String> {
     let adjacency_list = build_adjacency_list(config);
-    is_bidirectional(&adjacency_list) && check_connectivity(&adjacency_list)
+    
+    // Check for bidirectional connections
+    if let Err(e) = is_bidirectional(&adjacency_list) {
+        return Err(e);
+    }
+    
+    // Check for full connectivity
+    if let Err(e) = check_connectivity(&adjacency_list) {
+        return Err(e);
+    }
+
+    Ok(())
 }
 
 fn build_adjacency_list(config: &NetworkConfig) -> HashMap<NodeId, Vec<NodeId>> {
@@ -75,20 +86,24 @@ fn build_adjacency_list(config: &NetworkConfig) -> HashMap<NodeId, Vec<NodeId>> 
     adjacency_list
 }
 
-fn is_bidirectional(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> bool {
+fn is_bidirectional(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> Result<(), String> {
     for (node_id, neighbors) in adjacency_list {
         for neighbor_id in neighbors {
             if !adjacency_list.get(neighbor_id).map_or(false, |ns| ns.contains(node_id)) {
-                return false;
+                return Err(format!(
+                    "Connection is not bidirectional: node {} connects to {} but not vice versa",
+                    node_id, neighbor_id
+                ));
             }
         }
     }
-    true
+    Ok(())
 }
 
-fn check_connectivity(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> bool {
+fn check_connectivity(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> Result<(), String> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
+    let mut disconnected_nodes = Vec::new();
 
     if let Some(&start_node) = adjacency_list.keys().next() {
         queue.push_back(start_node);
@@ -106,5 +121,19 @@ fn check_connectivity(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> bool {
         }
     }
 
-    visited.len() == adjacency_list.len()
+    // Find all nodes that weren't visited
+    for node_id in adjacency_list.keys() {
+        if !visited.contains(node_id) {
+            disconnected_nodes.push(*node_id);
+        }
+    }
+
+    if !disconnected_nodes.is_empty() {
+        return Err(format!(
+            "Network is not fully connected. The following nodes are disconnected: {:?}",
+            disconnected_nodes
+        ));
+    }
+
+    Ok(())
 }
