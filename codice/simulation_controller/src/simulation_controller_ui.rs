@@ -117,16 +117,23 @@ impl SimulationControllerUI {
                 )
                 .text("PDR"),
             );
-            if ui.button("Set PDR").clicked() && !drone_stats.crashed {
-                self.ui_command_sender
-                    .send(UICommand::SetPDR(
-                        drone_id,
-                        *self
-                            .new_pdr
-                            .get(&drone_id)
-                            .expect("Should be able to get the PDR"),
-                    ))
-                    .expect("Should be able to send the command");
+            if ui.button("Set PDR").clicked() {
+                if drone_stats.crashed {
+                    self.snackbar = Some((
+                        "Can't send command to crashed drone".to_string(),
+                        self.snackbar_duration + now,
+                    ));
+                } else {
+                    self.ui_command_sender
+                        .send(UICommand::SetPDR(
+                            drone_id,
+                            *self
+                                .new_pdr
+                                .get(&drone_id)
+                                .expect("Should be able to get the PDR"),
+                        ))
+                        .expect("Should be able to send the command");
+                }
             }
         });
 
@@ -148,11 +155,18 @@ impl SimulationControllerUI {
                         ui.selectable_value(selected, *drone, drone.to_string());
                     }
                 });
-            if ui.button("Add").clicked() && *selected != 0 && !drone_stats.crashed {
-                self.ui_command_sender
-                    .send(UICommand::AddConnection(drone_id, *selected))
-                    .expect("Should be able to send the command");
-                *selected = 0;
+            if ui.button("Add").clicked() && *selected != 0 {
+                if drone_stats.crashed {
+                    self.snackbar = Some((
+                        "Can't send command to crashed drone".to_string(),
+                        self.snackbar_duration + now,
+                    ));
+                } else {
+                    self.ui_command_sender
+                        .send(UICommand::AddConnection(drone_id, *selected))
+                        .expect("Should be able to send the command");
+                    *selected = 0;
+                }
             }
         });
 
@@ -174,11 +188,18 @@ impl SimulationControllerUI {
                         ui.selectable_value(selected, *drone, drone.to_string());
                     }
                 });
-            if ui.button("Remove").clicked() && *selected != 0 && !drone_stats.crashed {
-                self.ui_command_sender
-                    .send(UICommand::RemoveConnection(drone_id, *selected))
-                    .expect("Should be able to send the command");
-                *selected = 0;
+            if ui.button("Remove").clicked() && *selected != 0 {
+                if drone_stats.crashed {
+                    self.snackbar = Some((
+                        "Can't send command to crashed drone".to_string(),
+                        self.snackbar_duration + now,
+                    ));
+                } else {
+                    self.ui_command_sender
+                        .send(UICommand::RemoveConnection(drone_id, *selected))
+                        .expect("Should be able to send the command");
+                    *selected = 0;
+                }
             }
         });
     }

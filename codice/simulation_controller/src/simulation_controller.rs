@@ -282,15 +282,16 @@ impl SimulationController {
     }
 
     /// Sends a command to a specific drone
-    fn send_command(&self, drone_id: NodeId, command: &DroneCommand) -> bool {
-        if self.is_command_allowed(drone_id, command) {
-            if let Some(sender) = self.node_command_senders.get(&drone_id) {
-                if let Ok(()) = sender.send(command.clone()) {
-                    return true;
-                }
-            }
+    fn send_command(&self, drone_id: NodeId, command: &DroneCommand) -> Result<(), String> {
+        self.is_command_allowed(drone_id, command)?;
+        if let Some(sender) = self.node_command_senders.get(&drone_id) {
+            sender
+                .send(command.clone())
+                .map_err(|_| format!("Failed to send command to drone {}", drone_id))?;
+            Ok(())
+        } else {
+            Err(format!("Drone {} does not exist in the network", drone_id))
         }
-        false
     }
 
     /// Adds a new drone to the network
@@ -352,175 +353,190 @@ impl SimulationController {
 
     /// Removes a drone from the network
     fn remove_drone(&mut self, drone_id: NodeId) {
-        self.node_command_senders.remove(&drone_id);
-        self.node_packet_senders.remove(&drone_id);
-        self.network_topology.remove(&drone_id);
-        //self.node_types.remove(&drone_id);
-
         // Notify neighbors to remove the crashed drone from their connections
         if let Some(neighbors) = self.network_topology.get(&drone_id) {
             for neighbor in neighbors {
-                self.send_command(*neighbor, &DroneCommand::RemoveSender(drone_id));
+                // We ignore errors here since the neighbor might already be disconnected
+                let _ = self.send_command(*neighbor, &DroneCommand::RemoveSender(drone_id));
             }
         }
+        //self.node_command_senders.remove(&drone_id);
+        self.node_packet_senders.remove(&drone_id);
+        self.network_topology.remove(&drone_id);
+        //self.node_types.remove(&drone_id);
     }
 
     /// Updates the Packet Drop Rate (PDR) of a drone
     fn set_packet_drop_rate(&self, drone_id: NodeId, pdr: f32) {
-        self.send_command(drone_id, &DroneCommand::SetPacketDropRate(pdr));
+        match self.send_command(drone_id, &DroneCommand::SetPacketDropRate(pdr)) {
+            Ok(()) => {
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&drone_id)
+                    .expect("Should always be able to change pdr")
+                    .pdr = pdr;
 
-        self.drone_stats
-            .lock()
-            .expect("Should be able to unlock")
-            .get_mut(&drone_id)
-            .expect("Should always be able to change pdr")
-            .pdr = pdr;
-
-        self.ui_response_sender
-            .send(UIResponse::Success(
-                "Packet drop rate succesfully updated".to_string(),
-            ))
-            .expect("Should be able to send");
+                self.ui_response_sender
+                    .send(UIResponse::Success(
+                        "Packet drop rate successfully updated".to_string(),
+                    ))
+                    .expect("Should be able to send");
+            }
+            Err(e) => {
+                self.ui_response_sender
+                    .send(UIResponse::Falure(e))
+                    .expect("Should be able to send");
+            }
+        }
     }
 
     /// Crashes a drone
     fn crash_drone(&mut self, drone_id: NodeId) {
-        if self.send_command(drone_id, &DroneCommand::Crash) {
-            self.remove_drone(drone_id);
-            self.drone_stats
-                .lock()
-                .expect("Should be able to unlock")
-                .get_mut(&drone_id)
-                .expect("Should always be able to change crashed")
-                .crashed = true;
-            self.ui_response_sender
-                .send(UIResponse::Success("Drone succesfully crashed".to_string()))
-                .expect("Should be able to send");
-        } else {
-            self.ui_response_sender
-                .send(UIResponse::Falure(
-                    "Could not crash drone because it would violate topology requirements"
-                        .to_string(),
-                ))
-                .expect("Should be able to send");
+        match self.send_command(drone_id, &DroneCommand::Crash) {
+            Ok(()) => {
+                self.remove_drone(drone_id);
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&drone_id)
+                    .expect("Should always be able to change crashed")
+                    .crashed = true;
+                self.ui_response_sender
+                    .send(UIResponse::Success(
+                        "Drone successfully crashed".to_string(),
+                    ))
+                    .expect("Should be able to send");
+            }
+            Err(e) => {
+                self.ui_response_sender
+                    .send(UIResponse::Falure(format!(
+                        "If this drone crashed, this would happen: {}",
+                        e
+                    )))
+                    .expect("Should be able to send");
+            }
         }
     }
 
     /// Adds a connection between two nodes
     fn add_connection(&mut self, node1: NodeId, node2: NodeId) {
-        if !self.is_adding_connection_valid(node1, node2) {
-            self.ui_response_sender
-                .send(UIResponse::Falure(
-                    "Could not add connection because it would violate topology reqiurements"
-                        .to_string(),
-                ))
-                .expect("Should be able to send");
-            return;
+        match self.is_adding_connection_valid(node1, node2) {
+            Ok(()) => {
+                self.network_topology
+                    .entry(node1)
+                    .or_default()
+                    .insert(node2);
+                self.network_topology
+                    .entry(node2)
+                    .or_default()
+                    .insert(node1);
+
+                // Notify both nodes to add the connection
+                if let Some(sender1) = self.node_command_senders.get(&node1) {
+                    sender1
+                        .send(DroneCommand::AddSender(
+                            node2,
+                            self.node_packet_senders[&node2].clone(),
+                        ))
+                        .expect("Neighbor sender should be valid");
+                }
+                if let Some(sender2) = self.node_command_senders.get(&node2) {
+                    sender2
+                        .send(DroneCommand::AddSender(
+                            node1,
+                            self.node_packet_senders[&node1].clone(),
+                        ))
+                        .expect("Neighbor sender should be valid");
+                }
+
+                //update the stats
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&node1)
+                    .expect("The node Id should be valid")
+                    .neigbours
+                    .insert(node2);
+                self.drone_stats
+                    .lock()
+                    .expect("Should be able to unlock")
+                    .get_mut(&node2)
+                    .expect("The node Id should be valid")
+                    .neigbours
+                    .insert(node1);
+
+                //send response to the UI
+                self.ui_response_sender
+                    .send(UIResponse::Success(
+                        "Connection successfully added".to_string(),
+                    ))
+                    .expect("Should be able to send");
+            }
+            Err(e) => {
+                self.ui_response_sender
+                    .send(UIResponse::Falure(e))
+                    .expect("Should be able to send");
+            }
         }
-
-        self.network_topology
-            .entry(node1)
-            .or_default()
-            .insert(node2);
-        self.network_topology
-            .entry(node2)
-            .or_default()
-            .insert(node1);
-
-        // Notify both nodes to add the connection
-        if let Some(sender1) = self.node_command_senders.get(&node1) {
-            sender1
-                .send(DroneCommand::AddSender(
-                    node2,
-                    self.node_packet_senders[&node2].clone(),
-                ))
-                .expect("Neighbor sender should be valid");
-        }
-        if let Some(sender2) = self.node_command_senders.get(&node2) {
-            sender2
-                .send(DroneCommand::AddSender(
-                    node1,
-                    self.node_packet_senders[&node1].clone(),
-                ))
-                .expect("Neighbor sender should be valid");
-        }
-
-        //update the stats
-        self.drone_stats
-            .lock()
-            .expect("Should be able to unlock")
-            .get_mut(&node1)
-            .expect("The node Id should be valid")
-            .neigbours
-            .insert(node2);
-        self.drone_stats
-            .lock()
-            .expect("Should be able to unlock")
-            .get_mut(&node2)
-            .expect("The node Id should be valid")
-            .neigbours
-            .insert(node1);
-
-        //send response to the UI
-        self.ui_response_sender
-            .send(UIResponse::Success(
-                "Connection succesfully added".to_string(),
-            ))
-            .expect("Should be able to send");
     }
 
     /// Removes a connection between two nodes
     fn remove_connection(&mut self, node1: NodeId, node2: NodeId) {
-        if !self.is_connection_removal_valid(node1, node2) {
-            self.ui_response_sender
-                .send(UIResponse::Falure(
-                    "Could not remove connection because it would violate topology reqiurements"
-                        .to_string(),
-                ))
-                .expect("Should be able to send");
-            return;
-        }
+        match self.is_connection_removal_valid(node1, node2) {
+            Ok(()) => {
+                if let Some(neighbors) = self.network_topology.get_mut(&node1) {
+                    neighbors.remove(&node2);
+                }
+                if let Some(neighbors) = self.network_topology.get_mut(&node2) {
+                    neighbors.remove(&node1);
+                }
 
-        if let Some(neighbors) = self.network_topology.get_mut(&node1) {
-            neighbors.remove(&node2);
-        }
-        if let Some(neighbors) = self.network_topology.get_mut(&node2) {
-            neighbors.remove(&node1);
-        }
+                // Notify both nodes to remove the connection
+                // We ignore errors here since the nodes might already be disconnected
+                let _ = self.send_command(node1, &DroneCommand::RemoveSender(node2));
+                let _ = self.send_command(node2, &DroneCommand::RemoveSender(node1));
 
-        // Notify both nodes to remove the connection
-        self.send_command(node1, &DroneCommand::RemoveSender(node2));
-        self.send_command(node2, &DroneCommand::RemoveSender(node1));
+                //update drone stats
+                if let Some(NodeType::Drone) = self.node_types.get_mut(&node1) {
+                    self.drone_stats
+                        .lock()
+                        .expect("Should be able to unlock")
+                        .get_mut(&node1)
+                        .expect("The node Id should be valid")
+                        .neigbours
+                        .remove(&node2);
+                }
+                if let Some(NodeType::Drone) = self.node_types.get_mut(&node2) {
+                    self.drone_stats
+                        .lock()
+                        .expect("Should be able to unlock")
+                        .get_mut(&node2)
+                        .expect("The node Id should be valid")
+                        .neigbours
+                        .remove(&node1);
+                }
 
-        //update drone stats
-        if let Some(NodeType::Drone) = self.node_types.get_mut(&node1) {
-            self.drone_stats
-                .lock()
-                .expect("Should be able to unlock")
-                .get_mut(&node1)
-                .expect("The node Id should be valid")
-                .neigbours
-                .remove(&node2);
+                self.ui_response_sender
+                    .send(UIResponse::Success(
+                        "Connection successfully removed".to_string(),
+                    ))
+                    .expect("Should be able to send");
+            }
+            Err(e) => {
+                self.ui_response_sender
+                    .send(UIResponse::Falure(e))
+                    .expect("Should be able to send");
+            }
         }
-        if let Some(NodeType::Drone) = self.node_types.get_mut(&node2) {
-            self.drone_stats
-                .lock()
-                .expect("Should be able to unlock")
-                .get_mut(&node2)
-                .expect("The node Id should be valid")
-                .neigbours
-                .remove(&node1);
-        }
-
-        self.ui_response_sender
-            .send(UIResponse::Success(
-                "Connection succesfully removed".to_string(),
-            ))
-            .expect("Should be able to send");
     }
 
     /// Checks if executing a command is allowed based on network requirements
-    fn is_command_allowed(&self, destination: NodeId, command: &DroneCommand) -> bool {
+    fn is_command_allowed(
+        &self,
+        destination: NodeId,
+        command: &DroneCommand,
+    ) -> Result<(), String> {
         match command {
             DroneCommand::RemoveSender(node_id) => {
                 // Check if removing the connection will disconnect the network
@@ -532,7 +548,7 @@ impl SimulationController {
             }
             DroneCommand::SetPacketDropRate(_) => {
                 // Changing PDR does not affect network topology, so it's always allowed
-                true
+                Ok(())
             }
             DroneCommand::Crash => {
                 // Check if crashing the drone will disconnect the network
@@ -541,19 +557,26 @@ impl SimulationController {
         }
     }
 
-    /// Checks if the network remains connected after removing ane edge
-    fn is_connection_removal_valid(&self, destination: NodeId, node_id: NodeId) -> bool {
+    /// Checks if the network remains connected after removing an edge
+    fn is_connection_removal_valid(
+        &self,
+        destination: NodeId,
+        node_id: NodeId,
+    ) -> Result<(), String> {
         let mut topology = self.network_topology.clone();
 
         if let Some(neighbors) = topology.get_mut(&destination) {
             neighbors.remove(&node_id);
         } else {
-            return false;
+            return Err(format!(
+                "Node {} does not exist in the network",
+                destination
+            ));
         }
         if let Some(neighbors) = topology.get_mut(&node_id) {
             neighbors.remove(&destination);
         } else {
-            return false;
+            return Err(format!("Node {} does not exist in the network", node_id));
         }
 
         // Check if the network is still connected
@@ -561,13 +584,13 @@ impl SimulationController {
     }
 
     /// Checks if the network remains connected after crashing a drone
-    fn is_network_connected_after_crash(&self, node_id: NodeId) -> bool {
+    fn is_network_connected_after_crash(&self, node_id: NodeId) -> Result<(), String> {
         // Simulate the crash by removing the drone and checking connectivity
         let mut topology = self.network_topology.clone();
 
         let neighbors = topology
             .get(&node_id)
-            .expect("Node id should be present in topology")
+            .ok_or_else(|| format!("Node {} does not exist in the network", node_id))?
             .clone();
         for neighbor in neighbors {
             if let Some(neighbors) = topology.get_mut(&neighbor) {
@@ -584,33 +607,45 @@ impl SimulationController {
     fn check_topology(
         topology: &HashMap<NodeId, HashSet<NodeId>>,
         node_types: &HashMap<NodeId, NodeType>,
-    ) -> bool {
+    ) -> Result<(), String> {
         // Check client and server connections
         for (node_id, node_type) in node_types {
             match node_type {
                 NodeType::Client => {
                     let Some(neighbors) = topology.get(node_id) else {
-                        return false;
+                        return Err(format!("Client {} has no connections", node_id));
                     };
                     if !neighbors
                         .iter()
                         .all(|n| node_types.get(n) == Some(&NodeType::Drone))
-                        || neighbors.is_empty()
-                        || neighbors.len() > 2
                     {
-                        return false;
+                        return Err(format!(
+                            "Client {} is connected to non-drone nodes",
+                            node_id
+                        ));
+                    }
+                    if neighbors.is_empty() {
+                        return Err(format!("Client {} has no connections", node_id));
+                    }
+                    if neighbors.len() > 2 {
+                        return Err(format!("Client {} has more than 2 connections", node_id));
                     }
                 }
                 NodeType::Server => {
                     let Some(neighbors) = topology.get(node_id) else {
-                        return false;
+                        return Err(format!("Server {} has no connections", node_id));
                     };
                     if !neighbors
                         .iter()
                         .all(|n| node_types.get(n) == Some(&NodeType::Drone))
-                        || neighbors.len() < 2
                     {
-                        return false;
+                        return Err(format!(
+                            "Server {} is connected to non-drone nodes",
+                            node_id
+                        ));
+                    }
+                    if neighbors.len() < 2 {
+                        return Err(format!("Server {} has fewer than 2 connections", node_id));
                     }
                 }
                 NodeType::Drone => {}
@@ -619,7 +654,7 @@ impl SimulationController {
 
         // Check entire network connectivity
         if !Self::is_network_connected(topology) {
-            return false;
+            return Err("Network is not fully connected".to_string());
         }
 
         // Check drones-only subgraph connectivity
@@ -630,7 +665,7 @@ impl SimulationController {
             .collect();
 
         if drones.is_empty() {
-            return false;
+            return Err("No drones in the network".to_string());
         }
 
         let mut drones_topology = HashMap::new();
@@ -649,7 +684,11 @@ impl SimulationController {
             .expect("It should be impossible to have no drones");
         Self::dfs_drones(start_drone, &drones_topology, &mut visited);
 
-        visited.len() == drones.len()
+        if visited.len() != drones.len() {
+            return Err("Drone subgraph is not fully connected".to_string());
+        }
+
+        Ok(())
     }
 
     /// Checks if the entire network is connected.
@@ -701,24 +740,24 @@ impl SimulationController {
     }
 
     /// Checks if adding a connection is valid for clients and servers
-    fn is_adding_connection_valid(&self, node_id1: NodeId, node_id2: NodeId) -> bool {
+    fn is_adding_connection_valid(&self, node_id1: NodeId, node_id2: NodeId) -> Result<(), String> {
         let mut topology = self.network_topology.clone();
 
         let insert1_successful = match topology.get_mut(&node_id1) {
             Some(neighbors) => neighbors.insert(node_id2),
-            None => return false,
+            None => return Err(format!("Node {} does not exist in the network", node_id1)),
         };
 
         let insert2_successful = match topology.get_mut(&node_id2) {
             Some(neighbors) => neighbors.insert(node_id1),
-            None => return false,
+            None => return Err(format!("Node {} does not exist in the network", node_id2)),
         };
 
         if insert1_successful && insert2_successful {
             return Self::check_topology(&topology, &self.node_types);
         }
 
-        false
+        Err("Connection already exists".to_string())
     }
 }
 
@@ -897,7 +936,7 @@ mod tests {
     #[test]
     fn test_is_network_connected_after_crash() {
         let controller = _initialize_mock_network();
-        assert!(controller.is_network_connected_after_crash(4));
+        assert!(controller.is_network_connected_after_crash(4).is_ok());
     }
 
     #[test]
@@ -923,7 +962,7 @@ mod tests {
     #[test]
     fn test_is_network_connected_after_removal() {
         let controller = _initialize_mock_network();
-        assert!(controller.is_connection_removal_valid(1, 2));
+        assert!(controller.is_connection_removal_valid(1, 2).is_ok());
     }
 
     #[test]
@@ -932,16 +971,17 @@ mod tests {
         assert!(SimulationController::check_topology(
             &controller.network_topology,
             &controller.node_types
-        ));
+        )
+        .is_ok());
     }
 
     #[test]
     fn test_is_connection_valid() {
         let controller = _initialize_mock_network();
-        assert!(controller.is_adding_connection_valid(4, 2)); // add connection between drones
-        assert!(!controller.is_adding_connection_valid(5, 6)); // add connection between two clients
-        assert!(!controller.is_adding_connection_valid(7, 6)); // add connection between server and client
-        assert!(!controller.is_adding_connection_valid(5, 1)); // add more than two connections to a client
+        assert!(controller.is_adding_connection_valid(4, 2).is_ok()); // add connection between drones
+        assert!(!controller.is_adding_connection_valid(5, 6).is_ok()); // add connection between two clients
+        assert!(!controller.is_adding_connection_valid(7, 6).is_ok()); // add connection between server and client
+        assert!(!controller.is_adding_connection_valid(5, 1).is_ok()); // add more than two connections to a client
     }
 
     #[test]
