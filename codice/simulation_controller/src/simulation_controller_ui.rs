@@ -7,7 +7,7 @@ use crate::ui_commands::{UICommand, UIResponse};
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 use eframe::egui;
-use egui::Id;
+use egui::{Id, ScrollArea};
 use std::collections::{HashMap, HashSet};
 use wg_2024::network::NodeId;
 use wg_2024::packet::PacketType;
@@ -24,6 +24,7 @@ pub struct SimulationControllerUI {
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
     network_graph: NetworkGraph,
+    packet_debug: bool,
 }
 
 impl SimulationControllerUI {
@@ -80,6 +81,7 @@ impl SimulationControllerUI {
             snackbar: None,
             snackbar_duration: 2.0,
             network_graph: NetworkGraph::new(drones, clients, servers, edges),
+            packet_debug: false,
         }
     }
 
@@ -116,6 +118,11 @@ impl SimulationControllerUI {
                         PacketType::FloodResponse(_) => stats.flood_responses_forwarded += 1,
                     }
                 }
+                self.drone_stats
+                    .get_mut(&node_id)
+                    .expect("Drone should exist")
+                    .packets_sent
+                    .push(packet);
             }
             ForwardedEvent::PacketDropped(packet) => {
                 let node_id = packet
@@ -125,6 +132,11 @@ impl SimulationControllerUI {
                 if let Some(stats) = self.drone_stats.get_mut(&node_id) {
                     stats.packets_dropped += 1;
                 }
+                self.drone_stats
+                    .get_mut(&node_id)
+                    .expect("Drone should exist")
+                    .packets_sent
+                    .push(packet);
             }
             ForwardedEvent::PDRSet(node_id, pdr) => {
                 if let Some(stats) = self.drone_stats.get_mut(&node_id) {
@@ -293,6 +305,19 @@ impl SimulationControllerUI {
                 }
             }
         });
+        ui.separator();
+
+        ui.checkbox(&mut self.packet_debug, "Toggle packet debug");
+
+        if self.packet_debug {
+            ui.separator();
+            //Show received packets
+            ScrollArea::vertical().show(ui, |ui| {
+                for (index, item) in drone_stats.packets_sent.iter().enumerate() {
+                    ui.label(format!("{}: {}", index, item));
+                }
+            });
+        }
     }
 
     pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {

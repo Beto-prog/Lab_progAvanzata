@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use wg_2024::network::NodeId;
+use wg_2024::{network::NodeId, packet::Packet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DroneStats {
@@ -13,6 +13,7 @@ pub struct DroneStats {
     pub nacks_forwarded: u32,
     pub crashed: bool,
     pub pdr: f32,
+    pub packets_sent: Vec<Packet>,
 }
 
 impl DroneStats {
@@ -29,6 +30,7 @@ impl DroneStats {
             nacks_forwarded: 0,
             crashed: false,
             pdr,
+            packets_sent: vec![],
         }
     }
 }
