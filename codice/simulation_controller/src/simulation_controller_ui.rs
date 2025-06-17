@@ -8,7 +8,7 @@ use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 use eframe::egui;
 use egui::Id;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wg_2024::network::NodeId;
 use wg_2024::packet::PacketType;
 
@@ -23,8 +23,6 @@ pub struct SimulationControllerUI {
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
-    clients: Vec<NodeId>,
-    servers: Vec<NodeId>,
     network_graph: NetworkGraph,
 }
 
@@ -54,6 +52,22 @@ impl SimulationControllerUI {
         for drone_id in drone_stats.keys() {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
+
+        let drones = drone_stats.keys().cloned().collect::<Vec<_>>();
+
+        let mut canonical_edges = HashSet::new();
+
+        for (&u, drone) in &drone_stats {
+            for &v in drone.neigbours.iter() {
+                let start = u.min(v);
+                let end = u.max(v);
+
+                canonical_edges.insert((start, end));
+            }
+        }
+
+        let edges = canonical_edges.into_iter().collect();
+
         Self {
             selected_tab: 0,
             drone_stats,
@@ -65,9 +79,7 @@ impl SimulationControllerUI {
             selected_remove_neighbour,
             snackbar: None,
             snackbar_duration: 2.0,
-            clients,
-            servers,
-            network_graph: NetworkGraph::new(),
+            network_graph: NetworkGraph::new(drones, clients, servers, edges),
         }
     }
 
