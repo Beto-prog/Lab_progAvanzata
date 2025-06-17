@@ -16,8 +16,8 @@ env_logger = { version = "0.10", default-features = false, features = [
     "auto-color",
     "humantime",
 ] }
-egui = "0.30"
-eframe = { version = "0.30", features = ["default"] }
+egui = "0.31.1"
+eframe = { version = "0.31.1", features = ["default"] }
 
 simulation_controller = { path = "../simulation_controller" }
 server = { path = "../server" }

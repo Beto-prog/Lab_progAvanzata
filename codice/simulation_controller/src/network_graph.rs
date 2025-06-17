@@ -1,4 +1,3 @@
-// Add these new `use` statements
 use egui::{Color32, Label, Shape};
 use egui_graphs::{
     DefaultEdgeShape, DefaultNodeShape, Graph, Node, SettingsInteraction, SettingsNavigation,

@@ -320,10 +320,10 @@ impl SimulationControllerUI {
                 egui::Area::new(Id::new("snackbar"))
                     .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -12.0))
                     .show(ctx, |ui| {
-                        let frame = egui::Frame::none()
+                        let frame = egui::Frame::NONE
                             .fill(egui::Color32::from_rgba_unmultiplied(50, 50, 50, 200))
-                            .rounding(egui::Rounding::same(8.0))
-                            .inner_margin(egui::Margin::symmetric(12.0, 8.0));
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .inner_margin(egui::Margin::symmetric(12, 8));
                         frame.show(ui, |ui| {
                             ui.label(egui::RichText::new(message).size(28.0));
                         });

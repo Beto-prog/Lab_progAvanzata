@@ -289,7 +289,7 @@ impl Client2_UI {
                         if self.selected_server.0 != 0 {
                             Frame::none()
                                 .fill(Color32::LIGHT_GREEN)
-                                .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                .inner_margin(egui::Margin::symmetric(8, 12))
                                 .show(ui, |ui| {
                                     ui.label(
                                         RichText::new(format!("Client ID: {}", self.self_id))
@@ -310,7 +310,7 @@ impl Client2_UI {
                             });
                             Frame::none()
                                 .fill(Color32::LIGHT_GREEN)
-                                .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                .inner_margin(egui::Margin::symmetric(8, 12))
                                 .show(ui, |ui| {
                                     ui.label(
                                         RichText::new(format!(
@@ -342,7 +342,7 @@ impl Client2_UI {
                                 });
                                 Frame::none()
                                     .fill(Color32::LIGHT_GREEN)
-                                    .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                    .inner_margin(egui::Margin::symmetric(8, 12))
                                     .show(ui, |ui| {
                                         ui.label(
                                             RichText::new(format!(
@@ -392,7 +392,7 @@ impl Client2_UI {
         ui.heading(RichText::new("Log Console").color(Color32::YELLOW));
         Frame::none()
             .fill(Color32::from_rgb(30, 30, 30))
-            .inner_margin(egui::Margin::same(8.0))
+            .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(200.0)
@@ -529,9 +529,9 @@ impl Client2_UI {
                 if self.selected_server.1.eq("CommunicationServer") {
                     Frame::none()
                         .fill(Color32::BLACK)
-                        .rounding(egui::Rounding::same(3.0))
+                        .rounding(egui::Rounding::same(3))
                         .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                        .inner_margin(egui::Margin::same(20.0))
+                        .inner_margin(egui::Margin::same(20))
                         .show(ui, |ui| {
                             ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                             ui.colored_label(
@@ -553,9 +553,9 @@ impl Client2_UI {
                 } else {
                     Frame::none()
                         .fill(Color32::BLACK)
-                        .rounding(egui::Rounding::same(3.0))
+                        .rounding(egui::Rounding::same(3))
                         .stroke(Stroke::new(1.0, Color32::DARK_GRAY))
-                        .inner_margin(egui::Margin::same(20.0))
+                        .inner_margin(egui::Margin::same(20))
                         .show(ui, |ui| {
                             ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                             ui.colored_label(Color32::LIGHT_GREEN, format!("{:?}", self.response));
@@ -573,9 +573,9 @@ impl Client2_UI {
             "Clients" => {
                 Frame::none()
                     .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
+                    .rounding(egui::Rounding::same(3))
                     .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
+                    .inner_margin(egui::Margin::same(20))
                     .show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                         ui.colored_label(
@@ -597,9 +597,9 @@ impl Client2_UI {
             "Files" => {
                 Frame::none()
                     .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
+                    .rounding(egui::Rounding::same(3))
                     .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
+                    .inner_margin(egui::Margin::same(20))
                     .show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                         ui.colored_label(
@@ -621,9 +621,9 @@ impl Client2_UI {
             _ => {
                 Frame::none()
                     .fill(Color32::BLACK)
-                    .rounding(egui::Rounding::same(3.0))
+                    .rounding(egui::Rounding::same(3))
                     .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                    .inner_margin(egui::Margin::same(20.0))
+                    .inner_margin(egui::Margin::same(20))
                     .show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                         ui.colored_label(Color32::RED, format!("{}", self.error.1));

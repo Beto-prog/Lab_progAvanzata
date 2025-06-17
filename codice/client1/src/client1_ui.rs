@@ -297,7 +297,7 @@ impl Client1_UI {
                         if self.selected_server.0 != 0 {
                             Frame::none()
                                 .fill(Color32::LIGHT_GREEN)
-                                .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                .inner_margin(egui::Margin::symmetric(8, 12))
                                 .show(ui, |ui| {
                                     ui.label(
                                         RichText::new(format!("Client ID: {}", self.self_id))
@@ -318,7 +318,7 @@ impl Client1_UI {
                             });
                             Frame::none()
                                 .fill(Color32::LIGHT_GREEN)
-                                .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                .inner_margin(egui::Margin::symmetric(8, 12))
                                 .show(ui, |ui| {
                                     ui.label(
                                         RichText::new(format!(
@@ -350,7 +350,7 @@ impl Client1_UI {
                                 });
                                 Frame::none()
                                     .fill(Color32::LIGHT_GREEN)
-                                    .inner_margin(egui::Margin::symmetric(8.0, 12.0))
+                                    .inner_margin(egui::Margin::symmetric(8, 12))
                                     .show(ui, |ui| {
                                         ui.label(
                                             RichText::new(format!(
@@ -447,9 +447,9 @@ impl Client1_UI {
         if self.selected_server.1.eq("MediaServer") && self.selected_command.eq("media?") {
             Frame::none()
                 .fill(Color32::BLACK)
-                .rounding(egui::Rounding::same(3.0))
+                .rounding(egui::Rounding::same(3))
                 .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                .inner_margin(egui::Margin::same(20.0))
+                .inner_margin(egui::Margin::same(20))
                 .show(ui, |ui| {
                     ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                     if self.selected_content_id.ends_with(".mp3") {
@@ -523,9 +523,9 @@ impl Client1_UI {
         } else {
             Frame::none()
                 .fill(Color32::BLACK)
-                .rounding(egui::Rounding::same(3.0))
+                .rounding(egui::Rounding::same(3))
                 .stroke(egui::Stroke::new(1.0, Color32::DARK_GRAY))
-                .inner_margin(egui::Margin::same(20.0))
+                .inner_margin(egui::Margin::same(20))
                 .show(ui, |ui| {
                     ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                     let color = if self.error.0 {
