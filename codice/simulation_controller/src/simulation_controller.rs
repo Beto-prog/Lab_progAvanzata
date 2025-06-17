@@ -4,9 +4,8 @@
 
 use common::get_drone_impl;
 
-
-use crate::ui_commands::{UICommand, UIResponse};
 use crate::forwarded_event::ForwardedEvent;
+use crate::ui_commands::{UICommand, UIResponse};
 
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use std::collections::{HashMap, HashSet};
@@ -40,8 +39,6 @@ pub struct SimulationController {
     node_types: HashMap<NodeId, NodeType>,
     // Index of the next drone implementation to use
     _next_drone_impl_index: u8,
-
-
 
     ui_command_receiver: Receiver<UICommand>,
 
@@ -101,11 +98,10 @@ impl SimulationController {
                 recv(self.event_receiver) -> event => {
                    if let Ok (event) = event {
                         self.handle_event(event);
-                }
+                   }
                 }
                 recv(self.ui_command_receiver) -> ui_command => {
                     if let Ok (ui_command) = ui_command {
-
                     self.handle_ui_command(ui_command);
                     }
                 }
@@ -136,14 +132,23 @@ impl SimulationController {
         match event {
             DroneEvent::PacketSent(packet) => {
                 let node_id = match &packet.pack_type {
-                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => {
-                        packet.routing_header.previous_hop().expect("there should always be a previous hop")
-                    }
+                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => packet
+                        .routing_header
+                        .previous_hop()
+                        .expect("there should always be a previous hop"),
                     PacketType::FloodRequest(flood_request) => {
-                        flood_request.path_trace.last().expect("Flood requests should have a last hop").0
+                        flood_request
+                            .path_trace
+                            .last()
+                            .expect("Flood requests should have a last hop")
+                            .0
                     }
                     PacketType::FloodResponse(flood_response) => {
-                        flood_response.path_trace.last().expect("Flood requests should have a last hop").0
+                        flood_response
+                            .path_trace
+                            .last()
+                            .expect("Flood requests should have a last hop")
+                            .0
                     }
                 };
 
@@ -653,7 +658,6 @@ mod tests {
 
         let mut network_topology = HashMap::new();
 
-
         network_topology.insert(1, HashSet::from([2, 3, 4, 6]));
         network_topology.insert(2, HashSet::from([1, 3, 5, 7]));
         network_topology.insert(3, HashSet::from([2, 1, 5, 7]));
@@ -701,7 +705,6 @@ mod tests {
                         .clone(),
                 );
             }
-
 
             // Create the drone using the `get_drone_impl` function
             let mut drone = get_drone_impl::get_drone_impl(
@@ -752,7 +755,6 @@ mod tests {
             vec![5, 6],
             vec![7],
             0,
-
             ui_command_receiver,
             ui_response_sender,
             forwarded_event_sender,
@@ -762,7 +764,7 @@ mod tests {
     #[test]
     fn test_send_command() {
         let controller = _initialize_mock_network();
-        controller.send_command(1, &DroneCommand::SetPacketDropRate(0.5));
+        _ = controller.send_command(1, &DroneCommand::SetPacketDropRate(0.5));
     }
 
     #[test]

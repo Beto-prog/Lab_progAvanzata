@@ -1,7 +1,8 @@
+pub mod forwarded_event;
+pub mod network_graph;
 pub mod node_stats;
 pub mod simulation_controller;
 pub mod simulation_controller_ui;
 pub mod ui_commands;
-pub mod forwarded_event;
 pub use simulation_controller::SimulationController;
 pub use simulation_controller_ui::SimulationControllerUI;

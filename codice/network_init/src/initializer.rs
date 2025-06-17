@@ -190,7 +190,6 @@ impl NetworkInitializer {
         let (ui_response_sender, ui_response_receiver) = unbounded();
         let (forwarded_event_sender, forwarded_event_receiver) = unbounded();
 
-
         let mut simulation_controller = SimulationController::new(
             drone_command_senders,
             node_senders,
@@ -219,6 +218,8 @@ impl NetworkInitializer {
                         ui_command_sender,
                         ui_response_receiver,
                         forwarded_event_receiver,
+                        config.client.iter().map(|c| c.id).collect(),
+                        config.server.iter().map(|c| c.id).collect(),
                     ),
                     client_uis,
                 )))

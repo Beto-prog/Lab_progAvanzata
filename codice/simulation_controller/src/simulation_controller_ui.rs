@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_lines)]
 
 use crate::forwarded_event::ForwardedEvent;
+use crate::network_graph::NetworkGraph;
 use crate::node_stats::DroneStats;
 use crate::ui_commands::{UICommand, UIResponse};
 use crossbeam_channel::Receiver;
@@ -22,6 +23,9 @@ pub struct SimulationControllerUI {
     selected_remove_neighbour: HashMap<NodeId, NodeId>,
     snackbar: Option<(String, f64)>,
     snackbar_duration: f64,
+    clients: Vec<NodeId>,
+    servers: Vec<NodeId>,
+    network_graph: NetworkGraph,
 }
 
 impl SimulationControllerUI {
@@ -31,13 +35,11 @@ impl SimulationControllerUI {
         ui_command_sender: Sender<UICommand>,
         ui_response_receiver: Receiver<UIResponse>,
         forwarded_event_receiver: Receiver<ForwardedEvent>,
+        clients: Vec<NodeId>,
+        servers: Vec<NodeId>,
     ) -> Self {
         env_logger::init();
-        let selected_tab = *drone_stats
-            .keys()
-            .next()
-            .expect("There should always be at least one drone")
-            as usize;
+
         let mut new_pdr = HashMap::new();
         for (drone_id, drone) in drone_stats.iter() {
             new_pdr.insert(*drone_id, drone.pdr);
@@ -53,7 +55,7 @@ impl SimulationControllerUI {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
         Self {
-            selected_tab,
+            selected_tab: 0,
             drone_stats,
             ui_command_sender,
             ui_response_receiver,
@@ -63,6 +65,9 @@ impl SimulationControllerUI {
             selected_remove_neighbour,
             snackbar: None,
             snackbar_duration: 2.0,
+            clients,
+            servers,
+            network_graph: NetworkGraph::new(),
         }
     }
 
@@ -285,7 +290,11 @@ impl SimulationControllerUI {
         }
 
         ui.separator();
+
         ui.horizontal(|ui| {
+            if (ui.button("Visualization")).clicked() {
+                self.selected_tab = 0;
+            }
             for drone in self.drone_stats.keys() {
                 if ui.button(format!("Drone {drone}")).clicked() {
                     self.selected_tab = *drone as usize;
@@ -295,11 +304,16 @@ impl SimulationControllerUI {
 
         let now = ctx.input(|i| i.time);
 
-        self.drone_stats_ui(
-            ui,
-            NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
-            now,
-        );
+        if self.selected_tab == 0 {
+            self.network_graph.show_ui(ui);
+        } else {
+            self.drone_stats_ui(
+                ui,
+                NodeId::try_from(self.selected_tab).expect("Should always be able to convert"),
+                now,
+            );
+        }
+
         if let Some((ref message, expires)) = self.snackbar {
             if now < expires {
                 // Draw the snackbar at the bottom center of the window.

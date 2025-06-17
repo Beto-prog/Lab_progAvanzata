@@ -15,7 +15,9 @@ env_logger = { version = "0.10", default-features = false, features = [
 ] }
 egui = "0.30"
 eframe = { version = "0.30", features = ["default"] }
-common = { path = "../common" }
+common =  { path = "../common" }
+egui_graphs = "0.23.0"
+petgraph = "0.6.0"
 
 
 [lib]
