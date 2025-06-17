@@ -33,9 +33,10 @@ use crate::logger::logger::{init_logger, write_log};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use fragment_reassembler::*;
 use std::collections::{HashMap, VecDeque};
-use std::env;
+use std::{env, thread};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use wg_2024::network::*;
 use wg_2024::packet::*;
 
@@ -293,9 +294,9 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-
+                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        self.discover_network();
+                                        //self.discover_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -357,9 +358,9 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-
+                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        self.discover_network();
+                                        //self.discover_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -404,9 +405,9 @@ impl Client1 {
                             Ok(_) => (),
                             Err(_) => {
                                 // Error: the first node is crashed
-
+                                //POSSIBLE ERROR HERE TODO
                                 self.sender_channels.remove(&new_first_hop);
-                                self.discover_network();
+                                //self.discover_network();
 
                                 let new_path =
                                     Self::bfs_compute_path(&self.network, self.node_id, dest_id)
@@ -515,14 +516,24 @@ impl Client1 {
             PacketType::Nack(nack) =>{
                 match nack.nack_type{
                     NackType::ErrorInRouting(_) =>{
-                        self.network = HashMap::new();
-                        self.discover_network();
+                        self.redo_network();
                     }
                     _ => ()
                 }
             }
             _ => (),
         }
+    }
+    pub fn redo_network(&mut self){
+        self.network = HashMap::new();
+        self.discover_network();
+        thread::spawn(move || {
+            let start_time = Instant::now();
+            let duration = Duration::from_millis(300);
+            while start_time.elapsed() < duration{
+                thread::sleep(Duration::from_millis(300))
+            }
+        });
     }
 
     pub fn run(&mut self) {
