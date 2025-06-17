@@ -35,7 +35,7 @@ use fragment_reassembler::*;
 use std::collections::{HashMap, VecDeque};
 use std::{env, thread};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use wg_2024::network::*;
 use wg_2024::packet::*;
@@ -60,6 +60,7 @@ pub struct Client1 {
     selected_server: NodeId,
     cmd_rcv: Receiver<String>,
     msg_snd: Sender<String>,
+    redo_discovery: Arc<(Mutex<bool>,Condvar)>
 }
 
 impl Client1 {
@@ -85,7 +86,7 @@ impl Client1 {
             cmd_snd,
             msg_rcv,
         );
-
+        let discovery_complete = Arc::new((Mutex::new(false),Condvar::new()));
         (
             Self {
                 node_id,
@@ -103,6 +104,7 @@ impl Client1 {
                 selected_server: NodeId::default(),
                 cmd_rcv,
                 msg_snd,
+                redo_discovery: discovery_complete
             },
             client_ui,
         )
@@ -525,15 +527,26 @@ impl Client1 {
         }
     }
     pub fn redo_network(&mut self){
-        self.network = HashMap::new();
+        self.network.clear();
+        let redo_discovery = Arc::clone(&self.redo_discovery);
+        {
+            let (lock, _cvar) = &*self.redo_discovery;
+            let mut done = lock.lock().expect("Failed to lock");
+            *done = false; // Ensure fresh discovery state
+        }
         self.discover_network();
         thread::spawn(move || {
-            let start_time = Instant::now();
-            let duration = Duration::from_millis(300);
-            while start_time.elapsed() < duration{
-                thread::sleep(Duration::from_millis(300))
-            }
+            let (lock, cvar) = &*redo_discovery;
+            let mut done = lock.lock().expect("Failed to lock");
+            thread::sleep(Duration::from_millis(300));
+            *done = true;
+            cvar.notify_all();
         });
+        let (lock, cvar) = &*self.redo_discovery;
+        let mut done = lock.lock().expect("Failed to lock");
+        while !*done{
+            done = cvar.wait(done).expect("Failed to get value");
+        }
     }
 
     pub fn run(&mut self) {
