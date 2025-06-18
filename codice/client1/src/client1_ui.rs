@@ -476,6 +476,14 @@ impl Client1_UI {
                                 Sink::try_new(&stream_handle).expect("Failed to create audio sink");
                             sink.append(src);
 
+                            while *audio_on.lock().expect("Failed to lock"){
+                                if sink.empty(){
+                                    break;
+                                }
+                                thread::sleep(Duration::from_millis(100));
+                            }
+                            sink.stop();
+                            /*
                             loop {
                                 // If the flag is false, stop the sink.
                                 if !*audio_on.lock().expect("Failed to lock") {
@@ -488,6 +496,7 @@ impl Client1_UI {
                                     break;
                                 }
                             }
+                             */
                         });
                     } else {
                         self.load_image();
