@@ -176,45 +176,47 @@ impl Client1 {
 
                     Some(last) => {
                         previous = last.0;
-                        if self
-                            .flood_ids
-                            .contains(&(request.flood_id, request.initiator_id))
-                        {
-                            request
-                                .path_trace
-                                .push((self.node_id.clone(), NodeType::Client));
-                            let resp = self.create_flood_response(packet.session_id, request);
-                            write_log(&format!("{:?}",previous));
-                            match self
-                                .sender_channels
-                                .get(&previous)
-                                .expect("CLIENT1: Didn't find neighbor 2")
-                                .send(resp)
+                        if self.sender_channels.get(&previous).is_some(){
+                            if self
+                                .flood_ids
+                                .contains(&(request.flood_id, request.initiator_id))
                             {
-                                Ok(_) => (),
-                                Err(_) => {
-                                    self.sender_channels.remove(&previous);
-                                    self.redo_network();
+                                request
+                                    .path_trace
+                                    .push((self.node_id.clone(), NodeType::Client));
+                                let resp = self.create_flood_response(packet.session_id, request);
+                                //write_log(&format!("{:?}",previous));
+                                match self
+                                    .sender_channels
+                                    .get(&previous)
+                                    .expect("CLIENT1: Didn't find neighbor 2")
+                                    .send(resp)
+                                {
+                                    Ok(_) => (),
+                                    Err(_) => {
+                                        self.sender_channels.remove(&previous);
+                                        self.redo_network();
+                                    }
                                 }
-                            }
-                        } else {
-                            request
-                                .path_trace
-                                .push((self.node_id.clone(), NodeType::Client));
-                            self.flood_ids
-                                .push((request.flood_id, request.initiator_id));
-                            let resp = self.create_flood_response(packet.session_id, request);
-                            write_log(&format!("{:?}",previous));
-                            match self
-                                .sender_channels
-                                .get(&previous)
-                                .expect("CLIENT1: Didn't find neighbor 3")
-                                .send(resp)
-                            {
-                                Ok(_) => (),
-                                Err(_) => {
-                                    self.sender_channels.remove(&previous);
-                                    self.redo_network();
+                            } else {
+                                request
+                                    .path_trace
+                                    .push((self.node_id.clone(), NodeType::Client));
+                                self.flood_ids
+                                    .push((request.flood_id, request.initiator_id));
+                                let resp = self.create_flood_response(packet.session_id, request);
+                                write_log(&format!("{:?}",previous));
+                                match self
+                                    .sender_channels
+                                    .get(&previous)
+                                    .expect("CLIENT1: Didn't find neighbor 3")
+                                    .send(resp)
+                                {
+                                    Ok(_) => (),
+                                    Err(_) => {
+                                        self.sender_channels.remove(&previous);
+                                        self.redo_network();
+                                    }
                                 }
                             }
                         }

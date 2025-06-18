@@ -141,7 +141,8 @@ mod test{
     #[test]
     fn test_fragment_string_assembled_correctly(){
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client1::new(1, HashMap::new(), rcv);
+        let (_,rcv_id) = unbounded::<NodeId>();
+        let mut client_test = Client1::new(1, HashMap::new(), rcv,rcv_id);
         let mut fr = FragmentReassembler::new();
         let test_data = &"A".repeat(200);
         let test_result = FragmentReassembler::generate_fragments(test_data);
@@ -149,24 +150,26 @@ mod test{
         for e in test_result.unwrap().iter(){
             fragm_vec = fr.add_fragment(1,1,e.clone());
         }
-        let res = FragmentReassembler::assemble_string_file(fragm_vec.unwrap().unwrap(),&mut client_test.received_files);
+        let res = FragmentReassembler::assemble_string_file(fragm_vec.unwrap().unwrap());
         assert!(test_data.eq(&res.unwrap()));
     }
     #[test]
     fn test_fragment_txt_assembled_correctly(){
+        let (_,rcv_id) = unbounded::<NodeId>();
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client1::new(1, HashMap::new(), rcv);
+        let mut client_test = Client1::new(1, HashMap::new(), rcv,rcv_id);
         let test_text_content = fs::read("src/test/file1");
-        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
+        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap());
         assert_eq!(test_result.unwrap(),"test 123456 advanced_programming");
         //need to check where the file is written lol
     }
     #[test]
     fn test_fragment_mediaFile_assembled_correctly(){
+        let (_,rcv_id) = unbounded::<NodeId>();
         let (_,rcv) = unbounded::<Packet>();
-        let mut client_test = Client1::new(1, HashMap::new(), rcv);
+        let mut client_test = Client1::new(1, HashMap::new(), rcv,rcv_id);
         let test_text_content = fs::read("src/test/testMedia.mp3");
-        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap(),&mut client_test.received_files);
+        let test_result = FragmentReassembler::assemble_string_file(test_text_content.unwrap());
         match test_result{
             Ok(_) => (),
             Err(_) => panic!("Error")

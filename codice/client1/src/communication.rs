@@ -318,10 +318,11 @@ mod test{
     fn test_handle_msg_received(){
         // Initialize dummy client
         let (snd,rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv, None);
-        cl.sender_channels.insert(2,snd);
-        cl.network.insert(1,vec![2]);
-        cl.other_client_ids.lock().expect("Failed to lock").push(2);
+        let (_,rcv_id) = unbounded::<NodeId>();
+        let mut cl = Client1::new(1, HashMap::new(), rcv, rcv_id);
+        cl.0.sender_channels.insert(2,snd);
+        cl.0.network.insert(1,vec![2]);
+        cl.0.other_client_ids.lock().expect("Failed to lock").push(2);
         // Tests
         let test_msg1 = "server_type!(CommunicationServer)".to_string() ;
         let test_msg2 = "files_list!([file1.txt,file2.txt])".to_string() ;
