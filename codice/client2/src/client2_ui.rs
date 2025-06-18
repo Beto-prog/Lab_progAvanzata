@@ -89,9 +89,12 @@ impl Client2_UI {
     pub fn client2_stats(&mut self, ui: &mut egui::Ui) {
         // Check for any incoming messages (e.g., from reassembly)
         while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
-            self.add_log_message(format!("received {}", msg), false);
-            self.can_show_response = true;
-            self.response = msg;
+            // Only process if it's a new message
+            if !self.log_messages.iter().any(|(m, _)| m == &format!("received {}", msg)) {
+                self.add_log_message(format!("received {}", msg), false);
+                self.can_show_response = true;
+                self.response = msg;
+            }
         }
 
         ui.separator();
@@ -358,7 +361,6 @@ impl Client2_UI {
                     ui.add_space(20.0);
                     let cmd = self.create_command();
                     if !self.error.0 && !self.selected_command.eq("Select command") {
-                        // TODO check what is the best choice to do
                         if ui
                             .add_sized(egui::vec2(50.0, 50.0), egui::Button::new("SEND"))
                             .clicked()
@@ -510,16 +512,6 @@ impl Client2_UI {
                 .expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
-            if let Ok(response) = self
-                .msg_rcv
-                .as_ref()
-                .expect("Failed to get value")
-                .try_recv()
-            {
-                self.add_log_message(format!("received {}", response), false);
-                self.can_show_response = true;
-                self.response = response;
-            }
         }
     }
 
