@@ -581,12 +581,13 @@ impl Client1 {
                         Err(_) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
                     }
                 }
-                recv(self.crashed_drone_rcv) -> crashed_drone_id {
-                    match id{
+                recv(self.crashed_drone_rcv) -> crashed_drone_id => {
+                    match crashed_drone_id{
                         Ok(id) =>{
                             self.sender_channels.remove(&id);
                             self.redo_network();
                         }
+                        Err(_) => ()
                     }
                 }
             }
