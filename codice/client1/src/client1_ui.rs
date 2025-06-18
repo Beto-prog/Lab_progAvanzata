@@ -2,10 +2,9 @@ use crate::logger::logger::{init_logger, write_log};
 use common::client_ui::ClientUI;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
-use egui::{Color32, ColorImage, Frame, RichText, TextEdit, TextStyle, TextureHandle};
+use egui::{Color32, Frame, RichText, TextEdit, TextStyle, TextureHandle};
 use egui_extras::RetainedImage;
-use image::GenericImageView;
-use rodio::{Decoder, OutputStream, Sink, Source};
+use rodio::{Decoder, OutputStream, Sink};
 #[allow(warnings)]
 use std::collections::HashMap;
 use std::fs::File;
@@ -464,7 +463,7 @@ impl Client1_UI {
                         thread::spawn(move || {
                             let (_stream, stream_handle) = OutputStream::try_default()
                                 .expect("Failed to get the default audio output stream");
-                            write_log(file_path.as_path().to_str().expect("Failed to convert"));
+                            //write_log(file_path.as_path().to_str().expect("Failed to convert"));
                             let audio = File::open(
                                 file_path.as_path().to_str().expect("Failed to convert"),
                             )
