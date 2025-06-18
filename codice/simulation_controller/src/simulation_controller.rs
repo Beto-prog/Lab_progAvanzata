@@ -45,6 +45,8 @@ pub struct SimulationController {
     ui_command_receiver: Receiver<UICommand>,
 
     ui_response_sender: Sender<UIResponse>,
+
+    crash_event_senders: Vec<Sender<NodeId>>,
 }
 
 impl SimulationController {
@@ -63,6 +65,8 @@ impl SimulationController {
 
         ui_command_receiver: Receiver<UICommand>,
         ui_response_sender: Sender<UIResponse>,
+
+        crash_event_senders: Vec<Sender<NodeId>>,
     ) -> Self {
         let mut node_types = HashMap::new();
 
@@ -89,6 +93,7 @@ impl SimulationController {
             drone_stats,
             ui_command_receiver,
             ui_response_sender,
+            crash_event_senders,
         }
     }
 
@@ -396,6 +401,11 @@ impl SimulationController {
         match self.send_command(drone_id, &DroneCommand::Crash) {
             Ok(()) => {
                 self.remove_drone(drone_id);
+                for sender in self.crash_event_senders.iter() {
+                    sender
+                        .send(drone_id)
+                        .expect("Should be able to send crash event");
+                }
                 self.drone_stats
                     .lock()
                     .expect("Should be able to unlock")
