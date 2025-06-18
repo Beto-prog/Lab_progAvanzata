@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use egui_graphs::{
-    DefaultEdgeShape, Graph, SettingsInteraction, SettingsNavigation, SettingsStyle,
+    DefaultEdgeShape, Graph, Metadata, SettingsInteraction, SettingsNavigation, SettingsStyle,
 };
 use petgraph::{
     csr::DefaultIx,
@@ -11,12 +11,17 @@ use petgraph::{
 };
 use wg_2024::network::NodeId;
 
-use crate::colored_data::{self, ColoredNode, NodeData};
+use crate::{
+    colored_data::{self, ColoredNode, NodeData},
+    packet_animation::{AnimationType, PacketAnimation},
+};
 
 pub struct NetworkGraph {
     graph: Graph<NodeData, String, Undirected, DefaultIx, ColoredNode, DefaultEdgeShape>,
     node_indexes: HashMap<NodeId, NodeIndex>,
     edge_indexes: HashMap<(NodeId, NodeId), EdgeIndex>,
+    packet_animations: HashMap<(u64, u64), VecDeque<PacketAnimation>>,
+    active_animations: HashMap<(u64, u64), PacketAnimation>,
 }
 
 impl NetworkGraph {
@@ -66,7 +71,25 @@ impl NetworkGraph {
             graph,
             node_indexes,
             edge_indexes,
+            packet_animations: HashMap::new(),
+            active_animations: HashMap::new(),
         }
+    }
+
+    pub fn add_packet_animation(
+        &mut self,
+        packet_id: (u64, u64),
+        start: NodeId,
+        end: NodeId,
+        animation_type: AnimationType,
+    ) {
+        let packet_animation_queue = self.packet_animations.entry(packet_id).or_default();
+        packet_animation_queue.push_back(PacketAnimation {
+            source: start,
+            dest: end,
+            start_time: 0.0,
+            anim_type: animation_type,
+        });
     }
 
     pub fn crash_drone(&mut self, drone_id: NodeId) {
@@ -95,25 +118,92 @@ impl NetworkGraph {
         self.edge_indexes.remove(&(min, max));
     }
 
-    pub fn show_ui(&mut self, ui: &mut egui::Ui) {
+    pub fn show_ui(&mut self, ui: &mut egui::Ui, now: f64) {
         let interaction_settings = &SettingsInteraction::new().with_dragging_enabled(true);
+
+        self.active_animations.retain(|_, animation| {
+            if let (Some(&source_idx), Some(&dest_idx)) = (
+                self.node_indexes.get(&animation.source),
+                self.node_indexes.get(&animation.dest),
+            ) {
+                if let (Some(source_node), Some(dest_node)) =
+                    (self.graph.node(source_idx), self.graph.node(dest_idx))
+                {
+                    let source_pos = source_node.location();
+                    let dest_pos = dest_node.location();
+                    let distance = source_pos.distance(dest_pos) / 100.0;
+                    return now - animation.start_time < distance.into();
+                }
+            }
+            return false;
+        });
+
+        for (key, animation_queue) in self.packet_animations.iter_mut() {
+            if !self.active_animations.contains_key(&key) {
+                let next_animation = animation_queue.pop_front();
+                if let Some(mut animation) = next_animation {
+                    animation.start_time = now;
+                    self.active_animations.insert(*key, animation);
+                }
+            }
+        }
 
         let style_settings = &SettingsStyle::new().with_labels_always(false);
         let navigation_settings = &SettingsNavigation::new()
             .with_fit_to_screen_enabled(false)
             .with_zoom_and_pan_enabled(true);
-        ui.add(
-            &mut egui_graphs::GraphView::<
-                NodeData,
-                String,
-                Undirected,
-                _,
-                ColoredNode,
-                DefaultEdgeShape,
-            >::new(&mut self.graph)
-            .with_styles(style_settings)
-            .with_interactions(interaction_settings)
-            .with_navigations(navigation_settings),
-        );
+
+        let graph_view = &mut egui_graphs::GraphView::<
+            NodeData,
+            String,
+            Undirected,
+            _,
+            ColoredNode,
+            DefaultEdgeShape,
+        >::new(&mut self.graph)
+        .with_styles(style_settings)
+        .with_interactions(interaction_settings)
+        .with_navigations(navigation_settings);
+
+        ui.add(graph_view);
+
+        let painter = ui.painter();
+
+        let meta = Metadata::load(ui);
+
+        let to_screen =
+            |canvas_pos: egui::Pos2| (canvas_pos.to_vec2() * meta.zoom + meta.pan).to_pos2();
+
+        for anim in self.active_animations.values() {
+            if let (Some(&source_idx), Some(&dest_idx)) = (
+                self.node_indexes.get(&anim.source),
+                self.node_indexes.get(&anim.dest),
+            ) {
+                if let (Some(source_node), Some(dest_node)) =
+                    (self.graph.node(source_idx), self.graph.node(dest_idx))
+                {
+                    let source_pos = source_node.location();
+                    let dest_pos = dest_node.location();
+
+                    let progress = ((now - anim.start_time)
+                        / ((source_pos.distance(dest_pos) as f64) / 100.0))
+                        as f32;
+                    let source_screen_pos = to_screen(source_pos);
+                    let dest_screen_pos = to_screen(dest_pos);
+
+                    let packet_pos = source_screen_pos.lerp(dest_screen_pos, progress);
+
+                    // NEW: Select color based on the animation type
+                    let color = match anim.anim_type {
+                        AnimationType::Fragment => egui::Color32::YELLOW,
+                        AnimationType::Ack => egui::Color32::GREEN,
+                        AnimationType::Nack => egui::Color32::RED,
+                    };
+
+                    // Draw the packet with the selected color
+                    painter.circle_filled(packet_pos, 5.0 * meta.zoom, color);
+                }
+            }
+        }
     }
 }

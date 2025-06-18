@@ -269,15 +269,23 @@ impl SimulationController {
     /// Removes a drone from the network
     fn remove_drone(&mut self, drone_id: NodeId) {
         // Notify neighbors to remove the crashed drone from their connections
+        let mut t_neighbors = Vec::<u8>::new();
         if let Some(neighbors) = self.network_topology.get(&drone_id) {
-            for neighbor in neighbors {
+            for neighbor in neighbors.iter() {
                 // We ignore errors here since the neighbor might already be disconnected
                 let _ = self.send_command(*neighbor, &DroneCommand::RemoveSender(drone_id));
             }
+            t_neighbors.extend(neighbors.iter());
+        }
+        for neighbor in t_neighbors.iter() {
+            self.network_topology
+                .get_mut(neighbor)
+                .expect("Should always be able to get neighbors")
+                .remove(&drone_id);
         }
         //self.node_command_senders.remove(&drone_id);
         self.node_packet_senders.remove(&drone_id);
-        self.network_topology.remove(&drone_id);
+        //self.network_topology.remove(&drone_id);
         //self.node_types.remove(&drone_id);
     }
 

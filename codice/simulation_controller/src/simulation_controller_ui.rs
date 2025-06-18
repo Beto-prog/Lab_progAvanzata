@@ -3,6 +3,7 @@
 use crate::forwarded_event::ForwardedEvent;
 use crate::network_graph::NetworkGraph;
 use crate::node_stats::DroneStats;
+use crate::packet_animation::AnimationType;
 use crate::ui_commands::{UICommand, UIResponse};
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
@@ -10,7 +11,7 @@ use eframe::egui;
 use egui::{Id, ScrollArea};
 use std::collections::{HashMap, HashSet};
 use wg_2024::network::NodeId;
-use wg_2024::packet::PacketType;
+use wg_2024::packet::{Packet, PacketType};
 
 pub struct SimulationControllerUI {
     drone_stats: HashMap<NodeId, DroneStats>,
@@ -89,10 +90,36 @@ impl SimulationControllerUI {
         match event {
             ForwardedEvent::PacketSent(packet) => {
                 let node_id = match packet.pack_type {
-                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => packet
-                        .routing_header
-                        .previous_hop()
-                        .expect("there should always be a previous hop"),
+                    PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => {
+                        let (start, dest) = Self::get_start_dest_from_packet(&packet);
+                        let packet_id = (packet.get_fragment_index(), packet.session_id);
+                        let animation_type = match packet.pack_type {
+                            PacketType::MsgFragment(_) => AnimationType::Fragment,
+                            PacketType::Ack(_) => AnimationType::Ack,
+                            PacketType::Nack(_) => AnimationType::Nack,
+                            _ => AnimationType::Fragment,
+                        };
+                        if packet.routing_header.hop_index == 2 {
+                            let start = packet.routing_header.hops[0];
+                            let end = packet.routing_header.hops[1];
+                            self.network_graph.add_packet_animation(
+                                packet_id,
+                                start,
+                                end,
+                                animation_type,
+                            );
+                        }
+                        self.network_graph.add_packet_animation(
+                            packet_id,
+                            start,
+                            dest,
+                            animation_type,
+                        );
+                        packet
+                            .routing_header
+                            .previous_hop()
+                            .expect("there should always be a previous hop")
+                    }
                     PacketType::FloodRequest(ref flood_request) => {
                         flood_request
                             .path_trace
@@ -346,7 +373,7 @@ impl SimulationControllerUI {
         let now = ctx.input(|i| i.time);
 
         if self.selected_tab == 0 {
-            self.network_graph.show_ui(ui);
+            self.network_graph.show_ui(ui, now);
         } else {
             self.drone_stats_ui(
                 ui,
@@ -381,6 +408,16 @@ impl SimulationControllerUI {
                     self.snackbar = Some((message, self.snackbar_duration + now));
                 }
             }
+        }
+    }
+
+    fn get_start_dest_from_packet(packet: &Packet) -> (NodeId, NodeId) {
+        match packet.pack_type {
+            PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => (
+                packet.routing_header.previous_hop().unwrap(),
+                packet.routing_header.current_hop().unwrap(),
+            ),
+            _ => (0, 0),
         }
     }
 }

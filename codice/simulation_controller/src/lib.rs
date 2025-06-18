@@ -2,6 +2,7 @@ pub mod colored_data;
 pub mod forwarded_event;
 pub mod network_graph;
 pub mod node_stats;
+pub mod packet_animation;
 pub mod simulation_controller;
 pub mod simulation_controller_ui;
 pub mod ui_commands;
