@@ -474,7 +474,7 @@ impl Client1_UI {
 
                             let sink =
                                 Sink::try_new(&stream_handle).expect("Failed to create audio sink");
-                            sink.append(src.convert_samples::<f32>());
+                            sink.append(src);
 
                             loop {
                                 // If the flag is false, stop the sink.
@@ -487,8 +487,6 @@ impl Client1_UI {
                                 if sink.empty() {
                                     break;
                                 }
-
-                                thread::sleep(Duration::from_millis(100));
                             }
                         });
                     } else {
