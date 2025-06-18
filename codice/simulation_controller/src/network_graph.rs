@@ -3,13 +3,20 @@ use std::collections::HashMap;
 use egui_graphs::{
     DefaultEdgeShape, Graph, SettingsInteraction, SettingsNavigation, SettingsStyle,
 };
-use petgraph::{csr::DefaultIx, prelude::StableGraph, Undirected};
+use petgraph::{
+    csr::DefaultIx,
+    graph::{EdgeIndex, NodeIndex},
+    prelude::StableGraph,
+    Undirected,
+};
 use wg_2024::network::NodeId;
 
 use crate::colored_data::{self, ColoredNode, NodeData};
 
 pub struct NetworkGraph {
     graph: Graph<NodeData, String, Undirected, DefaultIx, ColoredNode, DefaultEdgeShape>,
+    node_indexes: HashMap<NodeId, NodeIndex>,
+    edge_indexes: HashMap<(NodeId, NodeId), EdgeIndex>,
 }
 
 impl NetworkGraph {
@@ -22,6 +29,7 @@ impl NetworkGraph {
         let mut g = StableGraph::<NodeData, String, Undirected>::default();
 
         let mut node_indexes = HashMap::new();
+        let mut edge_indexes = HashMap::new();
 
         for drone_id in drones {
             let drone = NodeData {
@@ -48,12 +56,43 @@ impl NetworkGraph {
             node_indexes.insert(server_id, c);
         }
         for (a, b) in edges {
-            g.add_edge(node_indexes[&a], node_indexes[&b], 0.to_string());
+            let e = g.add_edge(node_indexes[&a], node_indexes[&b], 0.to_string());
+            edge_indexes.insert((a, b), e);
         }
 
         let graph = Graph::from(&g);
 
-        Self { graph }
+        Self {
+            graph,
+            node_indexes,
+            edge_indexes,
+        }
+    }
+
+    pub fn crash_drone(&mut self, drone_id: NodeId) {
+        let drone_index = self.node_indexes[&drone_id];
+        self.graph.remove_node(drone_index);
+        self.node_indexes.remove(&drone_id);
+    }
+
+    pub fn add_connection(&mut self, drone_id: NodeId, neighbour_id: NodeId) {
+        let drone_index = self.node_indexes[&drone_id];
+        let neighbour_index = self.node_indexes[&neighbour_id];
+
+        let edge = self
+            .graph
+            .add_edge(drone_index, neighbour_index, 0.to_string());
+        self.edge_indexes.insert((drone_id, neighbour_id), edge);
+    }
+
+    pub fn remove_connection(&mut self, drone_id: NodeId, neighbour_id: NodeId) {
+        let min = drone_id.min(neighbour_id);
+        let max = drone_id.max(neighbour_id);
+
+        let edge_index = self.edge_indexes[&(min, max)];
+
+        self.graph.remove_edge(edge_index);
+        self.edge_indexes.remove(&(min, max));
     }
 
     pub fn show_ui(&mut self, ui: &mut egui::Ui) {

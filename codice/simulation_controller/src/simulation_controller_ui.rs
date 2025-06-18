@@ -147,6 +147,7 @@ impl SimulationControllerUI {
                 if let Some(stats) = self.drone_stats.get_mut(&node_id) {
                     stats.crashed = true;
                 }
+                self.network_graph.crash_drone(node_id);
             }
             ForwardedEvent::ConnectionAdded(node1, node2) => {
                 if let Some(stats) = self.drone_stats.get_mut(&node1) {
@@ -155,6 +156,8 @@ impl SimulationControllerUI {
                 if let Some(stats) = self.drone_stats.get_mut(&node2) {
                     stats.neigbours.insert(node1);
                 }
+
+                self.network_graph.add_connection(node1, node2);
             }
             ForwardedEvent::ConnectionRemoved(node1, node2) => {
                 if let Some(stats) = self.drone_stats.get_mut(&node1) {
@@ -163,6 +166,7 @@ impl SimulationControllerUI {
                 if let Some(stats) = self.drone_stats.get_mut(&node2) {
                     stats.neigbours.remove(&node1);
                 }
+                self.network_graph.remove_connection(node1, node2);
             }
         }
     }
