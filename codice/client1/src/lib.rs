@@ -123,10 +123,11 @@ impl Client1 {
         let session_id = Self::generate_session_id();
         for neighbor in neighbors {
             //println!("CLIENT1: Sending flood request to Drone {}",neighbor);
+            write_log(&format!("{:?}",neighbor));
             match self
                 .sender_channels
                 .get(&neighbor)
-                .expect("CLIENT1: Didn't find neighbor")
+                .expect("CLIENT1: Didn't find neighbor 1")
                 .send(self.create_flood_request(request.clone(), neighbor, session_id))
             {
                 Ok(_) => (),
@@ -170,7 +171,9 @@ impl Client1 {
         match packet.pack_type {
             PacketType::FloodRequest(mut request) => {
                 let mut previous = 0;
+                write_log(&format!("{:?}",request.path_trace.clone()));
                 match request.path_trace.last() {
+
                     Some(last) => {
                         previous = last.0;
                         if self
@@ -181,10 +184,11 @@ impl Client1 {
                                 .path_trace
                                 .push((self.node_id.clone(), NodeType::Client));
                             let resp = self.create_flood_response(packet.session_id, request);
+                            write_log(&format!("{:?}",previous));
                             match self
                                 .sender_channels
                                 .get(&previous)
-                                .expect("CLIENT1: Didn't find neighbor")
+                                .expect("CLIENT1: Didn't find neighbor 2")
                                 .send(resp)
                             {
                                 Ok(_) => (),
@@ -200,10 +204,11 @@ impl Client1 {
                             self.flood_ids
                                 .push((request.flood_id, request.initiator_id));
                             let resp = self.create_flood_response(packet.session_id, request);
+                            write_log(&format!("{:?}",previous));
                             match self
                                 .sender_channels
                                 .get(&previous)
-                                .expect("CLIENT1: Didn't find neighbor")
+                                .expect("CLIENT1: Didn't find neighbor 3")
                                 .send(resp)
                             {
                                 Ok(_) => (),
@@ -289,11 +294,11 @@ impl Client1 {
                                     packet.session_id,
                                     frag_index,
                                 );
-
+                                write_log(&format!("{:?}",new_first_hop));
                                 match self
                                     .sender_channels
                                     .get(&new_first_hop)
-                                    .expect("CLIENT1: Didn't find neighbor")
+                                    .expect("CLIENT1: Didn't find neighbor 4")
                                     .send(new_pack)
                                 {
                                     Ok(_) => (),
@@ -353,11 +358,11 @@ impl Client1 {
                                     packet.session_id,
                                     frag_index,
                                 );
-
+                                write_log(&format!("{:?}",new_first_hop));
                                 match self
                                     .sender_channels
                                     .get(&new_first_hop)
-                                    .expect("CLIENT1: Didn't find neighbor")
+                                    .expect("CLIENT1: Didn't find neighbor 5")
                                     .send(new_pack)
                                 {
                                     Ok(_) => (),
@@ -401,10 +406,11 @@ impl Client1 {
                             packet.session_id,
                             frag_index,
                         );
+                        write_log(&format!("{:?}",new_first_hop));
                         match self
                             .sender_channels
                             .get(&new_first_hop)
-                            .expect("CLIENT1: Didn't find neighbor")
+                            .expect("CLIENT1: Didn't find neighbor 6")
                             .send(new_pack)
                         {
                             Ok(_) => (),

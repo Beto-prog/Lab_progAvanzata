@@ -115,6 +115,7 @@ impl NetworkInitializer {
 
             let client_receiver = node_receivers.get(&client_config.id).unwrap().clone();
 
+
             if index % 2 == 0 {
                 let (mut client, client_ui) = Client1::new(
                     client_config.id,
@@ -129,7 +130,12 @@ impl NetworkInitializer {
                 thread::spawn(move || client.run());
             } else {
                 let (mut client, client_ui) =
-                    Client2::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                    Client2::new(client_config.id, neighbor_senders.clone(), client_receiver,
+                                 crash_event_receivers
+                                     .get(&client_config.id)
+                                     .expect("Should always be able to get crash event receiver")
+                                     .clone(),
+                    );
                 client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
             }

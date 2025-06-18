@@ -33,6 +33,7 @@ pub struct Client2 {
     files_names: Arc<Mutex<Vec<String>>>,
     cmd_rcv: Receiver<String>,
     msg_snd: Sender<String>,
+    drone_rcv: Receiver<NodeId>
     //reader: BufReader<TcpStream>,
     //writer: TcpStream,
 }
@@ -42,6 +43,7 @@ impl Client2 {
         node_id: NodeId,
         neighbor_senders: HashMap<NodeId, Sender<Packet>>,
         receiver_channel: Receiver<Packet>,
+        drone_rcv: Receiver<NodeId>
     ) -> (Self, Client2_UI) {
         let other_client_ids = Arc::new(Mutex::new(vec![]));
         let files_names = Arc::new(Mutex::new(vec![]));
@@ -62,6 +64,7 @@ impl Client2 {
             Self {
                 node_id,
                 discovered_drones: HashMap::new(),
+                drone_rcv,
                 neighbor_senders,
                 network_graph: HashMap::new(),
                 servers,
@@ -73,6 +76,7 @@ impl Client2 {
                 files_names,
                 cmd_rcv,
                 msg_snd,
+
                 //reader,
                 //writer,
             },
@@ -555,6 +559,15 @@ message_for?(client_id, message)->NodeId"
                                 }
                             }
                             Err(e) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
+                        }
+                    }
+                    recv(self.drone_rcv) -> id => {
+                        match id{
+                            Ok(id) =>{
+                                self.neighbor_senders.remove(&id);
+                                self.discover_network();
+                            }
+                            Err(_) => ()
                         }
                     }
             }
