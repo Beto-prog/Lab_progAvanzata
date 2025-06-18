@@ -36,6 +36,7 @@ pub struct Client1_UI {
     media_server_commands: Vec<String>, //Commands
     image_response: Option<Result<RetainedImage, String>>,
     audio: Arc<Mutex<bool>>,
+    clear_clicked: bool
 }
 
 impl ClientUI for Client1_UI {
@@ -82,6 +83,7 @@ impl Client1_UI {
             ],
             image_response: None,
             audio: Arc::new(Mutex::new(true)),
+            clear_clicked : true
         }
     }
     pub fn client1_stats(&mut self, ui: &mut egui::Ui) {
@@ -145,12 +147,17 @@ impl Client1_UI {
                                 egui::ComboBox::new("Select communication_server_command", "")
                                     .selected_text(format!("{}", self.selected_command))
                                     .show_ui(ui, |ui| {
-                                        for command in &self.communication_server_commands {
-                                            ui.selectable_value(
-                                                &mut self.selected_command,
-                                                command.clone(),
-                                                command.clone(),
-                                            );
+                                        if self.clear_clicked{
+                                            for command in &self.communication_server_commands {
+                                                ui.selectable_value(
+                                                    &mut self.selected_command,
+                                                    command.clone(),
+                                                    command.clone(),
+                                                );
+                                            }
+                                        }
+                                        else{
+                                            ui.colored_label(Color32::RED, "Press 'Clear' to execute commands");
                                         }
                                     });
                             }
@@ -158,12 +165,17 @@ impl Client1_UI {
                                 egui::ComboBox::new("Select text_server_commands", "")
                                     .selected_text(format!("{}", self.selected_command))
                                     .show_ui(ui, |ui| {
-                                        for command in &self.text_server_commands {
-                                            ui.selectable_value(
-                                                &mut self.selected_command,
-                                                command.clone(),
-                                                command.clone(),
-                                            );
+                                        if self.clear_clicked{
+                                            for command in &self.text_server_commands {
+                                                ui.selectable_value(
+                                                    &mut self.selected_command,
+                                                    command.clone(),
+                                                    command.clone(),
+                                                );
+                                            }
+                                        }
+                                        else{
+                                            ui.colored_label(Color32::RED, "Press 'Clear' to execute commands");
                                         }
                                     });
                             }
@@ -171,12 +183,17 @@ impl Client1_UI {
                                 egui::ComboBox::new("Select media_server_commands", "")
                                     .selected_text(format!("{}", self.selected_command))
                                     .show_ui(ui, |ui| {
-                                        for command in &self.media_server_commands {
-                                            ui.selectable_value(
-                                                &mut self.selected_command,
-                                                command.clone(),
-                                                command.clone(),
-                                            );
+                                        if self.clear_clicked{
+                                            for command in &self.media_server_commands {
+                                                ui.selectable_value(
+                                                    &mut self.selected_command,
+                                                    command.clone(),
+                                                    command.clone(),
+                                                );
+                                            }
+                                        }
+                                        else{
+                                            ui.colored_label(Color32::RED, "Press 'Clear' to execute commands");
                                         }
                                     });
                             }
@@ -365,12 +382,14 @@ impl Client1_UI {
                     ui.add_space(20.0);
                     let cmd = self.create_command();
                     if !self.error.0 && !self.selected_command.eq("Select command") {
-                        // TODO check what is the best choice to do
-                        if ui
-                            .add_sized(egui::vec2(50.0, 50.0), egui::Button::new("SEND"))
-                            .clicked()
-                        {
-                            self.handle_response_show(cmd);
+                        if self.clear_clicked{
+                            if ui
+                                .add_sized(egui::vec2(50.0, 50.0), egui::Button::new("SEND"))
+                                .clicked()
+                            {
+                                self.handle_response_show(cmd);
+                                self.clear_clicked = false;
+                            }
                         }
                     }
                 }
@@ -524,6 +543,7 @@ impl Client1_UI {
                         self.can_show_file_list = false;
                         self.can_show_response = false;
                         self.response = String::new();
+                        self.clear_clicked = true;
                     }
                 });
         } else {
@@ -545,15 +565,19 @@ impl Client1_UI {
                         .add_sized(egui::vec2(50.0, 50.0), egui::Button::new("Clear"))
                         .clicked()
                     {
-                        self.error.0 = false;
-                        self.error.1 = String::new();
-                        self.can_show_clients = false;
-                        self.can_show_file_list = false;
-                        self.can_show_response = false;
-                        self.response = String::new();
+                        self.reset_fields_state();
                     }
                 });
         }
+    }
+    pub fn reset_fields_state(&mut self){
+        self.error.0 = false;
+        self.error.1 = String::new();
+        self.can_show_clients = false;
+        self.can_show_file_list = false;
+        self.can_show_response = false;
+        self.response = String::new();
+        self.clear_clicked = true;
     }
     pub fn retrieve_content(&self, content_type: &str, id: NodeId) -> String {
         match content_type {

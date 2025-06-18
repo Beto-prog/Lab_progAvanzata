@@ -155,13 +155,6 @@ impl Client2 {
                         commands_to_send.push(*node_id); // Defer handle_command call
                     }
                 }
-                // Uncomment and adjust if you want to handle clients here:
-                // NodeType::Client => {
-                //     let mut other_client_ids = self.other_client_ids.lock().unwrap();
-                //     if !other_client_ids.contains(node_id) {
-                //         other_client_ids.push(*node_id);
-                //     }
-                // }
                 _ => {}
             }
         }
@@ -173,11 +166,11 @@ impl Client2 {
 
             network_graph
                 .entry(*node_a_id)
-                .or_insert_with(std::collections::HashSet::new)
+                .or_insert_with(HashSet::new)
                 .insert(*node_b_id);
             network_graph
                 .entry(*node_b_id)
-                .or_insert_with(std::collections::HashSet::new)
+                .or_insert_with(HashSet::new)
                 .insert(*node_a_id);
         }
 
@@ -185,6 +178,7 @@ impl Client2 {
 
         // Now safely call handle_command for each server node_id
         for node_id in commands_to_send {
+            //println!("CLIENT2: CLIENT{}: Sending server_type to server {}", self.node_id, node_id);
             self.handle_command(format!("server_type?->{}", node_id));
         }
     }
@@ -213,24 +207,6 @@ impl Client2 {
 
     //Handle of commands
     pub fn handle_command(&mut self, command: String) -> String {
-        if command == "commands" {
-            println!(
-                "server_type?->NodeId
-server_list
-files_list?->NodeId
-registration_to_chat->NodeId
-file?(file_id)->NodeId
-media?(media_id)->NodeId
-message_for?(client_id, message)->NodeId"
-            );
-            return "CLIENT1: OK".to_string();
-        } else if command == "server_list" {
-            let servers = self.servers.lock().unwrap();
-            for (server_id, server_type) in servers.iter() {
-                println!("{}, {}", server_id, server_type);
-            }
-            return "CLIENT1: OK".to_string();
-        }
         let (comm, dest) = command
             .split_once("->")
             .expect("Command was formated wrong.");
@@ -238,27 +214,25 @@ message_for?(client_id, message)->NodeId"
         match comm {
             cmd if cmd == "server_type?"
                 || cmd == "files_list?"
-                || cmd == "registration_to_chat"
                 || cmd == "client_list?" =>
             {
                 //server_type?
                 //files_list?
-                //registration_to_chat
                 //client_list?
                 self.send_message(server_id, cmd, None);
-                return "CLIENT1: OK".to_string();
+                return "CLIENT2: OK".to_string();
             }
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                 //file?(file_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
-                return "CLIENT1: OK".to_string();
+                return "CLIENT2: OK".to_string();
             }
             cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
                 //media?(media_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.send_message(server_id, cmd, None);
-                return "CLIENT1: OK".to_string();
+                return "CLIENT2: OK".to_string();
             }
             cmd if cmd.starts_with("message_for?(") && cmd.ends_with(")") => {
                 //message_for?(client_id, message)
@@ -268,11 +242,11 @@ message_for?(client_id, message)->NodeId"
                     .and_then(|s| s.strip_suffix(")"));
                 let mut val = text.unwrap().split_once(", ");
                 self.send_message(server_id, cmd, None);
-                return "CLIENT1: OK".to_string();
+                return "CLIENT2: OK".to_string();
             }
             _ => {
                 "Wrong command, type 'commands' to see the full list of the commands.";
-                return "CLIENT1: OK".to_string();
+                return "CLIENT2: OK".to_string();
             }
         }
     }
@@ -284,16 +258,16 @@ message_for?(client_id, message)->NodeId"
                 //println!("CLIENT2: CLIENT{}: forwarding to Drone {}, packet: {:?}", self.node_id, first_hop, packet);
                 sender.send(packet).unwrap();
             } else {
-                println!(
-                    "CLIENT2: CLIENT{}: not found in neighbors for packet {}",
-                    first_hop, packet
-                );
+                // println!(
+                //     "CLIENT2: CLIENT{}: not found in neighbors for packet {}",
+                //     first_hop, packet
+                // );
             }
         } else {
-            println!(
-                "CLIENT2: CLIENT{}: No valid routing path found for packet",
-                self.node_id
-            );
+            // println!(
+            //     "CLIENT2: CLIENT{}: No valid routing path found for packet",
+            //     self.node_id
+            // );
         }
     }
 
@@ -306,6 +280,7 @@ message_for?(client_id, message)->NodeId"
         match message {
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
                 //server_type!(type)
+                //println!("RECV {:?} from {:?}", msg,  sender);
                 let svtype = msg
                     .strip_prefix("server_type!(")
                     .and_then(|s| s.strip_suffix(")"));
@@ -347,15 +322,6 @@ message_for?(client_id, message)->NodeId"
                     .strip_prefix("media!(")
                     .and_then(|s| s.strip_suffix(")"));
                 let values = txt.unwrap().split_once(", ");
-            }
-            msg if msg == "error_requested_not_found!"
-                || msg == "error_unsupported_request!"
-                || msg == "error_wrong_client_id!" =>
-            {
-                //error_requested_not_found!
-                //error_unsupported_request!
-                //error_wrong_client_id!
-                //TODO send to view
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") => {
                 //client_list!([list_of_client_ids])
@@ -406,18 +372,32 @@ message_for?(client_id, message)->NodeId"
         match packet.pack_type {
             PacketType::MsgFragment(ref fragment) => {
                 self.handle_msg_fragment(fragment.clone(), packet.clone());
-                self.forward_packet(Packet::new_ack(
-                    SourceRoutingHeader::with_first_hop(
-                        Self::bfs_shortest_path(
-                            self.network_graph.clone(),
-                            self.node_id,
-                            packet.routing_header.source().unwrap(),
-                        )
-                        .unwrap(),
-                    ),
-                    packet.session_id,
-                    fragment.fragment_index,
-                ))
+
+                // Get the source node from the packet's routing header
+                let source = packet.routing_header.source();
+
+                if let Some(source_id) = source {
+                    // Try to find a path back to the source
+                    if let Some(path) = Self::bfs_shortest_path(
+                        self.network_graph.clone(),
+                        self.node_id,
+                        source_id
+                    ) {
+                        self.forward_packet(Packet::new_ack(
+                            SourceRoutingHeader::with_first_hop(path),
+                            packet.session_id,
+                            fragment.fragment_index,
+                        ));
+                    } else {
+                        // If no path found, trigger network rediscovery
+                        //println!("CLIENT2: No path found to node {}, triggering rediscovery", source_id);
+                        self.servers = Arc::new(Mutex::new(HashMap::new()));
+                        self.other_client_ids = Arc::new(Mutex::new(Vec::new()));
+                        self.discovered_drones = HashMap::new();
+                        self.network_graph = HashMap::new();
+                        self.discover_network();
+                    }
+                }
             }
             PacketType::FloodRequest(request) => {
                 self.handle_flood_request(request, packet.session_id)
@@ -435,23 +415,23 @@ message_for?(client_id, message)->NodeId"
                 self.discover_network();
                 // Resend the original packet
                 if let Some(original_packet) = self.sent_packets.get(&packet.session_id) {
-                    println!(
-                        "CLIENT2: CLIENT{}: Resending packet for session ID {}",
-                        self.node_id, packet.session_id
-                    );
+                    // println!(
+                    //     "CLIENT2: CLIENT{}: Resending packet for session ID {}",
+                    //     self.node_id, packet.session_id
+                    // );
                     self.forward_packet(original_packet.clone());
                 } else {
-                    println!(
-                        "CLIENT2: CLIENT{}: No original packet found for session ID {}",
-                        self.node_id, packet.session_id
-                    );
+                    // println!(
+                    //     "CLIENT2: CLIENT{}: No original packet found for session ID {}",
+                    //     self.node_id, packet.session_id
+                    // );
                 }
             }
             _ => {
-                println!(
-                    "CLIENT2: CLIENT{}: received unknown packet type",
-                    self.node_id
-                );
+                // println!(
+                //     "CLIENT2: CLIENT{}: received unknown packet type",
+                //     self.node_id
+                // );
             }
         }
     }
