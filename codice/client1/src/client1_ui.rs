@@ -2,7 +2,7 @@ use crate::logger::logger::{init_logger, write_log};
 use common::client_ui::ClientUI;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
-use egui::{Color32, Frame, RichText, TextEdit, TextStyle, TextureHandle};
+use egui::{Color32, Frame, RichText, TextEdit, TextStyle};
 use egui_extras::RetainedImage;
 use rodio::{Decoder, OutputStream, Sink};
 #[allow(warnings)]
@@ -114,12 +114,17 @@ impl Client1_UI {
                         .show_ui(ui, |ui| {
                             let s = self.servers.lock().expect("Failed to lock");
                             let servers = s.keys().collect::<Vec<_>>();
-                            for server in servers {
-                                ui.selectable_value(
-                                    &mut self.selected_server.0,
-                                    *server,
-                                    server.to_string(),
-                                );
+                            if self.clear_clicked{
+                                for server in servers {
+                                    ui.selectable_value(
+                                        &mut self.selected_server.0,
+                                        *server,
+                                        server.to_string(),
+                                    );
+                                }
+                            }
+                            else{
+                                ui.colored_label(Color32::RED, "Press 'Clear' to execute commands");
                             }
                         });
                     ui.add_space(5.0);
@@ -203,108 +208,111 @@ impl Client1_UI {
                     });
                     ui.vertical(|ui| {
                         ui.add_space(10.0);
-                        match self.selected_command.as_str() {
-                            "message_for?" => {
-                                if !self.clients.lock().expect("Failed to lock").is_empty() {
-                                    ui.horizontal(|ui| {
-                                        //self.selected_command = "message_for?".to_string();
-                                        ui.label("Write a message:");
-                                        ui.add(
-                                            TextEdit::singleline(&mut self.input_text)
-                                                .desired_width(200.0),
+                        if self.clear_clicked{
+                            match self.selected_command.as_str() {
+                                "message_for?" => {
+                                    if !self.clients.lock().expect("Failed to lock").is_empty() {
+                                        ui.horizontal(|ui| {
+                                            //self.selected_command = "message_for?".to_string();
+                                            ui.label("Write a message:");
+                                            ui.add(
+                                                TextEdit::singleline(&mut self.input_text)
+                                                    .desired_width(200.0),
+                                            );
+                                            ui.label("to client:");
+                                            egui::ComboBox::new("Select client", "")
+                                                .selected_text(format!("{}", self.selected_client_id))
+                                                .show_ui(ui, |ui| {
+                                                    let binding =
+                                                        self.clients.lock().expect("Failed to lock");
+                                                    let clients = binding.iter().clone();
+                                                    for cl in clients {
+                                                        ui.selectable_value(
+                                                            &mut self.selected_client_id,
+                                                            cl.clone(),
+                                                            cl.clone().to_string(),
+                                                        );
+                                                    }
+                                                });
+                                        });
+                                    } else {
+                                        self.error = (
+                                            true,
+                                            "No clients available.\nCheck for available clients first"
+                                                .to_string(),
                                         );
-                                        ui.label("to client:");
-                                        egui::ComboBox::new("Select client", "")
-                                            .selected_text(format!("{}", self.selected_client_id))
-                                            .show_ui(ui, |ui| {
-                                                let binding =
-                                                    self.clients.lock().expect("Failed to lock");
-                                                let clients = binding.iter().clone();
-                                                for cl in clients {
-                                                    ui.selectable_value(
-                                                        &mut self.selected_client_id,
-                                                        cl.clone(),
-                                                        cl.clone().to_string(),
-                                                    );
-                                                }
-                                            });
-                                    });
-                                } else {
-                                    self.error = (
-                                        true,
-                                        "No clients available.\nCheck for available clients first"
-                                            .to_string(),
-                                    );
+                                    }
                                 }
-                            }
-                            "file?" => {
-                                if !self.files_names.lock().expect("Failed to lock").is_empty() {
-                                    let files = self.files_names.lock().expect("Failed to lock");
-                                    let binding = files
-                                        .get(&self.selected_server.0)
-                                        .expect("Failed to get files_id");
-                                    let ids = binding.iter().clone();
-                                    ui.horizontal(|ui| {
-                                        ui.label("File");
-                                        ui.add_space(10.0);
-                                        egui::ComboBox::new("Select file", "")
-                                            .selected_text(format!("{}", self.selected_content_id))
-                                            .show_ui(ui, |ui| {
-                                                for id in ids {
-                                                    ui.selectable_value(
-                                                        &mut self.selected_content_id,
-                                                        (*id).clone(),
-                                                        id.to_string(),
-                                                    );
-                                                }
+                                "file?" => {
+                                    if !self.files_names.lock().expect("Failed to lock").is_empty() {
+                                        let files = self.files_names.lock().expect("Failed to lock");
+                                        if let Some(binding) = files.get(&self.selected_server.0){
+                                            let ids = binding.iter().clone();
+                                            ui.horizontal(|ui| {
+                                                ui.label("File");
+                                                ui.add_space(10.0);
+                                                egui::ComboBox::new("Select file", "")
+                                                    .selected_text(format!("{}", self.selected_content_id))
+                                                    .show_ui(ui, |ui| {
+                                                        for id in ids {
+                                                            ui.selectable_value(
+                                                                &mut self.selected_content_id,
+                                                                (*id).clone(),
+                                                                id.to_string(),
+                                                            );
+                                                        }
+                                                    });
                                             });
-                                    });
-                                } else {
-                                    self.error = (
-                                        true,
-                                        "No content available.\nCheck for available files first"
-                                            .to_string(),
-                                    );
+                                        }
+
+                                    } else {
+                                        self.error = (
+                                            true,
+                                            "No content available.\nCheck for available files first"
+                                                .to_string(),
+                                        );
+                                    }
                                 }
-                            }
-                            "media?" => {
-                                if !self.files_names.lock().expect("Failed to lock").is_empty() {
-                                    let files = self.files_names.lock().expect("Failed to lock");
-                                    let binding = files
-                                        .get(&self.selected_server.0)
-                                        .expect("Failed to get files_id");
-                                    let ids = binding.iter().clone();
-                                    ui.horizontal(|ui| {
-                                        ui.label("Media");
-                                        ui.add_space(10.0);
-                                        egui::ComboBox::new("Select media", "")
-                                            .selected_text(format!("{}", self.selected_content_id))
-                                            .show_ui(ui, |ui| {
-                                                for id in ids {
-                                                    ui.selectable_value(
-                                                        &mut self.selected_content_id,
-                                                        (*id).clone(),
-                                                        id.to_string(),
-                                                    );
-                                                }
+                                "media?" => {
+                                    if !self.files_names.lock().expect("Failed to lock").is_empty() {
+                                        let files = self.files_names.lock().expect("Failed to lock");
+                                        if let Some(binding) = files.get(&self.selected_server.0){
+                                            let ids = binding.iter().clone();
+                                            ui.horizontal(|ui| {
+                                                ui.label("Media");
+                                                ui.add_space(10.0);
+                                                egui::ComboBox::new("Select media", "")
+                                                    .selected_text(format!("{}", self.selected_content_id))
+                                                    .show_ui(ui, |ui| {
+                                                        for id in ids {
+                                                            ui.selectable_value(
+                                                                &mut self.selected_content_id,
+                                                                (*id).clone(),
+                                                                id.to_string(),
+                                                            );
+                                                        }
+                                                    });
                                             });
-                                    });
-                                } else {
-                                    self.error = (
-                                        true,
-                                        "No content available.\nCheck for available media first"
-                                            .to_string(),
-                                    );
+                                        }
+
+                                    } else {
+                                        self.error = (
+                                            true,
+                                            "No content available.\nCheck for available media first"
+                                                .to_string(),
+                                        );
+                                    }
                                 }
+                                "files_list?" => {
+                                    self.selected_command = "files_list?".to_string();
+                                }
+                                "client_list?" => {
+                                    self.selected_command = "client_list?".to_string();
+                                }
+                                _ => (),
                             }
-                            "files_list?" => {
-                                self.selected_command = "files_list?".to_string();
-                            }
-                            "client_list?" => {
-                                self.selected_command = "client_list?".to_string();
-                            }
-                            _ => (),
                         }
+
                     });
                     ui.add_space(30.0);
                     ui.heading(RichText::new(format!("Summary")).color(Color32::GREEN));

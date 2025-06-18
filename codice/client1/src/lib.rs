@@ -123,7 +123,7 @@ impl Client1 {
         let session_id = Self::generate_session_id();
         for neighbor in neighbors {
             //println!("CLIENT1: Sending flood request to Drone {}",neighbor);
-            write_log(&format!("{:?}",neighbor));
+            //write_log(&format!("{:?}",neighbor));
             match self
                 .sender_channels
                 .get(&neighbor)
@@ -205,7 +205,7 @@ impl Client1 {
                                 self.flood_ids
                                     .push((request.flood_id, request.initiator_id));
                                 let resp = self.create_flood_response(packet.session_id, request);
-                                write_log(&format!("{:?}",previous));
+                                //write_log(&format!("{:?}",previous));
                                 match self
                                     .sender_channels
                                     .get(&previous)
@@ -277,7 +277,7 @@ impl Client1 {
                                 let dest_id = new_hops[0].clone();
                                 new_hops.reverse();
                                 let new_first_hop = new_hops[1];
-                                write_log(msg.as_str());
+                                //write_log(msg.as_str());
                                 //Handle the reconstructed message
                                 if msg.starts_with("server_type!(")
                                     || msg.starts_with("client_list!(")
@@ -296,7 +296,7 @@ impl Client1 {
                                     packet.session_id,
                                     frag_index,
                                 );
-                                write_log(&format!("{:?}",new_first_hop));
+                                //write_log(&format!("{:?}",new_first_hop));
                                 match self
                                     .sender_channels
                                     .get(&new_first_hop)
@@ -360,7 +360,7 @@ impl Client1 {
                                     packet.session_id,
                                     frag_index,
                                 );
-                                write_log(&format!("{:?}",new_first_hop));
+                                //write_log(&format!("{:?}",new_first_hop));
                                 match self
                                     .sender_channels
                                     .get(&new_first_hop)
@@ -408,7 +408,7 @@ impl Client1 {
                             packet.session_id,
                             frag_index,
                         );
-                        write_log(&format!("{:?}",new_first_hop));
+                        //write_log(&format!("{:?}",new_first_hop));
                         match self
                             .sender_channels
                             .get(&new_first_hop)
