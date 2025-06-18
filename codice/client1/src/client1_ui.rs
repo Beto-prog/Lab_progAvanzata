@@ -2,10 +2,9 @@ use crate::logger::logger::{init_logger, write_log};
 use common::client_ui::ClientUI;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::epaint::{Stroke, Vec2};
-use egui::{Color32, ColorImage, Frame, RichText, TextEdit, TextStyle, TextureHandle};
+use egui::{Color32, Frame, RichText, TextEdit, TextStyle, TextureHandle};
 use egui_extras::RetainedImage;
-use image::GenericImageView;
-use rodio::{Decoder, OutputStream, Sink, Source};
+use rodio::{Decoder, OutputStream, Sink};
 #[allow(warnings)]
 use std::collections::HashMap;
 use std::fs::File;
@@ -464,7 +463,7 @@ impl Client1_UI {
                         thread::spawn(move || {
                             let (_stream, stream_handle) = OutputStream::try_default()
                                 .expect("Failed to get the default audio output stream");
-                            write_log(file_path.as_path().to_str().expect("Failed to convert"));
+                            //write_log(file_path.as_path().to_str().expect("Failed to convert"));
                             let audio = File::open(
                                 file_path.as_path().to_str().expect("Failed to convert"),
                             )
@@ -474,8 +473,16 @@ impl Client1_UI {
 
                             let sink =
                                 Sink::try_new(&stream_handle).expect("Failed to create audio sink");
-                            sink.append(src.convert_samples::<f32>());
+                            sink.append(src);
 
+                            while *audio_on.lock().expect("Failed to lock"){
+                                if sink.empty(){
+                                    break;
+                                }
+                                thread::sleep(Duration::from_millis(100));
+                            }
+                            sink.stop();
+                            /*
                             loop {
                                 // If the flag is false, stop the sink.
                                 if !*audio_on.lock().expect("Failed to lock") {
@@ -487,9 +494,8 @@ impl Client1_UI {
                                 if sink.empty() {
                                     break;
                                 }
-
-                                thread::sleep(Duration::from_millis(100));
                             }
+                             */
                         });
                     } else {
                         self.load_image();
