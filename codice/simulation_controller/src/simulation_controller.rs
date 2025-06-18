@@ -44,6 +44,8 @@ pub struct SimulationController {
 
     ui_response_sender: Sender<UIResponse>,
     forwarded_event_sender: Sender<ForwardedEvent>,
+
+    crash_event_senders: Vec<Sender<NodeId>>,
 }
 
 impl SimulationController {
@@ -62,6 +64,8 @@ impl SimulationController {
         ui_command_receiver: Receiver<UICommand>,
         ui_response_sender: Sender<UIResponse>,
         forwarded_event_sender: Sender<ForwardedEvent>,
+
+        crash_event_senders: Vec<Sender<NodeId>>,
     ) -> Self {
         let mut node_types = HashMap::new();
 
@@ -88,6 +92,7 @@ impl SimulationController {
             ui_command_receiver,
             ui_response_sender,
             forwarded_event_sender,
+            crash_event_senders,
         }
     }
 
@@ -306,6 +311,11 @@ impl SimulationController {
                 self.forwarded_event_sender
                     .send(ForwardedEvent::DroneCrashed(drone_id))
                     .expect("Should be able to send event");
+                for sender in self.crash_event_senders.iter() {
+                    sender
+                        .send(drone_id)
+                        .expect("Should be able to send crash event");
+                }
                 self.ui_response_sender
                     .send(UIResponse::Success(
                         "Drone successfully crashed".to_string(),

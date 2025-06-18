@@ -37,6 +37,8 @@ impl NetworkInitializer {
         let mut drone_command_senders = HashMap::new();
         let mut drone_command_receivers = HashMap::new();
         let mut drone_stats = HashMap::new();
+        let mut crash_event_senders = Vec::new();
+        let mut crash_event_receivers = HashMap::new();
 
         let mut client_uis = Vec::<Box<dyn ClientUI>>::new();
 
@@ -54,15 +56,23 @@ impl NetworkInitializer {
         // Initialize clients
         for client_config in &config.client {
             let (client_send, client_recv) = unbounded();
+            let (crash_event_sender, crash_event_receiver) = unbounded();
+
             node_senders.insert(client_config.id, client_send.clone());
             node_receivers.insert(client_config.id, client_recv.clone());
+            crash_event_receivers.insert(client_config.id, crash_event_receiver);
+            crash_event_senders.push(crash_event_sender);
         }
 
         // Initialize servers
         for server_config in &config.server {
             let (server_send, server_recv) = unbounded();
+            let (crash_event_sender, crash_event_receiver) = unbounded();
+
             node_senders.insert(server_config.id, server_send.clone());
             node_receivers.insert(server_config.id, server_recv.clone());
+            crash_event_receivers.insert(server_config.id, crash_event_receiver);
+            crash_event_senders.push(crash_event_sender);
         }
 
         for (index, drone_config) in config.drone.iter().enumerate() {
@@ -106,8 +116,15 @@ impl NetworkInitializer {
             let client_receiver = node_receivers.get(&client_config.id).unwrap().clone();
 
             if index % 2 == 0 {
-                let (mut client, client_ui) =
-                    Client1::new(client_config.id, neighbor_senders.clone(), client_receiver);
+                let (mut client, client_ui) = Client1::new(
+                    client_config.id,
+                    neighbor_senders.clone(),
+                    client_receiver,
+                    crash_event_receivers
+                        .get(&client_config.id)
+                        .expect("Should always be able to get crash event receiver")
+                        .clone(),
+                );
                 client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
             } else {
@@ -137,6 +154,10 @@ impl NetworkInitializer {
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
+                    crash_event_receivers
+                        .get(&server_config.id)
+                        .expect("Should always be able to get crash event receiver")
+                        .clone(),
                     Box::new(server::file_system::ChatServer::new()),
                     None,
                     InterfaceHub.clone(),
@@ -151,6 +172,10 @@ impl NetworkInitializer {
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
+                        crash_event_receivers
+                            .get(&server_config.id)
+                            .expect("Should always be able to get crash event receiver")
+                            .clone(),
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::MediaServer,
@@ -170,6 +195,10 @@ impl NetworkInitializer {
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
+                        crash_event_receivers
+                            .get(&server_config.id)
+                            .expect("Should always be able to get crash event receiver")
+                            .clone(),
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::TextServer,
@@ -203,6 +232,7 @@ impl NetworkInitializer {
             ui_command_receiver,
             ui_response_sender,
             forwarded_event_sender,
+            crash_event_senders,
         );
 
         thread::spawn(move || simulation_controller.run());

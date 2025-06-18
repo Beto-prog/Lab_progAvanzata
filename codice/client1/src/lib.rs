@@ -48,6 +48,7 @@ pub struct Client1 {
     node_id: NodeId,
     sender_channels: HashMap<NodeId, Sender<Packet>>,
     receiver_channel: Receiver<Packet>,
+    crashed_drone_rcv: Receiver<NodeId>,
     flood_ids: Vec<(u64, NodeId)>,
     network: Graph,
     fragment_reassembler: FragmentReassembler, // Used to handle fragments
@@ -69,6 +70,7 @@ impl Client1 {
         node_id: NodeId,
         sender_channels: HashMap<NodeId, Sender<Packet>>,
         receiver_channel: Receiver<Packet>,
+        crashed_drone_rcv: Receiver<NodeId>
     ) -> (Self, Client1_UI) {
         let other_client_ids = Arc::new(Mutex::new(vec![]));
         let files_names = Arc::new(Mutex::new(HashMap::new()));
@@ -92,6 +94,7 @@ impl Client1 {
                 node_id,
                 sender_channels,
                 receiver_channel,
+                crashed_drone_rcv,
                 flood_ids: vec![],
                 network: Graph::new(),
                 fragment_reassembler: FragmentReassembler::new(),
@@ -187,7 +190,7 @@ impl Client1 {
                                 Ok(_) => (),
                                 Err(_) => {
                                     self.sender_channels.remove(&previous);
-                                    self.discover_network();
+                                    self.redo_network();
                                 }
                             }
                         } else {
@@ -206,7 +209,7 @@ impl Client1 {
                                 Ok(_) => (),
                                 Err(_) => {
                                     self.sender_channels.remove(&previous);
-                                    self.discover_network();
+                                    self.redo_network();
                                 }
                             }
                         }
@@ -298,7 +301,7 @@ impl Client1 {
                                         // Error: the first node is crashed
                                         //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        //self.discover_network();
+                                        self.redo_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -362,7 +365,7 @@ impl Client1 {
                                         // Error: the first node is crashed
                                         //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        //self.discover_network();
+                                        self.redo_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -409,7 +412,7 @@ impl Client1 {
                                 // Error: the first node is crashed
                                 //POSSIBLE ERROR HERE TODO
                                 self.sender_channels.remove(&new_first_hop);
-                                //self.discover_network();
+                                self.redo_network();
 
                                 let new_path =
                                     Self::bfs_compute_path(&self.network, self.node_id, dest_id)
@@ -578,6 +581,15 @@ impl Client1 {
                         Err(_) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
                     }
                 }
+                recv(self.crashed_drone_rcv) -> crashed_drone_id => {
+                    match crashed_drone_id{
+                        Ok(id) =>{
+                            self.sender_channels.remove(&id);
+                            self.redo_network();
+                        }
+                        Err(_) => ()
+                    }
+                }
             }
         }
     }
@@ -591,7 +603,8 @@ mod test {
     #[test]
     fn test_bfs_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let (_,rcv_id) = unbounded::<NodeId>();
+        let mut cl = Client1::new(1, HashMap::new(), rcv,rcv_id);
         cl.0.sender_channels.insert(19, snd);
         cl.0.network.insert(1, vec![2, 3]);
         cl.0.other_client_ids.lock().expect("Failed to lock").push(2);
@@ -614,7 +627,8 @@ mod test {
     #[test]
     fn test_bfs_no_shortest_path() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let (_,rcv_id) = unbounded::<NodeId>();
+        let mut cl = Client1::new(1, HashMap::new(), rcv,rcv_id);
         cl.0.sender_channels.insert(2, snd);
         cl.0.network.insert(1, vec![2, 3]);
         cl.0.other_client_ids.lock().expect("Failed to lock").push(2);
@@ -632,7 +646,8 @@ mod test {
     #[test]
     fn test_update_graph() {
         let (snd, rcv) = unbounded::<Packet>();
-        let mut cl = Client1::new(1, HashMap::new(), rcv);
+        let (_,rcv_id) = unbounded::<NodeId>();
+        let mut cl = Client1::new(1, HashMap::new(), rcv,rcv_id);
         cl.0.sender_channels.insert(2, snd);
         cl.0.network.insert(1, vec![2]);
         let mut f_req = FloodRequest::new(1234, 1);

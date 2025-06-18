@@ -37,6 +37,7 @@ pub struct  Server
     id: NodeId,
     packet_recv: Receiver<Packet>,                  //packet receiver
     packet_send: HashMap<NodeId, Sender<Packet>>,   //directly connected neighbour (drone  for send the packet)  
+    simulation_reciver: Receiver<NodeId>,
     server_type: Box<dyn ServerTrait>,              //Server type 
     path : Option<String>,
 
@@ -56,6 +57,7 @@ impl Server{
         id: NodeId,
         packet_recv: Receiver<Packet>,
         packet_send : HashMap<NodeId, Sender<Packet>>,
+        simulation_reciver : Receiver<NodeId>,
         server_type: Box< dyn ServerTrait>,
         path : Option<String>,
         interface_hub : AllServersUi,
@@ -97,6 +99,7 @@ impl Server{
             packet_recv: packet_recv,
             packet_send: packet_send,   //directly connected neighbour.  
             server_type: server_type,
+            simulation_reciver : simulation_reciver,
             path: path,                 //path where the file are stored
             myInterface : new_interface,
 
@@ -154,6 +157,26 @@ Start by sending a flood request to all the neighbour to fill up the graph
                             eprintln!("Error packet reception of server {}: {}", self.id, e)
                         }
                     }
+                }
+                
+                recv(self.simulation_reciver) -> node => {
+                    
+                    match node {
+                        Ok(node) => {
+                            NewWork::remove_neighbor(&mut self.graph,node);  
+                            
+                            self.packet_send.remove(&node);
+                            add_message(&self.myInterface.messages, "Server", "It seems that one drone has fallen, trying to send again the packet through another way",
+                                    Color::White, Color::Blue);
+
+                        }
+                        Err(e) => {
+                            //problem of the simulation controller
+                            
+                        }
+                    }
+                    
+
                 }
             }
         }
