@@ -33,9 +33,10 @@ use crate::logger::logger::{init_logger, write_log};
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use fragment_reassembler::*;
 use std::collections::{HashMap, VecDeque};
-use std::env;
+use std::{env, thread};
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 use wg_2024::network::*;
 use wg_2024::packet::*;
 
@@ -59,6 +60,7 @@ pub struct Client1 {
     selected_server: NodeId,
     cmd_rcv: Receiver<String>,
     msg_snd: Sender<String>,
+    redo_discovery: Arc<(Mutex<bool>,Condvar)>
 }
 
 impl Client1 {
@@ -84,7 +86,7 @@ impl Client1 {
             cmd_snd,
             msg_rcv,
         );
-
+        let discovery_complete = Arc::new((Mutex::new(false),Condvar::new()));
         (
             Self {
                 node_id,
@@ -102,6 +104,7 @@ impl Client1 {
                 selected_server: NodeId::default(),
                 cmd_rcv,
                 msg_snd,
+                redo_discovery: discovery_complete
             },
             client_ui,
         )
@@ -293,9 +296,9 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-
+                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        self.discover_network();
+                                        //self.discover_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -357,9 +360,9 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-
+                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
-                                        self.discover_network();
+                                        //self.discover_network();
 
                                         let new_path = Self::bfs_compute_path(
                                             &self.network,
@@ -404,9 +407,9 @@ impl Client1 {
                             Ok(_) => (),
                             Err(_) => {
                                 // Error: the first node is crashed
-
+                                //POSSIBLE ERROR HERE TODO
                                 self.sender_channels.remove(&new_first_hop);
-                                self.discover_network();
+                                //self.discover_network();
 
                                 let new_path =
                                     Self::bfs_compute_path(&self.network, self.node_id, dest_id)
@@ -515,13 +518,34 @@ impl Client1 {
             PacketType::Nack(nack) =>{
                 match nack.nack_type{
                     NackType::ErrorInRouting(_) =>{
-                        self.network = HashMap::new();
-                        self.discover_network();
+                        self.redo_network();
                     }
                     _ => ()
                 }
             }
             _ => (),
+        }
+    }
+    pub fn redo_network(&mut self){
+        self.network.clear();
+        let redo_discovery = Arc::clone(&self.redo_discovery);
+        {
+            let (lock, _cvar) = &*self.redo_discovery;
+            let mut done = lock.lock().expect("Failed to lock");
+            *done = false; // Ensure fresh discovery state
+        }
+        self.discover_network();
+        thread::spawn(move || {
+            let (lock, cvar) = &*redo_discovery;
+            let mut done = lock.lock().expect("Failed to lock");
+            thread::sleep(Duration::from_millis(300));
+            *done = true;
+            cvar.notify_all();
+        });
+        let (lock, cvar) = &*self.redo_discovery;
+        let mut done = lock.lock().expect("Failed to lock");
+        while !*done{
+            done = cvar.wait(done).expect("Failed to get value");
         }
     }
 
