@@ -136,7 +136,6 @@ impl NetworkInitializer {
         }
 
         // Server initialization
-
         let InterfaceHub: server::interface::interface::AllServersUi =
             Arc::new(Mutex::new(Vec::new()));
 
@@ -157,6 +156,10 @@ impl NetworkInitializer {
                     Box::new(server::file_system::ChatServer::new()),
                     None,
                     InterfaceHub.clone(),
+                    crash_event_receivers
+                        .get(&server_config.id)
+                        .expect("Should always be able to get crash event receiver")
+                        .clone(),
                 ),
                 0 => {
                     let base_path = if cfg!(target_os = "windows") {
