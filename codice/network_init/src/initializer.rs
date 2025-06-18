@@ -154,6 +154,10 @@ impl NetworkInitializer {
                     server_config.id,
                     packet_receiver.clone(),
                     neighbor_senders,
+                    crash_event_receivers
+                        .get(&server_config.id)
+                        .expect("Should always be able to get crash event receiver")
+                        .clone(),
                     Box::new(server::file_system::ChatServer::new()),
                     None,
                     InterfaceHub.clone(),
@@ -168,6 +172,10 @@ impl NetworkInitializer {
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
+                        crash_event_receivers
+                            .get(&server_config.id)
+                            .expect("Should always be able to get crash event receiver")
+                            .clone(),
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::MediaServer,
@@ -187,6 +195,10 @@ impl NetworkInitializer {
                         server_config.id,
                         packet_receiver.clone(),
                         neighbor_senders,
+                        crash_event_receivers
+                            .get(&server_config.id)
+                            .expect("Should always be able to get crash event receiver")
+                            .clone(),
                         Box::new(server::file_system::ContentServer::new(
                             base_path,
                             server::file_system::ServerType::TextServer,
