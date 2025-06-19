@@ -28,7 +28,8 @@ pub struct Client1_UI {
     msg_rcv: Option<Receiver<String>>, // Message receiver
     can_show_clients: bool, //Response handle
     can_show_response: bool, //Response handle
-    can_show_file_list: bool, //Response handle
+    can_show_file_list: bool, //Response handle,
+    show_sent_message: bool,
     response: String,   //Response txt
     error: (bool, String), //Error check
     communication_server_commands: Vec<String>, //Commands
@@ -73,6 +74,7 @@ impl Client1_UI {
             can_show_clients: false,
             can_show_response: false,
             can_show_file_list: false,
+            show_sent_message: false,
             response: String::new(),
             error: (false, String::new()),
             text_server_commands: vec!["file?".to_string(), "files_list?".to_string()],
@@ -419,6 +421,10 @@ impl Client1_UI {
                         let content = self.retrieve_content("Files", self.selected_server.0);
                         self.show_response(ui, content);
                     }
+                    if self.show_sent_message{
+                        let content = self.retrieve_content("SentMsg",self.selected_server.0);
+                        self.show_response(ui,content);
+                    }
                 } else {
                     let content = self.retrieve_content("Error", self.selected_server.0);
                     self.show_response(ui, content);
@@ -428,7 +434,18 @@ impl Client1_UI {
     }
 
     pub fn handle_response_show(&mut self, cmd: String) {
-        if self.selected_command.eq("client_list?") {
+        if self.selected_command.eq("message_for?"){
+            self.cmd_snd
+                .as_ref()
+                .expect("Failed to get value")
+                .send(cmd)
+                .expect("Failed to send");
+            self.show_sent_message = true;
+            self.can_show_clients = false;
+            self.can_show_response = false;
+            self.can_show_file_list = false;
+        }
+        else if self.selected_command.eq("client_list?") {
             self.cmd_snd
                 .as_ref()
                 .expect("Failed to get value")
@@ -437,6 +454,7 @@ impl Client1_UI {
             self.can_show_clients = true;
             self.can_show_response = false;
             self.can_show_file_list = false;
+            self.show_sent_message = false;
         } else if self.selected_command.eq("files_list?") {
             self.cmd_snd
                 .as_ref()
@@ -446,10 +464,13 @@ impl Client1_UI {
             self.can_show_clients = false;
             self.can_show_response = false;
             self.can_show_file_list = true;
+            self.show_sent_message = false;
+
         } else if self.error.0 {
             self.can_show_clients = false;
             self.can_show_response = false;
             self.can_show_file_list = false;
+            self.show_sent_message = false;
         } else {
             self.cmd_snd
                 .as_ref()
@@ -458,6 +479,7 @@ impl Client1_UI {
                 .expect("Failed to send");
             self.can_show_clients = false;
             self.can_show_file_list = false;
+            self.show_sent_message = false;
             if let Ok(response) = self
                 .msg_rcv
                 .as_ref()
@@ -550,6 +572,7 @@ impl Client1_UI {
                         self.can_show_clients = false;
                         self.can_show_file_list = false;
                         self.can_show_response = false;
+                        self.show_sent_message = false;
                         self.response = String::new();
                         self.clear_clicked = true;
                     }
@@ -584,6 +607,7 @@ impl Client1_UI {
         self.can_show_clients = false;
         self.can_show_file_list = false;
         self.can_show_response = false;
+        self.show_sent_message = false;
         self.response = String::new();
         self.clear_clicked = true;
     }
@@ -604,6 +628,9 @@ impl Client1_UI {
             }
             "Response" => {
                 format!("{}", self.response)
+            }
+            "SentMsg" =>{
+                "Message correctly sent".to_string()
             }
             "Error" => {
                 format!("Error: {}", self.error.1)
