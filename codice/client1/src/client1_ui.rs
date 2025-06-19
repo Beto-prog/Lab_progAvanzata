@@ -493,6 +493,14 @@ impl Client1_UI {
     }
     pub fn show_response(&mut self, ui: &mut egui::Ui, content: String) {
         if self.selected_server.1.eq("MediaServer") && self.selected_command.eq("media?") {
+            let mut save_path = String::from("Media saved in path:\n");
+            let content = env::current_dir()
+                .expect("Failed to get current path")
+                .as_path()
+                .to_str()
+                .expect("Failed to convert to str")
+                .to_string();
+            save_path.push_str(content.as_str());
             Frame::none()
                 .fill(Color32::BLACK)
                 .rounding(egui::Rounding::same(3))
@@ -501,8 +509,9 @@ impl Client1_UI {
                 .show(ui, |ui| {
                     ui.style_mut().override_text_style = Some(TextStyle::Monospace);
                     if self.selected_content_id.ends_with(".mp3") {
-                        ui.colored_label(Color32::LIGHT_GREEN, "Playing audio");
 
+                        ui.colored_label(Color32::LIGHT_GREEN, save_path.as_str());
+                        ui.add_space(10.0);
                         let path = env::current_dir().expect("Failed to get current_dir value");
                         let mut file_path = path;
                         let path2 = self.selected_content_id.clone();
@@ -531,20 +540,6 @@ impl Client1_UI {
                                 thread::sleep(Duration::from_millis(100));
                             }
                             sink.stop();
-                            /*
-                            loop {
-                                // If the flag is false, stop the sink.
-                                if !*audio_on.lock().expect("Failed to lock") {
-                                    sink.stop();
-                                    break;
-                                }
-
-                                // Exit loop if playback is finished.
-                                if sink.empty() {
-                                    break;
-                                }
-                            }
-                             */
                         });
                     } else {
                         self.load_image();
@@ -552,7 +547,10 @@ impl Client1_UI {
                             match image_result {
                                 Ok(retained_image) => {
                                     // Happy path: The image was loaded and parsed successfully.
+                                    ui.colored_label(Color32::LIGHT_GREEN, save_path.as_str());
+                                    ui.add_space(10.0);
                                     retained_image.show_size(ui, ui.available_size());
+
                                 }
                                 Err(error_message) => {
                                     // Error path: Display the error message in the UI.

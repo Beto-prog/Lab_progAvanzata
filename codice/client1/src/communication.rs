@@ -104,13 +104,13 @@ impl Client1 {
                                                         packet_retry.routing_header = SourceRoutingHeader::with_first_hop(path);
                                                         sender.send(packet_retry).expect("Failed to send packet");
                                                     }
-                                                    None =>{println!("Error: no path to the dest_id: Error 1")}
+                                                    None =>{write_log("Error communication.rs: no path to the dest_id, error 1")}
                                                 }
                                             }
                                             _=> ()
                                         }
                                     }
-                                    Err(e) => println!("{e}")
+                                    Err(e) => {write_log(&format!("Error communication.rs: {}",e))}
                                 }
                         }
                         Err(_) =>{ // Case of crashed drone
@@ -130,7 +130,7 @@ impl Client1 {
                     }
                 }
             }
-            None => {println!("Error: no path to dest_id: Error 2")}
+            None => {write_log("Error communication.rs : no path to dest_id, error 2")}
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
@@ -155,7 +155,6 @@ impl Client1 {
                 }
             }
             msg if msg.starts_with("files_list!(") && msg.ends_with(")") =>{
-                //println!("{msg}");
                 match Client1::get_file_vec(msg){
                     Some(val) =>{
                         let mut files = self.files_names.lock().expect("Failed to lock");
@@ -177,7 +176,7 @@ impl Client1 {
                         if !res.is_empty(){
                             res
                         }
-                        else{ "Error: no file".to_string() }
+                        else{"Error: no file".to_string() }
                     }
                     None => "Error while extracting file from message".to_string()
                 }

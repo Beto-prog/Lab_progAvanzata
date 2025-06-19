@@ -13,7 +13,13 @@ pub fn validate_config(config: &NetworkConfig) -> Result<(), String> {
         if drone.connected_node_ids.contains(&drone.id) {
             return Err(format!("Drone {} is connected to itself", drone.id));
         }
-        if drone.connected_node_ids.iter().collect::<HashSet<_>>().len() != drone.connected_node_ids.len() {
+        if drone
+            .connected_node_ids
+            .iter()
+            .collect::<HashSet<_>>()
+            .len()
+            != drone.connected_node_ids.len()
+        {
             return Err(format!("Drone {} has duplicate connections", drone.id));
         }
         if drone.pdr < 0.0 || drone.pdr > 1.0 {
@@ -27,9 +33,18 @@ pub fn validate_config(config: &NetworkConfig) -> Result<(), String> {
             return Err(format!("Duplicate node ID: {}", client.id));
         }
         if client.connected_drone_ids.is_empty() || client.connected_drone_ids.len() > 2 {
-            return Err(format!("Client {} must be connected to 1 or 2 drones", client.id));
+            return Err(format!(
+                "Client {} must be connected to 1 or 2 drones",
+                client.id
+            ));
         }
-        if client.connected_drone_ids.iter().collect::<HashSet<_>>().len() != client.connected_drone_ids.len() {
+        if client
+            .connected_drone_ids
+            .iter()
+            .collect::<HashSet<_>>()
+            .len()
+            != client.connected_drone_ids.len()
+        {
             return Err(format!("Client {} has duplicate connections", client.id));
         }
     }
@@ -40,9 +55,18 @@ pub fn validate_config(config: &NetworkConfig) -> Result<(), String> {
             return Err(format!("Duplicate node ID: {}", server.id));
         }
         if server.connected_drone_ids.len() < 2 {
-            return Err(format!("Server {} must be connected to at least 2 drones", server.id));
+            return Err(format!(
+                "Server {} must be connected to at least 2 drones",
+                server.id
+            ));
         }
-        if server.connected_drone_ids.iter().collect::<HashSet<_>>().len() != server.connected_drone_ids.len() {
+        if server
+            .connected_drone_ids
+            .iter()
+            .collect::<HashSet<_>>()
+            .len()
+            != server.connected_drone_ids.len()
+        {
             return Err(format!("Server {} has duplicate connections", server.id));
         }
     }
@@ -56,12 +80,12 @@ pub fn validate_config(config: &NetworkConfig) -> Result<(), String> {
 
 fn is_graph_connected(config: &NetworkConfig) -> Result<(), String> {
     let adjacency_list = build_adjacency_list(config);
-    
+
     // Check for bidirectional connections
     if let Err(e) = is_bidirectional(&adjacency_list) {
         return Err(e);
     }
-    
+
     // Check for full connectivity
     if let Err(e) = check_connectivity(&adjacency_list) {
         return Err(e);
@@ -89,7 +113,10 @@ fn build_adjacency_list(config: &NetworkConfig) -> HashMap<NodeId, Vec<NodeId>> 
 fn is_bidirectional(adjacency_list: &HashMap<NodeId, Vec<NodeId>>) -> Result<(), String> {
     for (node_id, neighbors) in adjacency_list {
         for neighbor_id in neighbors {
-            if !adjacency_list.get(neighbor_id).map_or(false, |ns| ns.contains(node_id)) {
+            if !adjacency_list
+                .get(neighbor_id)
+                .map_or(false, |ns| ns.contains(node_id))
+            {
                 return Err(format!(
                     "Connection is not bidirectional: node {} connects to {} but not vice versa",
                     node_id, neighbor_id

@@ -53,7 +53,6 @@ impl FragmentReassembler {
             //let total_length = ((fragment.total_n_fragments - 1) * 128 + fragment.length as u64) as usize;
             //let message = buffer[..total_length].to_vec();
             // Return reassembled message
-            //println!("{:?}",message);
             Ok(Some(message))
         } else {
             // If not all fragments received, return Error
@@ -63,7 +62,7 @@ impl FragmentReassembler {
     // Given a &str create the fragments from it
     pub fn generate_fragments(str: &str) -> Result<Vec<Fragment>, String> {
         // Convert the initial string to bytes
-        //println!("{}",str);
+
         let mut message_data = str.as_bytes().to_vec();
 
         let total_size = message_data.len();

@@ -122,7 +122,6 @@ impl Client1 {
         let neighbors: Vec<_> = self.sender_channels.keys().cloned().collect();
         let session_id = Self::generate_session_id();
         for neighbor in neighbors {
-            //println!("CLIENT1: Sending flood request to Drone {}",neighbor);
             //write_log(&format!("{:?}",neighbor));
             match self
                 .sender_channels
@@ -162,7 +161,6 @@ impl Client1 {
         let hops: Vec<NodeId> = vec![self.node_id, neighbor];
         let srh = SourceRoutingHeader::with_first_hop(hops);
         let res = Packet::new_flood_request(srh, session_id, request);
-        //println!("DEBUG CLIENT 1: {:?}",res);
         res
     }
     // Function to handle received packets of type FloodRequest
@@ -222,15 +220,12 @@ impl Client1 {
                         }
                     }
                     _ => {
-                        println!(
-                            "CLIENT1: Can't find neighbour who sent this packet {} ",
-                            request
-                        );
+                        write_log(&format!("Error: Can't find neighbour who sent this packet {} ", request));
                     }
                 }
             }
             _ => {
-                println!("CLIENT1: Wrong packet type received")
+                write_log("Error: Wrong packet type received");
             }
         }
     }
@@ -254,7 +249,7 @@ impl Client1 {
                 }
             }
             _ => {
-                println!("CLIENT1: Wrong packet type received")
+                write_log("Error: Wrong packet type received");
             }
         }
     }
@@ -306,7 +301,6 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
                                         self.redo_network();
 
@@ -370,7 +364,6 @@ impl Client1 {
                                     Ok(_) => (),
                                     Err(_) => {
                                         // Error: the first node is crashed
-                                        //POSSIBLE ERROR HERE TODO
                                         self.sender_channels.remove(&new_first_hop);
                                         self.redo_network();
 
@@ -418,7 +411,6 @@ impl Client1 {
                             Ok(_) => (),
                             Err(_) => {
                                 // Error: the first node is crashed
-                                //POSSIBLE ERROR HERE TODO
                                 self.sender_channels.remove(&new_first_hop);
                                 self.redo_network();
 
@@ -480,7 +472,6 @@ impl Client1 {
                 }
             }
         }
-        //println!("Network: {:?}",self.network);
     }
     // Calculates shortest path between two nodes
     pub fn bfs_compute_path(graph: &Graph, start: NodeId, end: NodeId) -> Option<Vec<NodeId>> {
@@ -578,7 +569,7 @@ impl Client1 {
                             Ok(packet) => {
                                     self.handle_packet(packet);
                             },
-                            Err(e) => ()//println!("Err1: {e}")
+                            Err(_) => ()
                     }
                 }
                 recv(self.cmd_rcv) -> cmd => {
@@ -586,10 +577,10 @@ impl Client1 {
                         Ok(cmd) => {
                             match self.handle_command(cmd.clone()).as_str() {
                                 "CLIENT1: OK" => (),
-                                e => () //println!("Err2: {e}")
+                                e => ()
                             }
                         }
-                        Err(_) =>  ()//println!("Err3: {e}") // Normal that prints at the end, the UI is closed
+                        Err(_) =>()
                     }
                 }
                 recv(self.crashed_drone_rcv) -> crashed_drone_id => {
