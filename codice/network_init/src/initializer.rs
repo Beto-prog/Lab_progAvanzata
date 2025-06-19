@@ -78,8 +78,13 @@ impl NetworkInitializer {
         for (index, drone_config) in config.drone.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &drone_config.connected_node_ids {
-                neighbor_senders
-                    .insert(*neighbor_id, node_senders.get(neighbor_id).unwrap().clone());
+                neighbor_senders.insert(
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("Should always be able to get neighbor sender")
+                        .clone(),
+                );
             }
 
             drone_stats.insert(
@@ -91,14 +96,17 @@ impl NetworkInitializer {
             );
 
             let mut drone = common::get_drone_impl::get_drone_impl(
-                u8::try_from(index).unwrap(),
+                u8::try_from(index).expect("Should always be able to convert"),
                 drone_config.id,
                 event_sender.clone(),
                 drone_command_receivers
                     .get(&drone_config.id)
-                    .unwrap()
+                    .expect("Should always be able to get drone command receiver")
                     .clone(),
-                node_receivers.get(&drone_config.id).unwrap().clone(),
+                node_receivers
+                    .get(&drone_config.id)
+                    .expect("Should always be able to get drone receiver")
+                    .clone(),
                 neighbor_senders,
                 drone_config.pdr,
             );
@@ -109,12 +117,19 @@ impl NetworkInitializer {
         for (index, client_config) in config.client.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &client_config.connected_drone_ids {
-                neighbor_senders
-                    .insert(*neighbor_id, node_senders.get(neighbor_id).unwrap().clone());
+                neighbor_senders.insert(
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("Should always be able to get neighbor sender")
+                        .clone(),
+                );
             }
 
-            let client_receiver = node_receivers.get(&client_config.id).unwrap().clone();
-
+            let client_receiver = node_receivers
+                .get(&client_config.id)
+                .expect("Should always be able to get client receiver")
+                .clone();
 
             if index % 2 == 0 {
                 let (mut client, client_ui) = Client1::new(
@@ -129,13 +144,15 @@ impl NetworkInitializer {
                 client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
             } else {
-                let (mut client, client_ui) =
-                    Client2::new(client_config.id, neighbor_senders.clone(), client_receiver,
-                                 crash_event_receivers
-                                     .get(&client_config.id)
-                                     .expect("Should always be able to get crash event receiver")
-                                     .clone(),
-                    );
+                let (mut client, client_ui) = Client2::new(
+                    client_config.id,
+                    neighbor_senders.clone(),
+                    client_receiver,
+                    crash_event_receivers
+                        .get(&client_config.id)
+                        .expect("Should always be able to get crash event receiver")
+                        .clone(),
+                );
                 client_uis.push(Box::new(client_ui));
                 thread::spawn(move || client.run());
             }
@@ -149,11 +166,18 @@ impl NetworkInitializer {
         for (index, server_config) in config.server.iter().enumerate() {
             let mut neighbor_senders = HashMap::new();
             for neighbor_id in &server_config.connected_drone_ids {
-                neighbor_senders
-                    .insert(*neighbor_id, node_senders.get(neighbor_id).unwrap().clone());
+                neighbor_senders.insert(
+                    *neighbor_id,
+                    node_senders
+                        .get(neighbor_id)
+                        .expect("Should always be able to get neighbor sender")
+                        .clone(),
+                );
             }
 
-            let packet_receiver = node_receivers.get(&server_config.id).unwrap();
+            let packet_receiver = node_receivers
+                .get(&server_config.id)
+                .expect("Should always be able to get server receiver");
 
             let mut server = match index % 3 {
                 1 => server::Server::new(
@@ -234,7 +258,7 @@ impl NetworkInitializer {
             config.drone.iter().map(|c| c.id).collect(),
             config.client.iter().map(|c| c.id).collect(),
             config.server.iter().map(|c| c.id).collect(),
-            u8::try_from(config.drone.len() % 10).unwrap(),
+            u8::try_from(config.drone.len() % 10).expect("Should always be able to convert"),
             ui_command_receiver,
             ui_response_sender,
             forwarded_event_sender,

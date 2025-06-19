@@ -414,8 +414,14 @@ impl SimulationControllerUI {
     fn get_start_dest_from_packet(packet: &Packet) -> (NodeId, NodeId) {
         match packet.pack_type {
             PacketType::MsgFragment(_) | PacketType::Ack(_) | PacketType::Nack(_) => (
-                packet.routing_header.previous_hop().unwrap(),
-                packet.routing_header.current_hop().unwrap(),
+                packet
+                    .routing_header
+                    .previous_hop()
+                    .expect("There should always be a previous hop"),
+                packet
+                    .routing_header
+                    .current_hop()
+                    .expect("There should always be a current hop"),
             ),
             _ => (0, 0),
         }
