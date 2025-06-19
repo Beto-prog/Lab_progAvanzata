@@ -171,7 +171,7 @@ impl SimulationController {
             DroneEvent::PacketDropped(packet) => {
                 let node_id = packet
                     .routing_header
-                    .previous_hop()
+                    .current_hop()
                     .expect("Previous hop should always be valid");
                 if self.node_types.get(&node_id) == Some(&NodeType::Drone) {
                     self.forwarded_event_sender

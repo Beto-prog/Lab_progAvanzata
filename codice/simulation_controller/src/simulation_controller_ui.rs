@@ -147,21 +147,36 @@ impl SimulationControllerUI {
                 }
                 self.drone_stats
                     .get_mut(&node_id)
-                    .expect("Drone should exist")
+                    .expect(format!("Drone should exist, fragment: {}", node_id).as_str())
                     .packets_sent
                     .push(packet);
             }
             ForwardedEvent::PacketDropped(packet) => {
+                let packet_id = (packet.get_fragment_index(), packet.session_id);
+                let animation_type = match packet.pack_type {
+                    PacketType::MsgFragment(_) => AnimationType::Fragment,
+                    PacketType::Ack(_) => AnimationType::Ack,
+                    PacketType::Nack(_) => AnimationType::Nack,
+                    _ => AnimationType::Fragment,
+                };
+
+                if packet.routing_header.hop_index == 1 {
+                    let start = packet.routing_header.hops[0];
+                    let end = packet.routing_header.hops[1];
+                    self.network_graph
+                        .add_packet_animation(packet_id, start, end, animation_type);
+                }
+
                 let node_id = packet
                     .routing_header
-                    .previous_hop()
+                    .current_hop()
                     .expect("Previous hop should always be valid");
                 if let Some(stats) = self.drone_stats.get_mut(&node_id) {
                     stats.packets_dropped += 1;
                 }
                 self.drone_stats
                     .get_mut(&node_id)
-                    .expect("Drone should exist")
+                    .expect(format!("Drone should exist, dropped: {}", node_id).as_str())
                     .packets_sent
                     .push(packet);
             }
