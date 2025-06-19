@@ -100,30 +100,27 @@ impl FragmentReassembler {
     pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
         Ok(general_purpose::STANDARD.encode(data))
     }
-    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {          //Attenzione gli mp3 non hanno problemi ma le immagini e i video sono molto sensibil. Basta un byte fuori posto e non va piu 
-        // 1. dopo la prima '('
-        let after_paren = data.iter()
+    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
+        // Trova il primo '('
+        let payload_start = data.iter()
             .position(|&b| b == b'(')
-            .ok_or("Not a valid format: '(' missing")? + 1;
+            .ok_or("Missing '(' in message")? + 1;
 
-        // 2. se esiste una virgola subito dopo (caso file!(size, ...)), non
-        //    salta anche <size>, fino alla prima ','
-        let payload_start = match data[after_paren..].iter().position(|&b| b == b',') {
-            Some(idx) => after_paren + idx + 1, // byte dopo la virgola
-            None      => after_paren,           // messaggio media!(...) ‑ niente size
-        };
-
-        // 3. ultima ')' (esclude pure il padding 0x00 finale) !!IMPORTANTE
-        let mut payload_end = data.iter()
-            .rposition(|&b| b == b')')
-            .ok_or("Not a valid format: ')' missing")?;
-
-        while payload_end > payload_start && data[payload_end] == 0 {
-            payload_end -= 1;        // togli eventuali 0x00 dopo la ')'
+        // Trova l'ultima ')' DOPO l'inizio del payload — ma solo se esiste
+        let mut payload_end = data.len();
+        if let Some(last_paren) = data.iter().rposition(|&b| b == b')') {
+            if last_paren > payload_start {
+                payload_end = last_paren;
+            }
         }
 
-        let payload = &data[payload_start..payload_end]; // ')' esclusa
+        if payload_end <= payload_start {
+            return Err("Invalid payload range".to_string());
+        }
 
+        let payload = &data[payload_start..payload_end];
+
+        // Scrive il file
         let mut file = File::create(Path::new(output_path))
             .map_err(|e| format!("Error while creating file: {e}"))?;
         file.write_all(payload)
