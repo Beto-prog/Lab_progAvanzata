@@ -28,7 +28,7 @@ use ratatui::style::Color;
 
 pub use message::file_system;
 use crate::file_system::ServerType;
-use crate::logger::logger::init_logger;
+//use crate::logger::logger::init_logger;
 //use crate::logger::logger::write_log;
 use rand::seq::SliceRandom;
 

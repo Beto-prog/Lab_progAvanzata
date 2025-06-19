@@ -1,4 +1,4 @@
-pub mod logger
+/*pub mod logger
 {
     use std::fs::{OpenOptions};
     use std::io::Write;
@@ -19,7 +19,7 @@ pub mod logger
 
     /// Scrive un messaggio nel file log.txt
     pub fn write_log(message: &str) {
-        unsafe {
+        codice non sicuro {
             if let Some(lock) = &LOGGER {
                 let _guard = lock.lock().unwrap();
 
@@ -41,4 +41,4 @@ pub mod logger
         }
     }
 
-}
+}*/
