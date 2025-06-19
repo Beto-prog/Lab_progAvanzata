@@ -514,7 +514,7 @@ pub mod file_system {
                                     let response = format!("file!({},", x);
                                     Repackager::create_fragments(
                                         &*response,
-                                        Some(path.to_str().unwrap()),
+                                        Some(path.to_str().unwrap_or_default()),
                                     )
                                 }
                             }
@@ -544,7 +544,7 @@ pub mod file_system {
                             *flag=2;
                             Repackager::create_fragments(
                                 &*"media!(",
-                                Some(path.to_str().unwrap()),
+                                Some(path.to_str().unwrap_or_default()),
                             )
                         } else
                         //can not retrieve file

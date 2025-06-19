@@ -98,8 +98,9 @@ impl Server{
             id :  id,
             packet_recv: packet_recv,
             packet_send: packet_send,   //directly connected neighbour.  
-            server_type: server_type,
             simulation_reciver : simulation_reciver,
+            server_type: server_type,
+
             path: path,                 //path where the file are stored
             myInterface : new_interface,
 
@@ -475,7 +476,19 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
                         //for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
-                        self.packet_send.get(&previous_neighbour).expect("Error while getting neighbor").send(response.clone()).expect("Server: Error while sending FloodResponse"); //TODO do match case
+                        
+                        
+                        //self.packet_send.get(&previous_neighbour).expect("Error while getting neighbor").send(response.clone()).expect("Server: Error while sending FloodResponse"); //TODO do match case
+                        let c =self.packet_send.get(&previous_neighbour);    //take the first node to which you need to send the messages
+                        match c {
+                            None => {
+                                add_message(&self.myInterface.messages, "Server", "I was not able to find a routing header to the destination!!!!", Color::White, Color::Red);
+
+                            }
+                            Some(x) => {x.send(response.clone());}
+                        }
+                    
+                    
                         //}
                     } else {
                         add_message(&self.myInterface.messages, "Server", "Can not find neighbour who send this packet.", Color::White, Color::Red);
