@@ -25,6 +25,7 @@ pub struct NetworkGraph {
 }
 
 impl NetworkGraph {
+    #[must_use]
     pub fn new(
         drones: Vec<NodeId>,
         clients: Vec<NodeId>,
@@ -135,11 +136,11 @@ impl NetworkGraph {
                     return now - animation.start_time < distance.into();
                 }
             }
-            return false;
+            false
         });
 
-        for (key, animation_queue) in self.packet_animations.iter_mut() {
-            if !self.active_animations.contains_key(&key) {
+        for (key, animation_queue) in &mut self.packet_animations {
+            if !self.active_animations.contains_key(key) {
                 let next_animation = animation_queue.pop_front();
                 if let Some(mut animation) = next_animation {
                     animation.start_time = now;
@@ -186,7 +187,7 @@ impl NetworkGraph {
                     let dest_pos = dest_node.location();
 
                     let progress = ((now - anim.start_time)
-                        / ((source_pos.distance(dest_pos) as f64) / 100.0))
+                        / (f64::from(source_pos.distance(dest_pos)) / 100.0))
                         as f32;
                     let source_screen_pos = to_screen(source_pos);
                     let dest_screen_pos = to_screen(dest_pos);

@@ -50,6 +50,7 @@ pub struct SimulationController {
 
 impl SimulationController {
     /// Creates a new Simulation Controller
+    #[must_use]
     pub fn new(
         node_command_senders: HashMap<NodeId, Sender<DroneCommand>>,
         node_packet_senders: HashMap<NodeId, Sender<Packet>>,
@@ -202,10 +203,10 @@ impl SimulationController {
         if let Some(sender) = self.node_command_senders.get(&drone_id) {
             sender
                 .send(command.clone())
-                .map_err(|_| format!("Failed to send command to drone {}", drone_id))?;
+                .map_err(|_| format!("Failed to send command to drone {drone_id}"))?;
             Ok(())
         } else {
-            Err(format!("Drone {} does not exist in the network", drone_id))
+            Err(format!("Drone {drone_id} does not exist in the network"))
         }
     }
 
@@ -271,13 +272,13 @@ impl SimulationController {
         // Notify neighbors to remove the crashed drone from their connections
         let mut t_neighbors = Vec::<u8>::new();
         if let Some(neighbors) = self.network_topology.get(&drone_id) {
-            for neighbor in neighbors.iter() {
+            for neighbor in neighbors {
                 // We ignore errors here since the neighbor might already be disconnected
                 let _ = self.send_command(*neighbor, &DroneCommand::RemoveSender(drone_id));
             }
             t_neighbors.extend(neighbors.iter());
         }
-        for neighbor in t_neighbors.iter() {
+        for neighbor in &t_neighbors {
             self.network_topology
                 .get_mut(neighbor)
                 .expect("Should always be able to get neighbors")
@@ -319,7 +320,7 @@ impl SimulationController {
                 self.forwarded_event_sender
                     .send(ForwardedEvent::DroneCrashed(drone_id))
                     .expect("Should be able to send event");
-                for sender in self.crash_event_senders.iter() {
+                for sender in &self.crash_event_senders {
                     sender
                         .send(drone_id)
                         .expect("Should be able to send crash event");
@@ -333,8 +334,7 @@ impl SimulationController {
             Err(e) => {
                 self.ui_response_sender
                     .send(UIResponse::Falure(format!(
-                        "If this drone crashed, this would happen: {}",
-                        e
+                        "If this drone crashed, this would happen: {e}"
                     )))
                     .expect("Should be able to send");
             }
@@ -462,15 +462,12 @@ impl SimulationController {
         if let Some(neighbors) = topology.get_mut(&destination) {
             neighbors.remove(&node_id);
         } else {
-            return Err(format!(
-                "Node {} does not exist in the network",
-                destination
-            ));
+            return Err(format!("Node {destination} does not exist in the network"));
         }
         if let Some(neighbors) = topology.get_mut(&node_id) {
             neighbors.remove(&destination);
         } else {
-            return Err(format!("Node {} does not exist in the network", node_id));
+            return Err(format!("Node {node_id} does not exist in the network"));
         }
 
         // Check if the network is still connected
@@ -484,7 +481,7 @@ impl SimulationController {
 
         let neighbors = topology
             .get(&node_id)
-            .ok_or_else(|| format!("Node {} does not exist in the network", node_id))?
+            .ok_or_else(|| format!("Node {node_id} does not exist in the network"))?
             .clone();
         for neighbor in neighbors {
             if let Some(neighbors) = topology.get_mut(&neighbor) {
@@ -507,39 +504,33 @@ impl SimulationController {
             match node_type {
                 NodeType::Client => {
                     let Some(neighbors) = topology.get(node_id) else {
-                        return Err(format!("Client {} has no connections", node_id));
+                        return Err(format!("Client {node_id} has no connections"));
                     };
                     if !neighbors
                         .iter()
                         .all(|n| node_types.get(n) == Some(&NodeType::Drone))
                     {
-                        return Err(format!(
-                            "Client {} is connected to non-drone nodes",
-                            node_id
-                        ));
+                        return Err(format!("Client {node_id} is connected to non-drone nodes"));
                     }
                     if neighbors.is_empty() {
-                        return Err(format!("Client {} has no connections", node_id));
+                        return Err(format!("Client {node_id} has no connections",));
                     }
                     if neighbors.len() > 2 {
-                        return Err(format!("Client {} has more than 2 connections", node_id));
+                        return Err(format!("Client {node_id} has more than 2 connections"));
                     }
                 }
                 NodeType::Server => {
                     let Some(neighbors) = topology.get(node_id) else {
-                        return Err(format!("Server {} has no connections", node_id));
+                        return Err(format!("Server {node_id} has no connections"));
                     };
                     if !neighbors
                         .iter()
                         .all(|n| node_types.get(n) == Some(&NodeType::Drone))
                     {
-                        return Err(format!(
-                            "Server {} is connected to non-drone nodes",
-                            node_id
-                        ));
+                        return Err(format!("Server {node_id} is connected to non-drone nodes"));
                     }
                     if neighbors.len() < 2 {
-                        return Err(format!("Server {} has fewer than 2 connections", node_id));
+                        return Err(format!("Server {node_id} has fewer than 2 connections"));
                     }
                 }
                 NodeType::Drone => {}
@@ -639,12 +630,12 @@ impl SimulationController {
 
         let insert1_successful = match topology.get_mut(&node_id1) {
             Some(neighbors) => neighbors.insert(node_id2),
-            None => return Err(format!("Node {} does not exist in the network", node_id1)),
+            None => return Err(format!("Node {node_id1} does not exist in the network")),
         };
 
         let insert2_successful = match topology.get_mut(&node_id2) {
             Some(neighbors) => neighbors.insert(node_id1),
-            None => return Err(format!("Node {} does not exist in the network", node_id2)),
+            None => return Err(format!("Node {node_id2} does not exist in the network")),
         };
 
         if insert1_successful && insert2_successful {

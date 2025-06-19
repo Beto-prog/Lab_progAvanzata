@@ -30,6 +30,7 @@ pub struct SimulationControllerUI {
 
 impl SimulationControllerUI {
     /// # Panics
+    #[must_use]
     pub fn new(
         drone_stats: HashMap<NodeId, DroneStats>,
         ui_command_sender: Sender<UICommand>,
@@ -41,7 +42,7 @@ impl SimulationControllerUI {
         env_logger::init();
 
         let mut new_pdr = HashMap::new();
-        for (drone_id, drone) in drone_stats.iter() {
+        for (drone_id, drone) in &drone_stats {
             new_pdr.insert(*drone_id, drone.pdr);
         }
 
@@ -55,12 +56,12 @@ impl SimulationControllerUI {
             selected_remove_neighbour.insert(*drone_id, 0);
         }
 
-        let drones = drone_stats.keys().cloned().collect::<Vec<_>>();
+        let drones = drone_stats.keys().copied().collect::<Vec<_>>();
 
         let mut canonical_edges = HashSet::new();
 
         for (&u, drone) in &drone_stats {
-            for &v in drone.neigbours.iter() {
+            for &v in &drone.neigbours {
                 let start = u.min(v);
                 let end = u.max(v);
 
@@ -94,7 +95,6 @@ impl SimulationControllerUI {
                         let (start, dest) = Self::get_start_dest_from_packet(&packet);
                         let packet_id = (packet.get_fragment_index(), packet.session_id);
                         let animation_type = match packet.pack_type {
-                            PacketType::MsgFragment(_) => AnimationType::Fragment,
                             PacketType::Ack(_) => AnimationType::Ack,
                             PacketType::Nack(_) => AnimationType::Nack,
                             _ => AnimationType::Fragment,
@@ -147,14 +147,13 @@ impl SimulationControllerUI {
                 }
                 self.drone_stats
                     .get_mut(&node_id)
-                    .expect(format!("Drone should exist, fragment: {}", node_id).as_str())
+                    .expect(&format!("Drone should exist, fragment: {node_id}"))
                     .packets_sent
                     .push(packet);
             }
             ForwardedEvent::PacketDropped(packet) => {
                 let packet_id = (packet.get_fragment_index(), packet.session_id);
                 let animation_type = match packet.pack_type {
-                    PacketType::MsgFragment(_) => AnimationType::Fragment,
                     PacketType::Ack(_) => AnimationType::Ack,
                     PacketType::Nack(_) => AnimationType::Nack,
                     _ => AnimationType::Fragment,
@@ -176,7 +175,7 @@ impl SimulationControllerUI {
                 }
                 self.drone_stats
                     .get_mut(&node_id)
-                    .expect(format!("Drone should exist, dropped: {}", node_id).as_str())
+                    .expect(format!("Drone should exist, dropped: {node_id}").as_str())
                     .packets_sent
                     .push(packet);
             }
@@ -360,12 +359,13 @@ impl SimulationControllerUI {
             //Show received packets
             ScrollArea::vertical().show(ui, |ui| {
                 for (index, item) in drone_stats.packets_sent.iter().enumerate() {
-                    ui.label(format!("{}: {}", index, item));
+                    ui.label(format!("{index}: {item}"));
                 }
             });
         }
     }
 
+    /// # Panics
     pub fn show_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, ui: &mut egui::Ui) {
         // Handle any forwarded events
         while let Ok(event) = self.forwarded_event_receiver.try_recv() {
