@@ -70,26 +70,51 @@ pub mod interface {
         name_color: Color,
         msg_color: Color,
     ) {
+
+        if let Ok(mut locked) = messages.lock() {
+            locked.push((name.to_string(), name_color, msg.to_string(), msg_color));
+
+        }
+        /*
         let mut locked = messages.lock().unwrap();
-        locked.push((name.to_string(), name_color, msg.to_string(), msg_color));
+        locked.push((name.to_string(), name_color, msg.to_string(), msg_color));*/
     }
 
     pub fn refresh(list : &FileList, files : Vec<String>)      //Some file could be added when the program is working
     {
-        let mut locked = list.lock().unwrap();
+        /*let mut locked = list.lock().unwrap();
 
         for name in files {
             if !locked.contains_key(&name) {
                 locked.insert(name.clone(), 0);
             }
+        }*/
+
+        if let Ok(mut locked) =list.lock() {
+
+            for name in files {
+                if !locked.contains_key(&name) {
+                    locked.insert(name.clone(), 0);
+                }
+            }
+
         }
+        
+        
     }
 
     pub fn increese_file_nrequest(list : &FileList, name : String)
     {
+        /*
         let mut locked = list.lock().unwrap();
         *locked.entry(name).or_insert(0) += 1;
 
+        */
+        
+        if let  Ok(mut locked) = list.lock() {
+            *locked.entry(name).or_insert(0) += 1;
+        }
+        
     }
 
 
@@ -99,18 +124,31 @@ pub mod interface {
                                         destination_id: NodeId,
                                         message : String)
     {
-
+/*
         let mut locked = chat.lock().unwrap();
         let key: BTreeSet<NodeId> = [source_id, destination_id].into_iter().collect();
         locked.entry(key)
             .or_insert_with(Vec::new)
-            .push((source_id, message));    }
+            .push((source_id, message));   */ 
+    
+        
+        if let Ok (mut locked) = chat.lock()
+        {
+            let key: BTreeSet<NodeId> = [source_id, destination_id].into_iter().collect();
+            locked.entry(key)
+                .or_insert_with(Vec::new)
+                .push((source_id, message));
+        }
+    
+    
+    }
 
 
     pub fn recive_flood_interface(
         grafo: &Graph,
         path_trace: Vec<(NodeId, NodeType)>,
     ) {
+       /*
         let mut grafo = grafo.lock().unwrap();
 
         for window in path_trace.windows(2) {
@@ -141,7 +179,44 @@ pub mod interface {
                         (vicini, *b_type)
                     });
             }
+        }*/
+        
+        
+        if let Ok(mut grafo) = grafo.lock()
+        {
+
+            for window in path_trace.windows(2) {
+                if let [(a_id, a_type), (b_id, b_type)] = window {
+                    // Nodo A
+                    grafo
+                        .entry(*a_id)
+                        .and_modify(|(vicini, tipo)| {
+                            vicini.insert(*b_id);
+                            *tipo = *a_type;
+                        })
+                        .or_insert_with(|| {
+                            let mut vicini = HashSet::new();
+                            vicini.insert(*b_id);
+                            (vicini, *a_type)
+                        });
+
+                    // Nodo B
+                    grafo
+                        .entry(*b_id)
+                        .and_modify(|(vicini, tipo)| {
+                            vicini.insert(*a_id);
+                            *tipo = *b_type;
+                        })
+                        .or_insert_with(|| {
+                            let mut vicini = HashSet::new();
+                            vicini.insert(*a_id);
+                            (vicini, *b_type)
+                        });
+                }
+            }
         }
+        
+        
     }
 
 
@@ -158,22 +233,22 @@ pub mod interface {
     ///
     pub fn start_ui(all_servers: AllServersUi) {
         thread::spawn(move || {
-            enable_raw_mode().unwrap();
+            enable_raw_mode().expect("impossible to open raw mode");
             let mut stdout = stdout();
-            execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+            execute!(stdout, EnterAlternateScreen, EnableMouseCapture).expect("impossible to capture impute");
             let backend = CrosstermBackend::new(stdout);
-            let mut terminal = Terminal::new(backend).unwrap();
+            let mut terminal = Terminal::new(backend).expect("impossible to get terminal");
 
             let _ = run_app(&mut terminal, all_servers);
 
-            disable_raw_mode().unwrap();
+            disable_raw_mode().expect("impossible to close raw mode");
             execute!(
                 terminal.backend_mut(),
                 LeaveAlternateScreen,
                 DisableMouseCapture
             )
-                .unwrap();
-            terminal.show_cursor().unwrap();
+                .expect("impossible to leave alternate screen");
+            terminal.show_cursor().expect("impossible to show cursor");
         });
     }
 
@@ -204,7 +279,7 @@ pub mod interface {
                     .split(size);
 
                 /* ---- Header: Tabs con i nomi dei server ---- */
-                let servers_guard = all_servers.lock().unwrap();
+                let servers_guard = all_servers.lock().expect("impossible to lock all_servers");
                 if servers_guard.is_empty() {
                     let empty = Paragraph::new("Nessun server attivo")
                         .block(Block::default().borders(Borders::ALL));
@@ -249,7 +324,7 @@ pub mod interface {
 
 
 
-                            let grafo = srv.graph.lock().unwrap();
+                            let grafo = srv.graph.lock().expect("impossible to lock graph");
 
                             let mut dot = String::from("graph G {\n");
                             dot.push_str("    node [fontname=Helvetica];\n");
@@ -357,7 +432,7 @@ pub mod interface {
                             //generate text
 
 
-                            let grafo = &srv.graph.lock().unwrap();
+                            let grafo = &srv.graph.lock().expect("impossible to lock graph");
 
 
 
@@ -389,7 +464,7 @@ pub mod interface {
                                 match tipo {
                                     NodeType::Client => clienti.push(*id),
                                     NodeType::Server => {
-                                        if *id as usize != srv.id {
+                                        if *id as usize == srv.id {
                                             server.push(format!("{} (io stesso)", id));
                                         } else {
                                             server.push(id.to_string());
@@ -430,7 +505,7 @@ pub mod interface {
                             ids.sort();
 
                             for id in ids {
-                                let mut vicini: Vec<_> = grafo.get(&id).unwrap().0.iter().cloned().collect();
+                                let mut vicini: Vec<_> = grafo.get(&id).expect("can access topology graph").0.iter().cloned().collect();
                                 vicini.sort();
                                 info.push_str(&format!(
                                     "{} → {}\n",
@@ -472,7 +547,7 @@ pub mod interface {
 
                     Mode::Chat => {
                         let mut items: Vec<ListItem> = {
-                            let locked = srv.messages.lock().unwrap();
+                            let locked = srv.messages.lock().expect("can't load the messages");
                             locked
                                 .iter()
                                 .map(|(name, name_color, msg, msg_color)| {
@@ -523,7 +598,7 @@ pub mod interface {
                         /* ─────────────────────────  CHAT VIEW con sidebar  ───────────────────────── */
                         {
                             // 1. prendo le chat presenti e le ordino
-                            let chat_map_guard = srv.chat_for_client.lock().unwrap();
+                            let chat_map_guard = srv.chat_for_client.lock().expect("can't get chat map for mod 2");
                             let mut chat_keys: Vec<_> = chat_map_guard
                                 .keys()
                                 .filter(|k| k.len() == 2)          // solo coppie vere
@@ -542,8 +617,8 @@ pub mod interface {
                                 .iter()
                                 .map(|key| {
                                     let mut it = key.iter();
-                                    let a = it.next().unwrap();
-                                    let b = it.next().unwrap();
+                                    let a = it.next().unwrap_or(&99);
+                                    let b = it.next().unwrap_or(&99);
                                     ListItem::new(Line::from(format!("{} ⇄ {}", a, b)))
                                 })
                                 .collect();
@@ -573,10 +648,10 @@ pub mod interface {
                             } else {
                                 let key = &chat_keys[idx];
                                 let mut it = key.iter();
-                                let a = it.next().unwrap();
-                                let b = it.next().unwrap();
+                                let a = it.next().unwrap_or(&99);
+                                let b = it.next().unwrap_or(&99);
 
-                                let msgs = chat_map_guard.get(key).unwrap();   // esiste di sicuro
+                                let msgs = chat_map_guard.get(key).expect("problem loading conversation");   // esiste di sicuro
 
                                 let mut lines = vec![
                                     Line::from(format!("💬 Chat tra {} ⇄ {}", a, b)),
@@ -619,14 +694,14 @@ pub mod interface {
                         else {
                             // ───────────────────────────── FILE-LIST VIEW ─────────────────────────────
                             let files = fs::read_dir(&srv.path)
-                                .unwrap_or_else(|_| fs::read_dir(".").unwrap())
+                                .unwrap_or_else(|_| fs::read_dir(".").expect("Can't acces  . dir "))
                                 .filter_map(|e| e.ok())
                                 .map(|e| e.file_name().to_string_lossy().to_string())
                                 .collect::<Vec<_>>();
 
                             refresh(&srv.list_of_files, files.clone());
 
-                            let file_map = srv.list_of_files.lock().unwrap();
+                            let file_map = srv.list_of_files.lock().expect("can't access list_of_files");
                             let mut files: Vec<_> = file_map.iter().collect();
                             files.sort_by(|a, b| b.1.cmp(a.1));                 // per occorrenze decrescente
 
@@ -693,7 +768,7 @@ pub mod interface {
                             }
                         }
                         KeyCode::Right => {
-                            let len = all_servers.lock().unwrap().len();
+                            let len = all_servers.lock().expect("can't access the server while using the arrow <-  ->").len();
                             if current_srv + 1 < len {
                                 current_srv += 1;
                                 auto_scroll = true;
@@ -717,7 +792,7 @@ pub mod interface {
                         /* ---- Scroll messaggi (solo modalità Chat) ---- */
                         KeyCode::Up => {
                             if matches!(global_mode, Mode::Chat) {
-                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let srv = &all_servers.lock().expect("can't access server lock  UP")[current_srv];
                                 let cur = srv.selected_index.load(Ordering::Relaxed);
                                 if cur > 0 {
                                     srv.selected_index.store(cur - 1, Ordering::Relaxed);
@@ -726,7 +801,7 @@ pub mod interface {
                             }
 
                             if matches!(global_mode, Mode::FileList) {
-                                let srv = &all_servers.lock().unwrap()[current_srv];
+                                let srv = &all_servers.lock().expect("can't access server lock  UP")[current_srv];
                                 let cur = srv.selected_chat_index.load(Ordering::Relaxed);
 
                                 if (srv.path==".")
@@ -742,8 +817,8 @@ pub mod interface {
                         }
                         KeyCode::Down => {
                             if matches!(global_mode, Mode::Chat) {
-                                let srv = &all_servers.lock().unwrap()[current_srv];
-                                let len = srv.messages.lock().unwrap().len();
+                                let srv = &all_servers.lock().expect("can't access server lock  DOWN")[current_srv];
+                                let len = srv.messages.lock().expect("can't access server message  UP").len();
                                 let cur = srv.selected_index.load(Ordering::Relaxed);
                                 if cur + 1 < len {
                                     srv.selected_index.store(cur + 1, Ordering::Relaxed);
@@ -755,8 +830,8 @@ pub mod interface {
 
 
                             if matches!(global_mode, Mode::FileList) {
-                                let srv = &all_servers.lock().unwrap()[current_srv];
-                                let len = srv.chat_for_client.lock().unwrap().len();
+                                let srv = &all_servers.lock().expect("can't access server lock  DOWN")[current_srv];
+                                let len = srv.chat_for_client.lock().expect("can't access chat client DOWN").len();
                                 let cur = srv.selected_chat_index.load(Ordering::Relaxed);
 
                                 if (srv.path==".")

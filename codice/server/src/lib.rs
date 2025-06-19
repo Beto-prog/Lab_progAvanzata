@@ -29,7 +29,7 @@ use ratatui::style::Color;
 pub use message::file_system;
 use crate::file_system::ServerType;
 use crate::logger::logger::init_logger;
-use crate::logger::logger::write_log;
+//use crate::logger::logger::write_log;
 use rand::seq::SliceRandom;
 
 pub struct  Server
@@ -89,9 +89,16 @@ impl Server{
             selected_chat_index: Arc::new(AtomicUsize::new(0)),
 
         };
-
+/*
         let mut ui_lock = interface_hub.lock().unwrap();
         ui_lock.push(new_interface.clone());
+*/
+        match  interface_hub.lock()
+        {
+            Ok(mut ui_lock) => {ui_lock.push(new_interface.clone());}
+            Err(_) => {panic!("I was not able to insert the interface inside the other one ")}
+        }
+
 
 
         Server {
@@ -129,10 +136,28 @@ Start by sending a flood request to all the neighbour to fill up the graph
         ];
 
         let mut rng = thread_rng();
-
+/*
         let aggettivo = aggettivi.choose(&mut rng).unwrap();
         let sostantivo = sostantivi.choose(&mut rng).unwrap();
+*/
 
+
+        let aggettivo =
+
+            match aggettivi.choose(&mut rng) {
+                None => {"Default".to_string()},
+                Some(x) => x.to_string(),
+            };
+
+
+        let sostantivo =
+
+            match sostantivi.choose(&mut rng) {
+                None => {"Default".to_string()},
+                Some(x) => x.to_string(),
+            };
+        
+        
         format!("{}{}", aggettivo, sostantivo)
     }
 
@@ -248,10 +273,16 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
 
                         let mut  flag:i32 = 0;  //1 = client not found
-                        let msg_work = message.clone().unwrap();        //temp value
+                        //let msg_work = message.clone().unwrap();        //temp value
+
+                        let msg_work =
+                        match message.clone() {
+                            Ok(x) => {x}
+                            Err(_) => {panic!("Can't acces data in the message")}
+                        };
 
                         //Process the request
-                        let result =self.server_type.process_request(message.unwrap(),source_id as u32,&mut flag);
+                        let result =self.server_type.process_request(message.unwrap_or("Error while processing".to_string()),source_id as u32,&mut flag);
 
                         if flag==1
                         {
@@ -263,7 +294,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                 let parts: Vec<&str> = content.splitn(2, ',').collect();
                                 if parts.len() == 2 {
 
-                                    let destination_id = parts[0].parse::<NodeId>().unwrap();
+                                    let destination_id = parts[0].parse::<NodeId>().unwrap_or(0);
 
                                     add_message_for_chat(&self.myInterface.chat_for_client,source_id,destination_id,parts[1].to_string() );
                                     source_id = destination_id
@@ -317,7 +348,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
                                 add_message(&self.myInterface.messages, "Server", &format!("Sending response to client source id: {}",source_id), Color::White, Color::White);
 
-
+/*
                                 match response.pack_type.clone() {
                                     MsgFragment( log_value) => {
                                         write_log(&format!("Message to {} {:?}",source_id, log_value));
@@ -326,7 +357,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
                                     PacketType::Nack(_) => {}
                                     PacketType::FloodRequest(_) => {}
                                     PacketType::FloodResponse(_) => {}
-                                }
+                                }*/
 
 
 
@@ -476,8 +507,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
                         NewWork::recive_flood_response(&mut self.graph, flood_packet.path_trace);
 
                         //for (id,sendr) in &self.packet_send{    //send flood response to all his neibourgh
-                        
-                        
+
+
                         //self.packet_send.get(&previous_neighbour).expect("Error while getting neighbor").send(response.clone()).expect("Server: Error while sending FloodResponse"); //TODO do match case
                         let c =self.packet_send.get(&previous_neighbour);    //take the first node to which you need to send the messages
                         match c {
@@ -487,8 +518,8 @@ Start by sending a flood request to all the neighbour to fill up the graph
                             }
                             Some(x) => {x.send(response.clone());}
                         }
-                    
-                    
+
+
                         //}
                     } else {
                         add_message(&self.myInterface.messages, "Server", "Can not find neighbour who send this packet.", Color::White, Color::Red);
