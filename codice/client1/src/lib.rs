@@ -171,7 +171,7 @@ impl Client1 {
         match packet.pack_type {
             PacketType::FloodRequest(mut request) => {
                 let mut previous = 0;
-                write_log(&format!("{:?}",request.path_trace.clone()));
+                //write_log(&format!("{:?}",request.path_trace.clone()));
                 match request.path_trace.last() {
 
                     Some(last) => {
