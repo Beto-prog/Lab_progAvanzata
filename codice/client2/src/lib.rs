@@ -279,20 +279,25 @@ impl Client2 {
 
         match message {
             msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
-                //server_type!(type)
-                //println!("RECV {:?} from {:?}", msg,  sender);
+                // Extract the server type from the message
                 let svtype = msg
                     .strip_prefix("server_type!(")
-                    .and_then(|s| s.strip_suffix(")"));
+                    .and_then(|s| s.strip_suffix(")"))
+                    .unwrap_or("Unknown"); // Fallback to "Unknown" if parsing fails
+
+                //println!("SERVER {:?} TYPE: {:?}", sender, svtype);
+
                 let mut servers = self.servers.lock().expect("Failed to lock the servers map");
-
-                let entry = servers
-                    .entry(sender)
-                    .or_insert_with(|| svtype.as_ref().unwrap().to_string());
-
-                if entry == "Unknown" {
-                    *entry = svtype.unwrap().to_string();
-                }
+                
+                servers.entry(sender)
+                    .and_modify(|e| {
+                        // Only update if current type is "Unknown"
+                        if e == "Unknown" {
+                            *e = svtype.to_string();
+                            //println!("UPDATED SERVER TYPE: {:?}", svtype);
+                        }
+                    })
+                    .or_insert_with(|| svtype.to_string());
             }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") => {
                 //files_list!(list_of_file_ids)

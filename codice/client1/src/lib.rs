@@ -534,7 +534,10 @@ impl Client1 {
                     _ => ()
                 }
             }
-            _ => (),
+            PacketType::Ack(ack) =>{
+                let key = (packet.session_id,ack.fragment_index);
+                self.packet_sent.lock().expect("Failed to lock").remove(&key);
+            }
         }
     }
     pub fn redo_network(&mut self){

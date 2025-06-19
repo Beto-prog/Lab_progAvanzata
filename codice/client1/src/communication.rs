@@ -94,14 +94,9 @@ impl Client1 {
                                 match self.receiver_channel.recv(){
                                     Ok(packet) =>{
                                         match packet.pack_type{
-                                            PacketType::Ack(ack) =>{
-                                                // In case I receive an Ack message arrived correctly: removed it from the packet_sent Hashmap
-                                                let key = (packet.session_id,ack.fragment_index);
-                                                self.packet_sent.lock().expect("Failed to lock").remove(&key);
-                                            },
                                             PacketType::Nack(nack) =>{
                                                 // In case I receive a Nack with same session_id I need to send again the message.
-                                                //self.discover_network();
+                                                //self.redo_network();
                                                 match Self::bfs_compute_path(&self.network,self.node_id,dest_id){
                                                     Some(path) =>{
                                                         let key = (packet.session_id,nack.fragment_index);
@@ -109,7 +104,7 @@ impl Client1 {
                                                         packet_retry.routing_header = SourceRoutingHeader::with_first_hop(path);
                                                         sender.send(packet_retry).expect("Failed to send packet");
                                                     }
-                                                    None =>{println!("Error: no path to the dest_id")}
+                                                    None =>{println!("Error: no path to the dest_id: Error 1")}
                                                 }
                                             }
                                             _=> ()
@@ -120,7 +115,7 @@ impl Client1 {
                         }
                         Err(_) =>{ // Case of crashed drone
                             self.sender_channels.remove(&first_hop);
-                            self.discover_network();
+                            self.redo_network();
                             let new_path = Self::bfs_compute_path(&self.network,self.node_id,dest_id).expect("Failed to create path");
                             let first_hop = new_path[1];
                             let packet_sent = Packet {
@@ -135,7 +130,7 @@ impl Client1 {
                     }
                 }
             }
-            None => {println!("Error: no path to dest_id")}
+            None => {println!("Error: no path to dest_id: Error 2")}
         }
     }
     // Handle a received message (e.g. from a server) with eventual parameters
