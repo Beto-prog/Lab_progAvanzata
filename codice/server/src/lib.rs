@@ -164,7 +164,7 @@ Start by sending a flood request to all the neighbour to fill up the graph
 
     pub fn run(&mut self) {
         self.sendflod_request();
-        init_logger();
+        //init_logger();
 
         let name_server =
             match self.server_type.kind() {
