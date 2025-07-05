@@ -6,7 +6,7 @@ use egui::{Color32, Context, Frame, RichText, TextEdit, TextStyle};
 use image::GenericImageView;
 #[allow(warnings)]
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use wg_2024::network::NodeId;
 
 use common::client_ui::ClientUI;
@@ -14,7 +14,7 @@ use common::client_ui::ClientUI;
 pub struct Client2_UI {
     self_id: NodeId,                              // Node ID for the client
     clients: Arc<Mutex<Vec<NodeId>>>,             // List of clients
-    servers: Arc<Mutex<HashMap<NodeId, String>>>, // List of server names
+    servers: Arc<RwLock<HashMap<NodeId, String>>>, // List of server names
     files_names: Arc<Mutex<Vec<String>>>,         //Storage of the file names
     selected_server: (NodeId, String),            // Selected server name
     selected_client_id: NodeId,                   // Selected client ID
@@ -49,7 +49,7 @@ impl Client2_UI {
     pub fn new(
         self_id: NodeId,
         clients: Arc<Mutex<Vec<NodeId>>>,
-        servers: Arc<Mutex<HashMap<NodeId, String>>>,
+        servers: Arc<RwLock<HashMap<NodeId, String>>>,
         files_names: Arc<Mutex<Vec<String>>>,
         cmd_snd: Sender<String>,
         msg_rcv: Receiver<String>,
@@ -88,10 +88,8 @@ impl Client2_UI {
 
     pub fn client2_stats(&mut self, ui: &mut egui::Ui) {
 
-        println!("UI SERVERS: {:?}", self.servers);
-
         let servers = {
-            let client_servers = self.servers.lock().unwrap();
+            let client_servers = self.servers.read().unwrap();
             client_servers.clone() // Clone while holding the lock
         };
 
@@ -102,6 +100,13 @@ impl Client2_UI {
 
         // Handle incoming messages
         while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
+
+            if msg == "REFRESH_UI" {
+                // Short-circuit the loop to force a re-render
+                //println!("REFRESH_UI");
+                break;
+            }
+
 
             if msg.starts_with("Message sent to client") {
                 continue;
@@ -126,7 +131,7 @@ impl Client2_UI {
                     egui::ComboBox::new("Select server", "")
                         .selected_text(format!("{}", self.selected_server.0))
                         .show_ui(ui, |ui| {
-                            let s = self.servers.lock().expect("Failed to lock");
+                            let s = self.servers.read().expect("Failed to lock");
                             let servers = s.keys().collect::<Vec<_>>();
                             for server in servers {
                                 if ui.selectable_value(
@@ -147,7 +152,7 @@ impl Client2_UI {
                     if self.selected_server.0 != 0 {
                         let server_type = self
                             .servers
-                            .lock()
+                            .read()
                             .expect("Failed to lock")
                             .get(&self.selected_server.0)
                             .cloned()

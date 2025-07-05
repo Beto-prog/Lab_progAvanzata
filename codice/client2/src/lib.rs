@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use wg_2024::network::*;
 use wg_2024::packet::*;
 
@@ -24,7 +24,7 @@ pub struct Client2 {
     discovered_drones: HashMap<NodeId, NodeType>,
     neighbor_senders: HashMap<NodeId, Sender<Packet>>,
     network_graph: HashMap<NodeId, HashSet<NodeId>>,
-    servers: Arc<Mutex<HashMap<NodeId, String>>>,
+    servers: Arc<RwLock<HashMap<NodeId, String>>>,
     sent_packets: HashMap<u64, Packet>, // Store sent packets by session_id
     repackager: Repackager,
     receiver_channel: Receiver<Packet>,
@@ -47,7 +47,7 @@ impl Client2 {
     ) -> (Self, Client2_UI) {
         let other_client_ids = Arc::new(Mutex::new(vec![]));
         let files_names = Arc::new(Mutex::new(vec![]));
-        let servers = Arc::new(Mutex::new(HashMap::new()));
+        let servers = Arc::new(RwLock::new(HashMap::new()));
 
         let (cmd_snd, cmd_rcv) = unbounded::<String>();
         let (msg_snd, msg_rcv) = unbounded::<String>();
@@ -149,7 +149,7 @@ impl Client2 {
                     discovered_drones.entry(*node_id).or_insert(*node_type);
                 }
                 NodeType::Server => {
-                    let mut servers = self.servers.lock().expect("Failed to lock the servers map");
+                    let mut servers = self.servers.write().expect("Failed to lock the servers map");
                     if !servers.contains_key(node_id) {
                         servers.insert(*node_id, "Unknown".to_string());
                         commands_to_send.push(*node_id); // Defer handle_command call
@@ -277,16 +277,19 @@ impl Client2 {
             .send(message.clone())
             .expect("Failed to send message");
 
-        if let Some(svtype) = message.strip_prefix("server_type!(")
-            .and_then(|s| s.strip_suffix(")"))
-        {
-            // Get a persistent lock and update immediately
-            let mut servers = self.servers.lock().unwrap();
-            servers.insert(sender, svtype.to_string());
+        if let Some(svtype) = message.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")")) {
+            let mut servers = self.servers.write().unwrap();
+            servers.entry(sender).and_modify(|existing| {
+                if *existing == "Unknown" {
+                    *existing = svtype.to_string();
+                }
+            }).or_insert(svtype.to_string());
 
-            return; // Early return after handling server type
+        if let sender = self.msg_snd.clone() {
+                sender.send("REFRESH_UI".to_string()).unwrap();
+            }
         }
-
+        
         match message {
             // msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
             //     // Extract the server type from the message
@@ -423,8 +426,6 @@ impl Client2 {
                     } else {
                         // If no path found, trigger network rediscovery
                         //println!("CLIENT2: No path found to node {}, triggering rediscovery", source_id);
-                        self.servers = Arc::new(Mutex::new(HashMap::new()));
-                        self.other_client_ids = Arc::new(Mutex::new(Vec::new()));
                         self.discovered_drones = HashMap::new();
                         self.network_graph = HashMap::new();
                         self.discover_network();
@@ -440,8 +441,6 @@ impl Client2 {
             PacketType::Ack(ack) => {}
             PacketType::Nack(nack) => {
                 //Check again all nodes, servers and connections
-                self.servers = Arc::new(Mutex::new(HashMap::new()));
-                self.other_client_ids = Arc::new(Mutex::new(Vec::new()));
                 self.discovered_drones = HashMap::new();
                 self.network_graph = HashMap::new();
                 self.discover_network();
@@ -552,7 +551,6 @@ impl Client2 {
 
         //Packet handle part
         loop {
-            println!("CLIENT SERVERS: {:?}", self.servers);
             select_biased! {
                 // Handle packets in the meantime
                     recv(receiver_channel) -> packet =>{
