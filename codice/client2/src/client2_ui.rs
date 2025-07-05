@@ -87,8 +87,26 @@ impl Client2_UI {
     }
 
     pub fn client2_stats(&mut self, ui: &mut egui::Ui) {
+
+        println!("UI SERVERS: {:?}", self.servers);
+
+        let servers = {
+            let client_servers = self.servers.lock().unwrap();
+            client_servers.clone() // Clone while holding the lock
+        };
+
+        // Update local server selection if needed
+        if !servers.contains_key(&self.selected_server.0) {
+            self.selected_server = (0, String::new());
+        }
+
         // Handle incoming messages
         while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
+
+            if msg.starts_with("Message sent to client") {
+                continue;
+            }
+
             if !self.log_messages.iter().any(|(m, _)| m == &format!("received {}", msg)) {
                 self.add_log_message(format!("received {}", msg), false);
                 self.can_show_response = true;
@@ -332,6 +350,24 @@ impl Client2_UI {
     pub fn handle_response_show(&mut self, cmd: String) {
         if !cmd.starts_with("server_type!(") {
             self.add_log_message(format!("sent {}", cmd), true);
+
+            // For message_for commands, show immediate confirmation
+            if self.selected_command == "message_for?" {
+                self.can_show_response = true;
+                self.response = format!("✓ Sent to client {}: '{}'",
+                                        self.selected_client_id,
+                                        self.input_text);
+                self.error = (false, String::new());
+
+                // Clear the input field after sending
+                self.input_text.clear();
+
+                // Send the actual command
+                self.cmd_snd.as_ref().unwrap()
+                    .send(cmd)
+                    .expect("Failed to send");
+                return;
+            }
         }
 
         if self.selected_command.eq("client_list?") {
@@ -371,6 +407,25 @@ impl Client2_UI {
     pub fn show_response(&mut self, ui: &mut egui::Ui, message: Option<String>) {
         let message = message.expect("Failed to get value");
 
+        if message == "Response" && self.response.starts_with("server_type!(") {
+            return;
+        }
+
+        if message == "Response" && self.response.starts_with("✓ Sent to client") {
+            let frame = Frame::none()
+                .fill(Color32::from_rgba_premultiplied(25, 50, 25, 240))
+                .rounding(egui::Rounding::same(6))
+                .stroke(Stroke::new(1.0, Color32::GREEN))
+                .inner_margin(egui::Margin::symmetric(20, 16));
+
+            frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(Color32::GREEN, &self.response);
+                });
+            });
+            return;
+        }
+
         // Common frame settings
         let frame = Frame::none()
             .fill(egui::Color32::from_rgba_premultiplied(25, 25, 35, 240)) // Darker background
@@ -409,8 +464,7 @@ impl Client2_UI {
                         ui.colored_label(
                             egui::Color32::LIGHT_GREEN,
                             format!(
-                                "Message from client {}: {}",
-                                self.selected_client_id,
+                                "{}",
                                 self.response
                             ),
                         );

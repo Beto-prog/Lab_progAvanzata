@@ -277,28 +277,40 @@ impl Client2 {
             .send(message.clone())
             .expect("Failed to send message");
 
+        if let Some(svtype) = message.strip_prefix("server_type!(")
+            .and_then(|s| s.strip_suffix(")"))
+        {
+            // Get a persistent lock and update immediately
+            let mut servers = self.servers.lock().unwrap();
+            servers.insert(sender, svtype.to_string());
+
+            return; // Early return after handling server type
+        }
+
         match message {
-            msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
-                // Extract the server type from the message
-                let svtype = msg
-                    .strip_prefix("server_type!(")
-                    .and_then(|s| s.strip_suffix(")"))
-                    .unwrap_or("Unknown"); // Fallback to "Unknown" if parsing fails
-
-                //println!("SERVER {:?} TYPE: {:?}", sender, svtype);
-
-                let mut servers = self.servers.lock().expect("Failed to lock the servers map");
-                
-                servers.entry(sender)
-                    .and_modify(|e| {
-                        // Only update if current type is "Unknown"
-                        if e == "Unknown" {
-                            *e = svtype.to_string();
-                            //println!("UPDATED SERVER TYPE: {:?}", svtype);
-                        }
-                    })
-                    .or_insert_with(|| svtype.to_string());
-            }
+            // msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
+            //     // Extract the server type from the message
+            //     let svtype = msg
+            //         .strip_prefix("server_type!(")
+            //         .and_then(|s| s.strip_suffix(")"))
+            //         .unwrap_or("Unknown"); // Fallback to "Unknown" if parsing fails
+            //
+            //     //println!("SERVER {:?} TYPE: {:?}", sender, svtype);
+            //
+            //     let mut servers = self.servers.lock().expect("Failed to lock servers map");
+            //     servers.insert(sender, svtype.to_string());
+            //     return; // Early return after handling server type
+            //
+            //     servers.entry(sender)
+            //         .and_modify(|e| {
+            //             // Only update if current type is "Unknown"
+            //             if e == "Unknown" {
+            //                 *e = svtype.to_string();
+            //                 //println!("UPDATED SERVER TYPE: {:?}", svtype);
+            //             }
+            //         })
+            //         .or_insert_with(|| svtype.to_string());
+            // }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") => {
                 //files_list!(list_of_file_ids)
                 let files = msg
@@ -370,6 +382,21 @@ impl Client2 {
         hops.push(destination);
 
         SourceRoutingHeader { hop_index: 1, hops }
+    }
+
+    fn handle_crash(&mut self, drone_id: NodeId) {
+        self.neighbor_senders.remove(&drone_id);
+        self.network_graph.remove(&drone_id);
+
+        // Only remove connections to this drone
+        for neighbors in self.network_graph.values_mut() {
+            neighbors.remove(&drone_id);
+        }
+
+        // Only rediscover if we have no connections left
+        if self.neighbor_senders.is_empty() {
+            self.discover_network();
+        }
     }
 
     // Handle received packet (Ack, Nack, etc.)
@@ -525,6 +552,7 @@ impl Client2 {
 
         //Packet handle part
         loop {
+            println!("CLIENT SERVERS: {:?}", self.servers);
             select_biased! {
                 // Handle packets in the meantime
                     recv(receiver_channel) -> packet =>{
@@ -549,8 +577,7 @@ impl Client2 {
                     recv(self.drone_rcv) -> id => {
                         match id{
                             Ok(id) =>{
-                                self.neighbor_senders.remove(&id);
-                                self.discover_network();
+                                self.handle_crash(id);
                             }
                             Err(_) => ()
                         }
