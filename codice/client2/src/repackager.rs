@@ -1,8 +1,11 @@
 #![allow(warnings)]
 
+use std::fs::File;
+use base64::{engine::general_purpose, Engine as _};
 use std::collections::{HashMap};
 use std::fs;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use wg_2024::packet::{Fragment};
 
@@ -133,39 +136,45 @@ To reassemble fragments into a single packet, a client or server uses the fragme
 
 
     //usless for the server this is for the Client . Used for testing and to have a more   complete module
-    pub fn assemble_string_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
-        // Remove null charachter
-        let clean_data = data.into_iter().take_while(|&byte| byte != 0).collect::<Vec<_>>();
-
-        // Serch the posizion of tje first separator
-        let separator_pos = clean_data.iter().position(|&b| b == b'(' );
-
-        if let Some(pos) = separator_pos {
-            // Take the initial string
-            let initial_string = match String::from_utf8(clean_data[..pos].to_vec()) {
-                Ok(s) => s,
-                Err(e) => return Err(format!("Errore nella conversione della stringa iniziale: {}", e)),
-            };
-
-            // Extract file content
-            let file_data = &clean_data[pos + 1..];
-
-            // If the file has some data save it to the file system
-            if !file_data.is_empty() {
-                let file_path = Path::new(output_path);
-                if let Err(e) = fs::write(file_path, file_data) {
-                    return Err(format!("Errore nella scrittura del file: {}", e));
-                }
+    pub fn assemble_string_file(data: Vec<u8>) -> Result<String, String> {
+        match String::from_utf8(data) {
+            Ok(mut string) => {
+                // Remove trailing null characters
+                string = string.trim_end_matches('\0').to_string();
+                Ok(string)
             }
+            Err(e) => Err(format!("Failed to convert data to string: {}", e)),
+        }
+    }
+    pub fn assemble_image_file(data: Vec<u8>) -> Result<String, String> {
+        Ok(general_purpose::STANDARD.encode(data))
+    }
+    pub fn assemble_file(data: Vec<u8>, output_path: &str) -> Result<String, String> {
+        // Trova il primo '('
+        let payload_start = data.iter()
+            .position(|&b| b == b'(')
+            .ok_or("Missing '(' in message")? + 1;
 
-            // Return the value
-            Ok(initial_string)
-        } else {
-            // In this case is a normal string I suggest to revise this. This is for the client user
-            match String::from_utf8(clean_data) {
-                Ok(s) => Ok(s),
-                Err(e) => Err(format!("Errore nella conversione del messaggio in stringa: {}", e)),
+        // Trova l'ultima ')' DOPO l'inizio del payload — ma solo se esiste
+        let mut payload_end = data.len();
+        if let Some(last_paren) = data.iter().rposition(|&b| b == b')') {
+            if last_paren > payload_start {
+                payload_end = last_paren;
             }
         }
+
+        if payload_end <= payload_start {
+            return Err("Invalid payload range".to_string());
+        }
+
+        let payload = &data[payload_start..payload_end];
+
+        // Scrive il file
+        let mut file = File::create(Path::new(output_path))
+            .map_err(|e| format!("Error while creating file: {e}"))?;
+        file.write_all(payload)
+            .map_err(|e| format!("Error while writing file: {e}"))?;
+
+        Ok("File saved correctly".into())
     }
 }

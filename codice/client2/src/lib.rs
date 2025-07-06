@@ -12,6 +12,7 @@ use crate::repackager::Repackager;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use egui::debug_text::print;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs::{self, File};
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
@@ -33,9 +34,17 @@ pub struct Client2 {
     files_names: Arc<Mutex<Vec<String>>>,
     cmd_rcv: Receiver<String>,
     msg_snd: Sender<String>,
-    drone_rcv: Receiver<NodeId>
+    drone_rcv: Receiver<NodeId>,
+    fragment_buffers: FileToRecieve,
     //reader: BufReader<TcpStream>,
     //writer: TcpStream,
+}
+
+#[derive(Eq, Hash, PartialEq, Debug)]
+pub struct FileToRecieve{
+    file_name: String,
+    data: Vec<u8>,
+    session_id: u64,
 }
 
 impl Client2 {
@@ -76,7 +85,11 @@ impl Client2 {
                 files_names,
                 cmd_rcv,
                 msg_snd,
-
+                fragment_buffers: FileToRecieve{
+                    file_name: "".to_string(),
+                    data: Vec::new(),
+                    session_id: 0,
+                },
                 //reader,
                 //writer,
             },
@@ -225,12 +238,22 @@ impl Client2 {
             cmd if cmd.starts_with("file?(") && cmd.ends_with(")") => {
                 //file?(file_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                self.fragment_buffers = FileToRecieve{
+                    file_name: text.unwrap().to_string(),
+                    data: Vec::new(),
+                    session_id: 0,
+                };
                 self.send_message(server_id, cmd, None);
                 return "CLIENT2: OK".to_string();
             }
             cmd if cmd.starts_with("media?(") && cmd.ends_with(")") => {
                 //media?(media_id)
-                let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
+                let text = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")"));
+                self.fragment_buffers = FileToRecieve{
+                    file_name: text.unwrap().to_string(),
+                    data: Vec::new(),
+                    session_id: 0,
+                };
                 self.send_message(server_id, cmd, None);
                 return "CLIENT2: OK".to_string();
             }
@@ -256,6 +279,7 @@ impl Client2 {
         if let Some(first_hop) = packet.routing_header.hops.get(1) {
             if let Some(sender) = self.neighbor_senders.get(first_hop) {
                 //println!("CLIENT2: CLIENT{}: forwarding to Drone {}, packet: {:?}", self.node_id, first_hop, packet);
+                //println!("CLIENT2: CLIENT{}: SENDING PACKET {}", self.node_id, packet);
                 sender.send(packet).unwrap();
             } else {
                 // println!(
@@ -273,6 +297,7 @@ impl Client2 {
 
     //Function that handles messages from the server
     pub fn handle_messages(&mut self, message: String, session_id: u64, sender: NodeId) {
+        //println!("CLIENT2: CLIENT{}: Received message: {}", self.node_id, message);
         self.msg_snd
             .send(message.clone())
             .expect("Failed to send message");
@@ -284,7 +309,7 @@ impl Client2 {
                     *existing = svtype.to_string();
                 }
             }).or_insert(svtype.to_string());
-
+    
         if let sender = self.msg_snd.clone() {
                 sender.send("REFRESH_UI".to_string()).unwrap();
             }
@@ -328,20 +353,6 @@ impl Client2 {
                 if let Ok(mut files_lock) = self.files_names.lock() {
                     *files_lock = new_files;
                 }
-            }
-            msg if msg.starts_with("file!(") && msg.ends_with(")") => {
-                //file!(file_size, file)
-                let txt = msg.strip_prefix("file!(").and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(",");
-                self.saved_files.insert(values.unwrap().1.to_string());
-            }
-            msg if msg.starts_with("media!(") && msg.ends_with(")") => {
-                //media!(media)
-                // TODO
-                let txt = msg
-                    .strip_prefix("media!(")
-                    .and_then(|s| s.strip_suffix(")"));
-                let values = txt.unwrap().split_once(", ");
             }
             msg if msg.starts_with("client_list!([") && msg.ends_with("])") => {
                 //client_list!([list_of_client_ids])
@@ -468,6 +479,42 @@ impl Client2 {
     }
 
     pub fn handle_msg_fragment(&mut self, fragment: Fragment, packet: Packet) {
+        if fragment.fragment_index == 0 && fragment.total_n_fragments > 1 {
+            self.fragment_buffers.session_id = packet.session_id;
+        }
+        if fragment.fragment_index < fragment.total_n_fragments && self.fragment_buffers.session_id == packet.session_id {
+            // Calculate position and copy data into the struct's data vector
+            let start = (fragment.fragment_index * 128) as usize;
+            let end = start + fragment.length as usize;
+
+            // Ensure the vector is large enough
+            if self.fragment_buffers.data.len() < end {
+                self.fragment_buffers.data.resize(end, 0);
+            }
+
+            // Copy the fragment data into the correct position
+            self.fragment_buffers.data[start..end].copy_from_slice(&fragment.data[..fragment.length as usize]);
+
+            if fragment.fragment_index != fragment.total_n_fragments - 1 {
+                return;
+            } else {
+                let output_path = format!("C:\\Temp\\Client2\\{}", self.fragment_buffers.file_name);
+
+                // Call assemble_file with the correct parameters
+                match Repackager::assemble_file(self.fragment_buffers.data.clone(), &output_path) {
+                    Ok(msg) => self.msg_snd.send("File saved successfuly to C:\\Temp\\Client2".to_string()).unwrap(),
+                    Err(e) => self.msg_snd.send(format!("Error assembling file: {}", e)).unwrap(),
+                }
+                self.fragment_buffers = FileToRecieve{
+                    file_name: "".to_string(),
+                    data: Vec::new(),
+                    session_id: 0,
+                };
+                return;
+            }
+        }
+
+
         let session_id = self.generate_session_id();
         let src_id = self.node_id as u64;
 

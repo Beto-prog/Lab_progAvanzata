@@ -107,12 +107,7 @@ impl Client2_UI {
                 break;
             }
 
-
-            if msg.starts_with("Message sent to client") {
-                continue;
-            }
-
-            if !self.log_messages.iter().any(|(m, _)| m == &format!("received {}", msg)) {
+            if self.log_messages.last().map(|(m, _)| m != &format!("received {}", msg)).unwrap_or(true) {
                 self.add_log_message(format!("received {}", msg), false);
                 self.can_show_response = true;
                 self.response = msg;
@@ -358,10 +353,12 @@ impl Client2_UI {
 
             // For message_for commands, show immediate confirmation
             if self.selected_command == "message_for?" {
+                let confirmation = format!("Sent to client {}: '{}'",
+                                           self.selected_client_id,
+                                           self.input_text);
+                self.add_log_message(confirmation.clone(), false); // Add this line
                 self.can_show_response = true;
-                self.response = format!("✓ Sent to client {}: '{}'",
-                                        self.selected_client_id,
-                                        self.input_text);
+                self.response = confirmation;
                 self.error = (false, String::new());
 
                 // Clear the input field after sending
@@ -416,7 +413,7 @@ impl Client2_UI {
             return;
         }
 
-        if message == "Response" && self.response.starts_with("✓ Sent to client") {
+        if message == "Response" && self.response.starts_with("Sent to client") {
             let frame = Frame::none()
                 .fill(Color32::from_rgba_premultiplied(25, 50, 25, 240))
                 .rounding(egui::Rounding::same(6))
@@ -465,20 +462,13 @@ impl Client2_UI {
             // Content area
             match message.as_str() {
                 "Response" => {
-                    if self.selected_server.1.eq("CommunicationServer") {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_GREEN,
-                            format!(
-                                "{}",
-                                self.response
-                            ),
-                        );
-                    } else {
-                        ui.colored_label(
-                            egui::Color32::LIGHT_GREEN,
-                            format!("{:?}", self.response)
-                        );
-                    }
+                    ui.colored_label(
+                        egui::Color32::LIGHT_GREEN,
+                        format!(
+                            "{}",
+                            self.response
+                        ),
+                    );
                 }
                 "Clients" => {
                     ui.colored_label(
