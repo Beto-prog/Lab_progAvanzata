@@ -89,7 +89,7 @@ impl Client2_UI {
     pub fn client2_stats(&mut self, ui: &mut egui::Ui) {
 
         let servers = {
-            let client_servers = self.servers.read().unwrap();
+            let client_servers = self.servers.read().expect("Failed to lock servers");
             client_servers.clone() // Clone while holding the lock
         };
 
@@ -99,7 +99,7 @@ impl Client2_UI {
         }
 
         // Handle incoming messages
-        while let Ok(msg) = self.msg_rcv.as_ref().unwrap().try_recv() {
+        while let Ok(msg) = self.msg_rcv.as_ref().expect("Unable to read incoming message").try_recv() {
 
             if msg == "REFRESH_UI" {
                 // Short-circuit the loop to force a re-render
@@ -365,7 +365,7 @@ impl Client2_UI {
                 self.input_text.clear();
 
                 // Send the actual command
-                self.cmd_snd.as_ref().unwrap()
+                self.cmd_snd.as_ref().expect("Failed to get value")
                     .send(cmd)
                     .expect("Failed to send");
                 return;

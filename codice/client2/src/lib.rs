@@ -110,7 +110,7 @@ impl Client2 {
                     routing_header: self.create_source_routing_header(*drone_id),
                     session_id: self.generate_session_id(),
                 })
-                .unwrap();
+                .expect("Failed to send FloodRequest");
         }
     }
 
@@ -206,7 +206,7 @@ impl Client2 {
         for fragment in fragments {
             let packet = Packet {
                 pack_type: PacketType::MsgFragment(fragment),
-                routing_header: SourceRoutingHeader::with_first_hop(path.clone().unwrap()),
+                routing_header: SourceRoutingHeader::with_first_hop(path.clone().expect("No path found")),
                 session_id,
             };
 
@@ -221,7 +221,7 @@ impl Client2 {
         let (comm, dest) = command
             .split_once("->")
             .expect("Command was formated wrong.");
-        let server_id = dest.parse().unwrap();
+        let server_id = dest.parse().expect("Failed to parse server_id");
         match comm {
             cmd if cmd == "server_type?"
                 || cmd == "files_list?"
@@ -237,7 +237,7 @@ impl Client2 {
                 //file?(file_id)
                 let text = cmd.strip_prefix("file?(").and_then(|s| s.strip_suffix(")"));
                 self.fragment_buffers = FileToRecieve{
-                    file_name: text.unwrap().to_string(),
+                    file_name: text.expect("Couldnt get file name").to_string(),
                     data: Vec::new(),
                     session_id: 0,
                 };
@@ -248,7 +248,7 @@ impl Client2 {
                 //media?(media_id)
                 let text = cmd.strip_prefix("media?(").and_then(|s| s.strip_suffix(")"));
                 self.fragment_buffers = FileToRecieve{
-                    file_name: text.unwrap().to_string(),
+                    file_name: text.expect("Couldnt get file name").to_string(),
                     data: Vec::new(),
                     session_id: 0,
                 };
@@ -261,7 +261,6 @@ impl Client2 {
                 let text = cmd
                     .strip_prefix("message_for?(")
                     .and_then(|s| s.strip_suffix(")"));
-                let mut val = text.unwrap().split_once(", ");
                 self.send_message(server_id, cmd, None);
                 return "CLIENT2: OK".to_string();
             }
@@ -278,7 +277,7 @@ impl Client2 {
             if let Some(sender) = self.neighbor_senders.get(first_hop) {
                 //println!("CLIENT2: CLIENT{}: forwarding to Drone {}, packet: {:?}", self.node_id, first_hop, packet);
                 //println!("CLIENT2: CLIENT{}: SENDING PACKET {}", self.node_id, packet);
-                sender.send(packet).unwrap();
+                sender.send(packet).expect("Failed to send packet");
             } else {
                 // println!(
                 //     "CLIENT2: CLIENT{}: not found in neighbors for packet {}",
@@ -301,7 +300,7 @@ impl Client2 {
             .expect("Failed to send message");
 
         if let Some(svtype) = message.strip_prefix("server_type!(").and_then(|s| s.strip_suffix(")")) {
-            let mut servers = self.servers.write().unwrap();
+            let mut servers = self.servers.write().expect("Failed to lock servers map");
             servers.entry(sender).and_modify(|existing| {
                 if *existing == "Unknown" {
                     *existing = svtype.to_string();
@@ -309,41 +308,18 @@ impl Client2 {
             }).or_insert(svtype.to_string());
     
         if let sender = self.msg_snd.clone() {
-                sender.send("REFRESH_UI".to_string()).unwrap();
+                sender.send("REFRESH_UI".to_string()).expect("Failed to send message");
             }
         }
         
         match message {
-            // msg if msg.starts_with("server_type!(") && msg.ends_with(")") => {
-            //     // Extract the server type from the message
-            //     let svtype = msg
-            //         .strip_prefix("server_type!(")
-            //         .and_then(|s| s.strip_suffix(")"))
-            //         .unwrap_or("Unknown"); // Fallback to "Unknown" if parsing fails
-            //
-            //     //println!("SERVER {:?} TYPE: {:?}", sender, svtype);
-            //
-            //     let mut servers = self.servers.lock().expect("Failed to lock servers map");
-            //     servers.insert(sender, svtype.to_string());
-            //     return; // Early return after handling server type
-            //
-            //     servers.entry(sender)
-            //         .and_modify(|e| {
-            //             // Only update if current type is "Unknown"
-            //             if e == "Unknown" {
-            //                 *e = svtype.to_string();
-            //                 //println!("UPDATED SERVER TYPE: {:?}", svtype);
-            //             }
-            //         })
-            //         .or_insert_with(|| svtype.to_string());
-            // }
             msg if msg.starts_with("files_list!([") && msg.ends_with("])") => {
                 //files_list!(list_of_file_ids)
                 let files = msg
                     .strip_prefix("files_list!([")
                     .and_then(|s| s.strip_suffix("])"));
                 let new_files = files
-                    .unwrap()
+                    .expect("Failed to parse files list")
                     .split(',')
                     .map(|s| s.trim().trim_matches('"').to_string())
                     .collect::<Vec<String>>();
@@ -364,8 +340,8 @@ impl Client2 {
                         .filter(|id| *id != self.node_id) // exclude your own ID// convert to u8 (NodeId)
                         .collect::<Vec<NodeId>>();
                     for id in values {
-                        if !self.other_client_ids.lock().unwrap().contains(&id) {
-                            self.other_client_ids.lock().unwrap().push(id);
+                        if !self.other_client_ids.lock().expect("Failed to lock client ids").contains(&id) {
+                            self.other_client_ids.lock().expect("Failed to lock client ids").push(id);
                         }
                     }
                 }
@@ -375,11 +351,9 @@ impl Client2 {
                 let txt = msg
                     .strip_prefix("message_from!(")
                     .and_then(|s| s.strip_suffix(")"));
-                //let values = txt.unwrap().split_once(",");
-                //TODO show message
             }
 
-            _ => {} //TODO VIEW ERROR
+            _ => {}
         }
     }
 
@@ -500,8 +474,8 @@ impl Client2 {
 
                 // Call assemble_file with the correct parameters
                 match Repackager::assemble_file(self.fragment_buffers.data.clone(), &output_path) {
-                    Ok(msg) => self.msg_snd.send("File saved successfuly to C:\\Temp\\Client2".to_string()).unwrap(),
-                    Err(e) => self.msg_snd.send(format!("Error assembling file: {}", e)).unwrap(),
+                    Ok(msg) => self.msg_snd.send("File saved successfuly to C:\\Temp\\Client2".to_string()).expect("Failed to send message"),
+                    Err(e) => self.msg_snd.send(format!("Error assembling file: {}", e)).expect("Failed to send message"),
                 }
                 self.fragment_buffers = FileToRecieve{
                     file_name: "".to_string(),
@@ -531,7 +505,7 @@ impl Client2 {
                     self.handle_messages(
                         message,
                         packet.session_id,
-                        *packet.routing_header.hops.first().unwrap(),
+                        *packet.routing_header.hops.first().expect("No hops found"),
                     );
                 }
             }
@@ -559,7 +533,7 @@ impl Client2 {
         visited.insert(start);
 
         while let Some(path) = queue.pop_front() {
-            let node = *path.last().unwrap(); // Get the last node in the current path
+            let node = *path.last().expect("No nodes in path");
 
             if node == goal {
                 return Some(path); // Goal found, return the path
