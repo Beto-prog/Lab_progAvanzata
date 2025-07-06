@@ -2,12 +2,10 @@
 
 mod repackager;
 
-mod logger;
 
 pub mod client2_ui;
 
 use crate::client2_ui::Client2_UI;
-use crate::logger::logger::{init_logger, write_log};
 use crate::repackager::Repackager;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use egui::debug_text::print;
@@ -592,7 +590,6 @@ impl Client2 {
     }
 
     pub fn run(&mut self) {
-        init_logger();
         self.discover_network();
         let receiver_channel = self.receiver_channel.clone();
 
@@ -629,5 +626,82 @@ impl Client2 {
                     }
             }
         }
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossbeam_channel::{unbounded, Receiver, Sender};
+    use std::collections::{HashMap, HashSet};
+    use std::sync::{Arc, RwLock};
+
+    // Helper function to create a test client
+    fn create_test_client(node_id: NodeId) -> (Client2, Client2_UI, Receiver<Packet>, Sender<NodeId>) {
+        let (packet_snd, packet_rcv) = unbounded();
+        let (drone_snd, drone_rcv) = unbounded();
+        let neighbor_senders = HashMap::new();
+
+        let (client, ui) = Client2::new(
+            node_id,
+            neighbor_senders,
+            packet_rcv.clone(),
+            drone_rcv,
+        );
+
+        (client, ui, packet_rcv, drone_snd)
+    }
+
+    #[test]
+    fn test_client_creation() {
+        let (client, _ui, _packet_rcv, _drone_snd) = create_test_client(1);
+        assert_eq!(client.node_id, 1);
+        assert!(client.discovered_drones.is_empty());
+        assert!(client.neighbor_senders.is_empty());
+        assert!(client.network_graph.is_empty());
+    }
+
+    #[test]
+    fn test_handle_flood_request() {
+        let (mut client, _ui, _packet_rcv, _drone_snd) = create_test_client(1);
+        let flood_request = FloodRequest {
+            flood_id: 123,
+            initiator_id: 2,
+            path_trace: vec![(2, NodeType::Client)],
+        };
+
+        client.handle_flood_request(flood_request.clone(), 456);
+        // Verify the path trace was updated
+        // This is tricky since we don't have access to the modified flood_request
+        // You might need to modify the function to return the modified request
+    }
+
+    #[test]
+    fn test_bfs_shortest_path() {
+        let mut graph = HashMap::new();
+        graph.insert(1, HashSet::from([2]));
+        graph.insert(2, HashSet::from([1, 3]));
+        graph.insert(3, HashSet::from([2, 4]));
+        graph.insert(4, HashSet::from([3]));
+
+        let path = Client2::bfs_shortest_path(graph, 1, 4);
+        assert_eq!(path, Some(vec![1, 2, 3, 4]));
+
+        // Test no path exists
+        let graph = HashMap::from([(1, HashSet::from([2])), (3, HashSet::from([4]))]);
+        let path = Client2::bfs_shortest_path(graph, 1, 4);
+        assert_eq!(path, None);
+    }
+
+    #[test]
+    fn test_create_source_routing_header() {
+        let (mut client, _ui, _packet_rcv, _drone_snd) = create_test_client(1);
+        client.discovered_drones.insert(3, NodeType::Drone);
+
+        let header = client.create_source_routing_header(4);
+        assert_eq!(header.hops, vec![1, 3, 4]);
+        assert_eq!(header.hop_index, 1);
     }
 }
